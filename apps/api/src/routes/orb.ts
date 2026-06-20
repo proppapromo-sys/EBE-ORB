@@ -3,13 +3,31 @@ import { z } from 'zod';
 import { askOrb, gatherContext, createAction, dailyBriefing } from '../agents/masterAgent.js';
 import { connectors, getConnector } from '../connectors/index.js';
 import { runOrbCycle } from '../genome/orbBranch.js';
+import { createJournal, journalIsDurable } from '../services/journalStore.js';
+import {
+  enqueueAction,
+  listActions,
+  approveAction,
+  rejectAction,
+  executeAction,
+  type QueuedActionStatus
+} from '../services/actionStore.js';
 
 export const orbRouter = Router();
 
 const CycleSchema = z.object({
   userId: z.string().min(1).default('demo-user'),
   bankroll: z.number().positive().optional(),
-  minEdge: z.number().min(0).max(1).optional()
+  minEdge: z.number().min(0).max(1).optional(),
+  enqueue: z.boolean().optional() // also push surfaced actions onto the approval queue
+});
+
+const OutcomeSchema = z.object({
+  userId: z.string().min(1).default('demo-user'),
+  itemId: z.string().min(1),
+  score: z.number().optional(),
+  win: z.boolean().optional(),
+  patterns: z.array(z.string()).optional()
 });
 
 const AskSchema = z.object({
@@ -42,14 +60,68 @@ orbRouter.post('/ask', async (req, res, next) => {
 });
 
 // Run one ORB genome cycle: connectors → edge gate → eyes → risk → confirm-first actions.
+// Persists every decision to the Journal (so trust compounds) and reads learned trust back in.
 orbRouter.post('/cycle', async (req, res, next) => {
   try {
     const parsed = CycleSchema.parse(req.body ?? {});
+    const journal = createJournal(parsed.userId);
     const report = await runOrbCycle(connectors, parsed.userId, {
       bankroll: parsed.bankroll,
-      minEdge: parsed.minEdge
+      minEdge: parsed.minEdge,
+      journal
     });
-    res.json(report);
+    let queued: unknown[] | undefined;
+    if (parsed.enqueue) {
+      queued = await Promise.all(report.actions.map((a) => enqueueAction(parsed.userId, a)));
+    }
+    res.json({ ...report, durable: journalIsDurable, queued });
+  } catch (error) { next(error); }
+});
+
+// Record what actually happened (law 3: forward-validate). Feeds the compounding trust.
+orbRouter.post('/outcome', async (req, res, next) => {
+  try {
+    const parsed = OutcomeSchema.parse(req.body ?? {});
+    const score = parsed.score ?? (parsed.win === false ? -1 : 1);
+    const journal = createJournal(parsed.userId);
+    const record = await journal.recordOutcome('orb', parsed.itemId, score, parsed.patterns ?? []);
+    res.json({ recorded: record, durable: journalIsDurable });
+  } catch (error) { next(error); }
+});
+
+// ── Confirm-first approval workflow (law 5) ─────────────────────────────────
+orbRouter.get('/actions', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? 'demo-user');
+    const status = req.query.status as QueuedActionStatus | undefined;
+    res.json({ actions: await listActions(userId, status) });
+  } catch (error) { next(error); }
+});
+
+orbRouter.post('/actions/:id/approve', async (req, res, next) => {
+  try {
+    const userId = String(req.body?.userId ?? 'demo-user');
+    const action = await approveAction(userId, req.params.id);
+    if (!action) return res.status(404).json({ error: 'action not found' });
+    res.json({ action });
+  } catch (error) { next(error); }
+});
+
+orbRouter.post('/actions/:id/reject', async (req, res, next) => {
+  try {
+    const userId = String(req.body?.userId ?? 'demo-user');
+    const action = await rejectAction(userId, req.params.id);
+    if (!action) return res.status(404).json({ error: 'action not found' });
+    res.json({ action });
+  } catch (error) { next(error); }
+});
+
+orbRouter.post('/actions/:id/execute', async (req, res, next) => {
+  try {
+    const userId = String(req.body?.userId ?? 'demo-user');
+    const live = Boolean(req.body?.live);
+    const result = await executeAction(userId, req.params.id, live);
+    res.json(result);
   } catch (error) { next(error); }
 });
 

@@ -61,11 +61,23 @@ When `OPENAI_API_KEY` is set, the model writes the briefing narrative and answer
 **grounded in the cycle's already-gated actions**. The caps, the approval gate, and the
 kill-switch stay in plain code. The Brain proposes; the Heart disposes.
 
-## Roadmap (build order)
+## Persistence & the compounding loop (shipped)
 
-1. **Persistence** — back the `Journal` with Supabase (`orb_actions`, `daily_briefings`) so
-   trust survives restarts and compounds across days.
-2. **Real connectors** — replace sample `signals()` with live OAuth/API pulls; wire `execute()`
+- **`apps/api/src/services/journalStore.ts`** — the Journal sink. Supabase-backed
+  (`orb_journal`) when configured, process-memory otherwise. `runOrbCycle` reads the history
+  each cycle, turns it into `patternTrust`/`categoryTrust`, and feeds graduated patterns back
+  into `OrbEyes` — so proven lanes vote next time. Record results with `POST /api/orb/outcome`.
+- **`apps/api/src/services/actionStore.ts`** — the confirm-first action queue
+  (`orb_action_queue`). Low-risk actions auto-approve; medium/high wait. `executeAction`
+  refuses anything not `approved` and routes it back through the raising connector
+  (dry-run unless `live=true`).
+
+Run `sql/schema.sql` against your Supabase project to make both durable across restarts.
+
+## Roadmap (next)
+
+1. **Real connectors** — replace sample `signals()` with live OAuth/API pulls; wire `execute()`
    to real actuators behind the approval gate.
-3. **Always-on** — add `runForever` + supervisor/watchdog for a self-healing ORB.
-4. **Mobile** — Expo app: Home Briefing, Approvals, Connectors, Ask ORB.
+2. **Always-on** — add `runForever` + supervisor/watchdog for a self-healing ORB.
+3. **Mobile** — Expo app: Home Briefing, Approvals, Connectors, Ask ORB.
+4. **Daily briefing persistence** — write each briefing to `daily_briefings` for history.

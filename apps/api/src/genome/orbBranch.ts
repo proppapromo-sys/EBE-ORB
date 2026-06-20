@@ -24,6 +24,8 @@ import {
   Machine,
   Journal,
   Portfolio,
+  patternTrust,
+  categoryTrust,
 } from './genome.js';
 import type { OrbConnector, OrbAction, RiskLevel, OrbDomain } from '../types/orb.js';
 
@@ -143,6 +145,9 @@ export type OrbCycleReport = {
   vetoed: { id: string; patterns: string[] }[];
   passed: { id: string; reason: string }[];
   dropped: { id: string; reason: string }[];
+  /** Learned trust read off the record this cycle (laws 3 & 4) — proven lanes climb. */
+  learnedCategoryTrust: Record<string, number>;
+  learnedPatternTrust: Record<string, number>;
 };
 
 /**
@@ -162,11 +167,18 @@ export async function runOrbCycle(
     dailyStop: 0.25,
     portfolio,
   });
+
+  // Law 4: earn trust on the record. Read history → graduated patterns start voting this cycle.
+  const history = opts.journal ? await opts.journal.read() : [];
+  const learnedPattern = patternTrust(history);
+  const learnedCategory = categoryTrust(history);
+  const trustTable = opts.trustTable ?? learnedPattern;
+
   const machine = new Machine({
     feed: new OrbFeed(connectors, userId),
     edge: new OrbEdge(),
     risk,
-    eyes: new OrbEyes(opts.trustTable),
+    eyes: new OrbEyes(trustTable),
     exe: new OrbHands(),
     name: 'orb',
     journal: opts.journal,
@@ -187,5 +199,11 @@ export async function runOrbCycle(
     vetoed: result.vetoed,
     passed: result.passed,
     dropped: result.dropped,
+    learnedCategoryTrust: round2(learnedCategory),
+    learnedPatternTrust: round2(learnedPattern),
   };
+}
+
+function round2(table: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(Object.entries(table).map(([k, v]) => [k, Math.round(v * 100) / 100]));
 }

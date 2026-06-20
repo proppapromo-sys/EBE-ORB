@@ -1,6 +1,7 @@
 import { completeOrbPrompt } from '../services/openai.js';
 import { connectors } from '../connectors/index.js';
 import { runOrbCycle, type OrbCycleReport } from '../genome/orbBranch.js';
+import { createJournal } from '../services/journalStore.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
 // ORB runs on the Universal Genome. The five laws are not advice — they are the gate.
@@ -28,7 +29,7 @@ export async function gatherContext(userId: string): Promise<ConnectorResult[]> 
 
 export async function askOrb(userId: string, message: string) {
   const context = await gatherContext(userId);
-  const cycle = await runOrbCycle(connectors, userId);
+  const cycle = await runOrbCycle(connectors, userId, { journal: createJournal(userId) });
   const prompt = `User request: ${message}
 
 Connected system context:
@@ -48,7 +49,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
  * Pure-code fallback when AI is not configured, so ORB always produces something.
  */
 export async function dailyBriefing(userId: string): Promise<{ report: OrbCycleReport; summary: string }> {
-  const report = await runOrbCycle(connectors, userId);
+  const report = await runOrbCycle(connectors, userId, { journal: createJournal(userId) });
   const approvals = report.actions.filter((a) => a.requiresApproval);
   const auto = report.actions.filter((a) => !a.requiresApproval);
   const lines = [

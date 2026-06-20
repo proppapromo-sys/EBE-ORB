@@ -89,11 +89,21 @@ npm --workspace apps/api exec tsx src/genome/demo.ts
 |---|---|---|
 | `GET`  | `/api/orb/health` | liveness |
 | `GET`  | `/api/orb/connectors` | list connected nervous-system nodes |
-| `POST` | `/api/orb/cycle` | **run one genome cycle** → risk-gated, prioritized actions |
+| `POST` | `/api/orb/cycle` | **run one genome cycle** → risk-gated, prioritized actions (persists to the Journal; `{"enqueue":true}` also queues them for approval) |
+| `POST` | `/api/orb/outcome` | record what actually happened (`win`/`score`) — the compounding loop (laws 3 & 4) |
 | `POST` | `/api/orb/briefing` | the morning briefing (cycle → human summary) |
 | `POST` | `/api/orb/ask` | ask ORB (AI answer grounded in the cycle) |
 | `POST` | `/api/orb/context` | raw connector pull |
-| `POST` | `/api/orb/connectors/:name/execute` | execute an approved action (confirm-first) |
+| `GET`  | `/api/orb/actions?status=pending` | the confirm-first approval queue |
+| `POST` | `/api/orb/actions/:id/approve` | approve a queued action |
+| `POST` | `/api/orb/actions/:id/reject` | reject a queued action |
+| `POST` | `/api/orb/actions/:id/execute` | execute an **approved** action (dry-run unless `{"live":true}`) |
+| `POST` | `/api/orb/connectors/:name/execute` | execute directly against a connector (confirm-first) |
+
+The Journal and action queue persist to **Supabase** when `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`
+are set (run `sql/schema.sql`); otherwise they fall back to process memory so everything still
+runs with zero setup. Trust earned via `/outcome` is read back into the next `/cycle` — proven
+lanes climb above the 0.55 vote bar, duds sink.
 
 ```bash
 curl -s -X POST localhost:8080/api/orb/cycle -H 'content-type: application/json' \
