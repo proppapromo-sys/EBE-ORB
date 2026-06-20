@@ -93,6 +93,8 @@ npm --workspace apps/api exec tsx src/genome/demo.ts
 | `POST` | `/api/orb/outcome` | record what actually happened (`win`/`score`) — the compounding loop (laws 3 & 4) |
 | `POST` | `/api/orb/briefing` | the morning briefing (cycle → human summary) |
 | `POST` | `/api/orb/ask` | ask ORB (AI answer grounded in the cycle) |
+| `GET`  | `/api/orb/council` | the Multi-Model Council roster + which providers are configured |
+| `POST` | `/api/orb/council` | **run the council** (6 brains → one clean answer) |
 | `POST` | `/api/orb/context` | raw connector pull |
 | `GET`  | `/api/orb/actions?status=pending` | the confirm-first approval queue |
 | `POST` | `/api/orb/actions/:id/approve` | approve a queued action |
@@ -109,6 +111,21 @@ lanes climb above the 0.55 vote bar, duds sink.
 curl -s -X POST localhost:8080/api/orb/cycle -H 'content-type: application/json' \
   -d '{"userId":"demo-user"}' | jq '.actions[] | {title, riskLevel, requiresApproval}'
 ```
+
+## ORB Multi-Model Council
+
+ORB orchestrates several AI models as one council and fuses their work into a single answer —
+all **inside** the genome (the Brain proposes, the Heart disposes):
+
+```
+request → genome cycle (code-level risk gate, runs FIRST)
+        → GPT-Executive → GPT-Operations → GPT-Risk → Claude-Evaluator
+        → Gemini-VisualVerifier → ORB-Finalizer → one clean response
+```
+
+`approvalRequired` is computed in code from the cycle **before any model speaks** — no brain can
+flip it. Each provider degrades gracefully when its key is missing, so the whole pipeline runs
+offline. See **[docs/COUNCIL.md](docs/COUNCIL.md)**.
 
 ## Risk model (the genome's confirm-first gate, made concrete)
 
