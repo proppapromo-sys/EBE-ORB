@@ -16,3 +16,6 @@ coverage/
 __pycache__/
 *.pyc
 .venv/
+
+# local recovery artifacts (do not version git bundles of this repo)
+EBE-ORB-charming-franklin.bundle
