@@ -43,7 +43,12 @@ writes the prose — but `approvalRequired` is computed in code and no brain can
 ```bash
 GET  /api/orb/council            # roster + which providers are configured
 POST /api/orb/council            # run the full council
+POST /api/orb/ask                # convenes the council by default ({"council":false} = single model)
 ```
+
+`/api/orb/ask` is wired straight to the council: a normal ask returns the ORB-Finalizer's clean
+answer plus `approvalRequired`, `cycle`, the full `council` transcript, and `fullyConfigured`.
+Send `{"council": false}` to fall back to a single-model reply.
 
 ```bash
 curl -s -X POST localhost:8080/api/orb/council -H 'content-type: application/json' -d '{

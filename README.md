@@ -92,7 +92,7 @@ npm --workspace apps/api exec tsx src/genome/demo.ts
 | `POST` | `/api/orb/cycle` | **run one genome cycle** → risk-gated, prioritized actions (persists to the Journal; `{"enqueue":true}` also queues them for approval) |
 | `POST` | `/api/orb/outcome` | record what actually happened (`win`/`score`) — the compounding loop (laws 3 & 4) |
 | `POST` | `/api/orb/briefing` | the morning briefing (cycle → human summary) |
-| `POST` | `/api/orb/ask` | ask ORB (AI answer grounded in the cycle) |
+| `POST` | `/api/orb/ask` | ask ORB — **convenes the full council by default**; `{"council":false}` for a single-model answer |
 | `GET`  | `/api/orb/council` | the Multi-Model Council roster + which providers are configured |
 | `POST` | `/api/orb/council` | **run the council** (6 brains → one clean answer) |
 | `POST` | `/api/orb/context` | raw connector pull |

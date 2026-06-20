@@ -42,7 +42,10 @@ const OutcomeSchema = z.object({
 
 const AskSchema = z.object({
   userId: z.string().min(1).default('demo-user'),
-  message: z.string().min(1)
+  message: z.string().min(1),
+  council: z.boolean().optional(), // default true — convene the full council
+  documents: z.string().optional(),
+  images: z.array(z.string()).optional()
 });
 
 orbRouter.get('/health', (_req, res) => {
@@ -64,7 +67,11 @@ orbRouter.post('/context', async (req, res, next) => {
 orbRouter.post('/ask', async (req, res, next) => {
   try {
     const parsed = AskSchema.parse(req.body);
-    const result = await askOrb(parsed.userId, parsed.message);
+    const result = await askOrb(parsed.userId, parsed.message, {
+      council: parsed.council,
+      documents: parsed.documents,
+      images: parsed.images
+    });
     res.json(result);
   } catch (error) { next(error); }
 });

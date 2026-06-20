@@ -2,6 +2,7 @@ import { completeOrbPrompt } from '../services/openai.js';
 import { connectors } from '../connectors/index.js';
 import { runOrbCycle, type OrbCycleReport } from '../genome/orbBranch.js';
 import { createJournal } from '../services/journalStore.js';
+import { runCouncil } from '../brains/council.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
 // ORB runs on the Universal Genome. The five laws are not advice — they are the gate.
@@ -27,10 +28,21 @@ export async function gatherContext(userId: string): Promise<ConnectorResult[]> 
   return results;
 }
 
-export async function askOrb(userId: string, message: string) {
+/**
+ * Ask ORB. By default this convenes the full Multi-Model Council and returns the
+ * ORB-Finalizer's single clean answer; `approvalRequired` stays code-computed from the cycle.
+ * Pass { council: false } for a single-model answer (the lightweight path).
+ */
+export async function askOrb(
+  userId: string,
+  message: string,
+  opts: { council?: boolean; documents?: string; images?: string[] } = {}
+) {
   const context = await gatherContext(userId);
-  const cycle = await runOrbCycle(connectors, userId, { journal: createJournal(userId) });
-  const prompt = `User request: ${message}
+
+  if (opts.council === false) {
+    const cycle = await runOrbCycle(connectors, userId, { journal: createJournal(userId) });
+    const prompt = `User request: ${message}
 
 Connected system context:
 ${JSON.stringify(context, null, 2)}
@@ -40,8 +52,20 @@ ${JSON.stringify(cycle.actions, null, 2)}
 
 Respond as ORB with priorities, recommended actions, and approval notes where needed.
 Flag every action whose requiresApproval is true — never imply it can run on its own.`;
-  const answer = await completeOrbPrompt(SYSTEM_PROMPT, prompt);
-  return { answer, context, cycle };
+    const answer = await completeOrbPrompt(SYSTEM_PROMPT, prompt);
+    return { mode: 'single' as const, answer, context, cycle };
+  }
+
+  const council = await runCouncil(userId, message, { documents: opts.documents, images: opts.images });
+  return {
+    mode: 'council' as const,
+    answer: council.finalAnswer,
+    context,
+    cycle: council.cycle,
+    approvalRequired: council.approvalRequired,
+    council: council.council,
+    fullyConfigured: council.fullyConfigured
+  };
 }
 
 /**
