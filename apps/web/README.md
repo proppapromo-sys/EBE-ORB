@@ -18,7 +18,10 @@ The orb renders from an image you provide (with a procedural plasma vortex as fa
 ## Speaking / voice
 - ORB speaks its answers via the browser speech engine; while speaking, `STATE → SPEAKING`,
   arcs fire, and the waveform reacts. **Click the orb** to hear a test line.
-- **🎤** enables real audio reactivity (mic): the energy and waveform follow live sound.
+- **🎤 hands-free conversation:** tap 🎤 to talk to ORB. It transcribes you (Web Speech
+  recognition), convenes the council, speaks the answer, then listens again — a full
+  talk-to-ORB loop. It pauses recognition while ORB is speaking so it never hears itself.
+  Live mic audio also drives the energy/waveform. (Recognition needs Chrome or Edge.)
 
 ## Going live
 The command bar (**CONVENE**) posts to the API when configured:

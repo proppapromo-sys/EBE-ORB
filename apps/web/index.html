@@ -72,7 +72,7 @@
   <button type="submit">CONVENE</button>
 </form>
 <input type="file" id="file" accept="image/*" hidden />
-<div class="hint">drag your image onto the orb (or 📷) · click the orb to hear it · set window.ORB_API to go live</div>
+<div class="hint">🎤 talk to ORB hands-free · click the orb to hear it · drag an image onto it · set window.ORB_API to go live</div>
 
 <script>
 const API=(window.ORB_API||"").replace(/\/$/,"");
@@ -194,29 +194,35 @@ function frame(){
 }
 frame();
 
-// ── speech ──
+// ── speech (ORB's voice) ──
+let convoMode=false, recog=null, recogActive=false;
 function speak(text){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(String(text).replace(/\s+/g,' ').slice(0,600));
   const vs=speechSynthesis.getVoices();
   u.voice=vs.find(v=>/Google UK English Male|Daniel|Microsoft Guy|Microsoft David/i.test(v.name))||vs[0];
   u.rate=1.0;u.pitch=0.9;
-  u.onstart=()=>{speaking=true;setState('SPEAKING');document.getElementById('speaking').classList.add('on');};
-  u.onend=()=>{speaking=false;setState('IDLE');document.getElementById('speaking').classList.remove('on');};
+  u.onstart=()=>{speaking=true;setState('SPEAKING');document.getElementById('speaking').classList.add('on');
+    if(recogActive){try{recog.stop();}catch(e){}}};                 // don't transcribe our own voice
+  u.onend=()=>{speaking=false;document.getElementById('speaking').classList.remove('on');
+    if(convoMode){setState('LISTENING');startRecog();}else setState('IDLE');};
   speechSynthesis.speak(u);}
 if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
 cv.addEventListener('click',()=>speak('ORB online. Risk gate armed. The council is standing by.'));
 
-// ── command bar → council → speak ──
-document.getElementById('cmd').addEventListener('submit',async ev=>{ev.preventDefault();
-  const q=document.getElementById('q').value.trim();if(!q)return;
+// ── convene the council (shared by the command bar + voice) ──
+async function convene(q){
+  if(!q)return;
+  document.getElementById('q').value='';
   const box=document.getElementById('answer');box.classList.add('show');box.textContent='Convening the council…';
-  if(!API){const demo='Demo mode. Set window.ORB_API to convene the live council: GPT-Executive, Operations, Risk, Claude-Evaluator, Gemini-VisualVerifier, then ORB-Finalizer. High-risk actions always wait for your approval.';
-    box.innerHTML='<span class="badge">DEMO</span>'+demo;speak(demo);return;}
+  if(!API){const demo='Demo mode. Set window dot ORB underscore A P I to convene the live council: GPT-Executive, Operations, Risk, Claude-Evaluator, Gemini-VisualVerifier, then ORB-Finalizer. High-risk actions always wait for your approval.';
+    box.innerHTML='<span class="badge">DEMO</span>'+demo.replace('window dot ORB underscore A P I','<b>window.ORB_API</b>');speak(demo);return;}
   try{const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user',message:q})});
     const d=await r.json();const need=d.approvalRequired?.count?`<span class="badge">${d.approvalRequired.count} NEED APPROVAL</span>`:'';
     box.innerHTML=need+(d.answer||JSON.stringify(d,null,2));
     speak('You have '+(d.approvalRequired?.count||0)+' actions awaiting approval. '+(d.answer||''));
-  }catch(e){box.textContent='Could not reach ORB API: '+e.message;}});
+  }catch(e){box.textContent='Could not reach ORB API: '+e.message;speak('I could not reach the ORB backend.');}}
+
+document.getElementById('cmd').addEventListener('submit',ev=>{ev.preventDefault();convene(document.getElementById('q').value.trim());});
 
 // ── image: drop / picker ──
 const drop=document.getElementById('drop');
@@ -226,13 +232,35 @@ addEventListener('drop',ev=>{const f=[...(ev.dataTransfer?.files||[])].find(f=>f
 document.getElementById('img').addEventListener('click',()=>document.getElementById('file').click());
 document.getElementById('file').addEventListener('change',e=>{const f=e.target.files[0];if(f)setImageFromFile(f);});
 
-// ── mic ──
-document.getElementById('mic').addEventListener('click',async()=>{
-  if(listening){listening=false;setState('IDLE');analyser=null;return;}
+// ── voice input: speech-to-text + hands-free conversation loop ──
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+function startRecog(){if(!recog||recogActive||speaking)return;try{recog.start();}catch(e){}}
+async function startMicAnalyser(){
   try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});
     const ac=new(window.AudioContext||window.webkitAudioContext)();const src=ac.createMediaStreamSource(stream);
     analyser=ac.createAnalyser();analyser.fftSize=128;freq=new Uint8Array(analyser.frequencyBinCount);src.connect(analyser);
-    listening=true;setState('LISTENING');}catch(e){alert('Mic unavailable: '+e.message);}});
+  }catch(e){/* visuals only; recognition can still run */}
+}
+function buildRecog(){
+  if(!SR)return null;
+  const r=new SR();r.lang='en-US';r.interimResults=true;r.continuous=false;
+  r.onstart=()=>{recogActive=true;if(convoMode)setState('LISTENING');};
+  r.onresult=ev=>{let txt='';for(let i=ev.resultIndex;i<ev.results.length;i++)txt+=ev.results[i][0].transcript;
+    document.getElementById('q').value=txt;
+    if(ev.results[ev.results.length-1].isFinal){const q=txt.trim();if(q)convene(q);}};
+  r.onerror=()=>{};
+  r.onend=()=>{recogActive=false;if(convoMode&&!speaking)setTimeout(startRecog,400);}; // keep listening
+  return r;
+}
+document.getElementById('mic').addEventListener('click',async()=>{
+  if(!SR){alert('Voice input needs Chrome or Edge (Web Speech API).');return;}
+  if(convoMode){convoMode=false;listening=false;setState('IDLE');document.getElementById('mic').style.color='';
+    try{recog&&recog.stop();}catch(e){}analyser=null;return;}
+  convoMode=true;listening=true;recog=recog||buildRecog();
+  document.getElementById('mic').style.color='#ffc878';
+  await startMicAnalyser();setState('LISTENING');startRecog();
+  if(!speaking)speak('Listening.');
+});
 </script>
 </body>
 </html>
