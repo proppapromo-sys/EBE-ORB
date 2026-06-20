@@ -1,0 +1,12 @@
+{
+  "name": "ebe-orb",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EBE ORB - Digital Chief of Staff central intelligence layer",
+  "workspaces": ["apps/api", "packages/shared"],
+  "scripts": {
+    "dev:api": "npm --workspace apps/api run dev",
+    "build:api": "npm --workspace apps/api run build",
+    "start:api": "npm --workspace apps/api run start"
+  }
+}
