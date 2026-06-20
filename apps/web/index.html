@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ORB — Digital Chief of Staff</title>
+<style>
+  :root{
+    --cyan:#5adcff; --ice:#bdf3ff; --teal:#1e6e96; --gold:#ffc878;
+    --bg0:#04080f; --bg1:#0a1626; --hud:#9fd0e6;
+    --api:""; /* set window.ORB_API to point at the backend, e.g. http://localhost:8080 */
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:radial-gradient(120% 90% at 50% 42%, #0b1c30 0%, var(--bg1) 38%, var(--bg0) 100%);
+    color:var(--ice); font-family:"DejaVu Sans Mono",ui-monospace,Menlo,Consolas,monospace;
+    overflow:hidden; letter-spacing:.04em;
+  }
+  /* dot grid */
+  body::before{content:"";position:fixed;inset:0;background-image:radial-gradient(rgba(120,180,210,.10) 1px,transparent 1.4px);
+    background-size:46px 46px;opacity:.5;pointer-events:none}
+  /* scanlines */
+  body::after{content:"";position:fixed;inset:0;background:repeating-linear-gradient(transparent 0 2px,rgba(0,0,0,.06) 2px 3px);
+    pointer-events:none;mix-blend-mode:overlay}
+  #stage{position:fixed;inset:0;display:grid;place-items:center}
+  canvas#particles{position:fixed;inset:0}
+
+  /* ── the ORB ── */
+  .orb-wrap{position:relative;width:min(74vmin,720px);aspect-ratio:1;display:grid;place-items:center;
+    filter:drop-shadow(0 0 60px rgba(40,150,200,.35))}
+  .ring{position:absolute;border-radius:50%;border:1px solid rgba(90,220,255,.22)}
+  .r1{inset:0}
+  .r2{inset:9%}
+  .r3{inset:20%}
+  .r4{inset:31%}
+  /* segmented HUD arc via conic gradient masked into a ring */
+  .arc{position:absolute;border-radius:50%;
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 3px));
+            mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 3px))}
+  .arcA{inset:0;background:conic-gradient(from 0deg,transparent 0 6deg,rgba(189,243,255,.55) 6deg 26deg,transparent 26deg 30deg);
+    animation:spin 26s linear infinite}
+  .arcB{inset:13%;background:conic-gradient(from 40deg,transparent 0 200deg,rgba(90,220,255,.6) 200deg 340deg,transparent 340deg);
+    animation:spin 18s linear infinite reverse}
+  .arcC{inset:24%;background:conic-gradient(from 0deg,rgba(255,200,120,.0) 0 300deg,rgba(255,200,120,.55) 320deg 360deg);
+    animation:spin 34s linear infinite}
+  .ticks{position:absolute;inset:6%;border-radius:50%;
+    background:repeating-conic-gradient(from 0deg,rgba(90,220,255,.5) 0 .6deg,transparent .6deg 12deg);
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 10px),#000 calc(100% - 10px));
+            mask:radial-gradient(farthest-side,transparent calc(100% - 10px),#000 calc(100% - 10px));
+    animation:spin 60s linear infinite reverse;opacity:.7}
+
+  /* translucent glass core */
+  .core{position:absolute;width:42%;aspect-ratio:1;border-radius:50%;
+    background:
+      radial-gradient(circle at 38% 32%, rgba(255,255,255,.95) 0 6%, rgba(189,243,255,.55) 16%, rgba(40,150,200,.30) 46%, rgba(20,60,90,.18) 70%, rgba(10,30,50,.10) 100%);
+    box-shadow:0 0 60px rgba(90,220,255,.55), inset 0 0 60px rgba(120,230,255,.45), inset -10px -16px 50px rgba(0,20,40,.5);
+    backdrop-filter:blur(2px);animation:breathe 5.5s ease-in-out infinite}
+  .core::after{content:"";position:absolute;inset:0;border-radius:50%;
+    background:radial-gradient(circle at 50% 50%, rgba(255,255,255,.9) 0 4%, transparent 14%);
+    animation:pulse 2.6s ease-in-out infinite}
+  .node{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--ice);
+    box-shadow:0 0 12px var(--cyan);transform:translate(-50%,-50%)}
+
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes breathe{0%,100%{transform:scale(1);filter:none}50%{transform:scale(1.045)}}
+  @keyframes pulse{0%,100%{opacity:.55;transform:scale(.9)}50%{opacity:1;transform:scale(1.15)}}
+
+  .wordmark{position:absolute;top:62%;width:100%;text-align:center;pointer-events:none}
+  .wordmark h1{margin:0;font-family:"DejaVu Sans",system-ui,sans-serif;font-weight:300;
+    font-size:clamp(34px,7vmin,76px);letter-spacing:.42em;text-indent:.42em;color:var(--ice);
+    text-shadow:0 0 26px rgba(90,220,255,.6)}
+  .wordmark .sub{margin-top:.5em;font-size:clamp(10px,1.7vmin,15px);color:var(--cyan);letter-spacing:.3em}
+  .wordmark .sub2{margin-top:.4em;font-size:clamp(9px,1.4vmin,12px);color:#86c0db;opacity:.8;letter-spacing:.18em}
+
+  /* ── HUD panels ── */
+  .hud{position:fixed;font-size:13px;color:var(--hud);text-shadow:0 0 8px rgba(40,150,200,.4)}
+  .hud .h{color:var(--cyan);letter-spacing:.12em;margin-bottom:8px}
+  .tl{top:30px;left:34px}
+  .tr{top:30px;right:34px;text-align:right}
+  .bl{bottom:30px;left:34px}
+  .hud .ok{color:var(--cyan)} .hud .warm{color:var(--gold)}
+  .hud .row{opacity:.85;line-height:1.7}
+  .laws .h{color:var(--gold)}
+
+  /* command bar */
+  .cmd{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);width:min(620px,86vw);
+    display:flex;gap:8px;align-items:center;
+    background:rgba(10,28,46,.55);border:1px solid rgba(90,220,255,.28);border-radius:999px;
+    padding:10px 14px;backdrop-filter:blur(8px);box-shadow:0 0 30px rgba(20,60,90,.5)}
+  .cmd input{flex:1;background:transparent;border:0;outline:0;color:var(--ice);font:inherit;letter-spacing:.05em}
+  .cmd input::placeholder{color:#6fa6c2}
+  .cmd button{background:rgba(90,220,255,.16);border:1px solid rgba(90,220,255,.4);color:var(--ice);
+    border-radius:999px;padding:7px 16px;font:inherit;cursor:pointer;letter-spacing:.08em}
+  .cmd button:hover{background:rgba(90,220,255,.28)}
+  .answer{position:fixed;bottom:92px;left:50%;transform:translateX(-50%);width:min(720px,90vw);
+    max-height:34vh;overflow:auto;background:rgba(8,20,34,.7);border:1px solid rgba(90,220,255,.22);
+    border-radius:14px;padding:14px 18px;backdrop-filter:blur(8px);font-size:13px;line-height:1.6;
+    color:#cfeefb;display:none;white-space:pre-wrap}
+  .answer.show{display:block}
+  .badge{display:inline-block;border:1px solid rgba(255,200,120,.5);color:var(--gold);
+    border-radius:6px;padding:1px 7px;font-size:11px;margin-right:6px}
+  @media (max-width:640px){.tr,.bl{font-size:11px}.tl{font-size:11px}}
+</style>
+</head>
+<body>
+<canvas id="particles"></canvas>
+<div id="stage">
+  <div class="orb-wrap" id="orb">
+    <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div><div class="ring r4"></div>
+    <div class="ticks"></div>
+    <div class="arc arcA"></div><div class="arc arcB"></div><div class="arc arcC"></div>
+    <div class="core"></div>
+    <div class="wordmark">
+      <h1>ORB</h1>
+      <div class="sub">DIGITAL CHIEF OF STAFF</div>
+      <div class="sub2">UNIVERSAL GENOME · MULTI-MODEL COUNCIL</div>
+    </div>
+  </div>
+</div>
+
+<div class="hud tl">
+  <div class="h">◢ ORB MASTER SYSTEM</div>
+  <div class="row">STATUS........ <span class="ok" id="st-status">ONLINE</span></div>
+  <div class="row">RISK GATE..... <span class="ok">ARMED (code)</span></div>
+  <div class="row">CONFIRM-FIRST. <span class="ok">ENABLED</span></div>
+  <div class="row">JOURNAL....... <span id="st-journal">LEARNING</span></div>
+  <div class="row">ACTIONS....... <span id="st-actions">—</span></div>
+</div>
+
+<div class="hud tr" id="council">
+  <div class="h">COUNCIL</div>
+  <div class="row">› GPT-EXECUTIVE</div>
+  <div class="row">› GPT-OPERATIONS</div>
+  <div class="row">› GPT-RISK</div>
+  <div class="row">› CLAUDE-EVALUATOR</div>
+  <div class="row">› GEMINI-VISUAL</div>
+  <div class="row">› ORB-FINALIZER</div>
+</div>
+
+<div class="hud bl laws">
+  <div class="h">THE FIVE LAWS</div>
+  <div class="row">1 risk-first</div>
+  <div class="row">2 edge vs the world</div>
+  <div class="row">3 forward-validate</div>
+  <div class="row">4 recognise + remember</div>
+  <div class="row">5 confirm-first, never chase</div>
+</div>
+
+<div class="answer" id="answer"></div>
+<form class="cmd" id="cmd">
+  <input id="q" placeholder="Ask ORB —  what needs my attention today?" autocomplete="off" />
+  <button type="submit">CONVENE</button>
+</form>
+
+<script>
+const API = (window.ORB_API || "").replace(/\/$/,"");
+
+// ── orbiting nodes positioned on the rings ──
+const orb = document.getElementById('orb');
+[[35,0.50],[210,0.50],[95,0.40],[305,0.30],[150,0.20]].forEach(([deg,rad])=>{
+  const n=document.createElement('div');n.className='node';
+  const a=deg*Math.PI/180;
+  n.style.left=(50+Math.cos(a)*rad*100)+'%';
+  n.style.top =(50+Math.sin(a)*rad*100)+'%';
+  orb.appendChild(n);
+});
+
+// ── particle field ──
+const cv=document.getElementById('particles'),cx=cv.getContext('2d');
+let P=[],w,h;
+function resize(){w=cv.width=innerWidth;h=cv.height=innerHeight;
+  P=Array.from({length:140},()=>({x:Math.random()*w,y:Math.random()*h,
+    r:Math.random()*1.8+.3,v:Math.random()*.25+.05,a:Math.random()*.5+.15}));}
+addEventListener('resize',resize);resize();
+(function loop(){cx.clearRect(0,0,w,h);
+  for(const p of P){p.y-=p.v;if(p.y<-2){p.y=h+2;p.x=Math.random()*w;}
+    cx.beginPath();cx.arc(p.x,p.y,p.r,0,7);cx.fillStyle=`rgba(90,220,255,${p.a})`;cx.fill();}
+  requestAnimationFrame(loop);})();
+
+// ── live wiring to the API (optional; degrades to static demo) ──
+async function refresh(){
+  if(!API) return;
+  try{
+    const r=await fetch(API+'/api/orb/cycle',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({userId:'demo-user'})});
+    const d=await r.json();
+    document.getElementById('st-actions').textContent=(d.actions?.length??0)+' surfaced';
+    document.getElementById('st-journal').textContent=d.durable?'PERSISTENT':'LEARNING';
+  }catch(e){document.getElementById('st-status').textContent='OFFLINE (demo)';}
+}
+refresh();
+
+document.getElementById('cmd').addEventListener('submit',async ev=>{
+  ev.preventDefault();
+  const q=document.getElementById('q').value.trim();if(!q)return;
+  const box=document.getElementById('answer');box.classList.add('show');
+  box.textContent='Convening the council…';
+  if(!API){box.innerHTML='<span class="badge">DEMO</span>Set <b>window.ORB_API</b> to your backend to convene the live council. '+
+    'Then ORB runs the genome cycle, asks GPT-Executive → Operations → Risk → Claude-Evaluator → '+
+    'Gemini-VisualVerifier → ORB-Finalizer, and returns one clean, approval-aware answer.';return;}
+  try{
+    const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({userId:'demo-user',message:q})});
+    const d=await r.json();
+    const need=d.approvalRequired?.count?`<span class="badge">${d.approvalRequired.count} NEED APPROVAL</span>`:'';
+    box.innerHTML=need+(d.answer||JSON.stringify(d,null,2));
+  }catch(e){box.textContent='Could not reach ORB API: '+e.message;}
+});
+</script>
+</body>
+</html>

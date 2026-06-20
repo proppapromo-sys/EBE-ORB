@@ -60,6 +60,7 @@ apps/api/src/agents      Master ORB agent (the five laws in the system prompt)
 apps/api/src/connectors  Universal connectors — each an EAR feeding the loop
 apps/api/src/routes      API routes (health, cycle, briefing, ask, context)
 apps/api/src/services    OpenAI + Supabase services
+apps/web                 ⭐ ORB's face — translucent holographic JARVIS-style UI (zero-build)
 apps/mobile              Expo/React Native placeholder
 packages/shared          Shared genome contracts across surfaces
 sql/schema.sql           Supabase schema (connectors, memory, tasks, actions, briefings)
