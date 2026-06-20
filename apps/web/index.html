@@ -5,208 +5,234 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>ORB — Digital Chief of Staff</title>
 <style>
-  :root{
-    --cyan:#5adcff; --ice:#bdf3ff; --teal:#1e6e96; --gold:#ffc878;
-    --bg0:#04080f; --bg1:#0a1626; --hud:#9fd0e6;
-    --api:""; /* set window.ORB_API to point at the backend, e.g. http://localhost:8080 */
-  }
+  :root{ --cyan:#5adcff; --ice:#bdf3ff; --gold:#ffc878; --hud:#9fd0e6; }
   *{box-sizing:border-box}
-  html,body{height:100%}
-  body{
-    margin:0; background:radial-gradient(120% 90% at 50% 42%, #0b1c30 0%, var(--bg1) 38%, var(--bg0) 100%);
-    color:var(--ice); font-family:"DejaVu Sans Mono",ui-monospace,Menlo,Consolas,monospace;
-    overflow:hidden; letter-spacing:.04em;
-  }
-  /* dot grid */
-  body::before{content:"";position:fixed;inset:0;background-image:radial-gradient(rgba(120,180,210,.10) 1px,transparent 1.4px);
-    background-size:46px 46px;opacity:.5;pointer-events:none}
-  /* scanlines */
-  body::after{content:"";position:fixed;inset:0;background:repeating-linear-gradient(transparent 0 2px,rgba(0,0,0,.06) 2px 3px);
-    pointer-events:none;mix-blend-mode:overlay}
-  #stage{position:fixed;inset:0;display:grid;place-items:center}
-  canvas#particles{position:fixed;inset:0}
-
-  /* ── the ORB ── */
-  .orb-wrap{position:relative;width:min(74vmin,720px);aspect-ratio:1;display:grid;place-items:center;
-    filter:drop-shadow(0 0 60px rgba(40,150,200,.35))}
-  .ring{position:absolute;border-radius:50%;border:1px solid rgba(90,220,255,.22)}
-  .r1{inset:0}
-  .r2{inset:9%}
-  .r3{inset:20%}
-  .r4{inset:31%}
-  /* segmented HUD arc via conic gradient masked into a ring */
-  .arc{position:absolute;border-radius:50%;
-    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 3px));
-            mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 3px))}
-  .arcA{inset:0;background:conic-gradient(from 0deg,transparent 0 6deg,rgba(189,243,255,.55) 6deg 26deg,transparent 26deg 30deg);
-    animation:spin 26s linear infinite}
-  .arcB{inset:13%;background:conic-gradient(from 40deg,transparent 0 200deg,rgba(90,220,255,.6) 200deg 340deg,transparent 340deg);
-    animation:spin 18s linear infinite reverse}
-  .arcC{inset:24%;background:conic-gradient(from 0deg,rgba(255,200,120,.0) 0 300deg,rgba(255,200,120,.55) 320deg 360deg);
-    animation:spin 34s linear infinite}
-  .ticks{position:absolute;inset:6%;border-radius:50%;
-    background:repeating-conic-gradient(from 0deg,rgba(90,220,255,.5) 0 .6deg,transparent .6deg 12deg);
-    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 10px),#000 calc(100% - 10px));
-            mask:radial-gradient(farthest-side,transparent calc(100% - 10px),#000 calc(100% - 10px));
-    animation:spin 60s linear infinite reverse;opacity:.7}
-
-  /* translucent glass core */
-  .core{position:absolute;width:42%;aspect-ratio:1;border-radius:50%;
-    background:
-      radial-gradient(circle at 38% 32%, rgba(255,255,255,.95) 0 6%, rgba(189,243,255,.55) 16%, rgba(40,150,200,.30) 46%, rgba(20,60,90,.18) 70%, rgba(10,30,50,.10) 100%);
-    box-shadow:0 0 60px rgba(90,220,255,.55), inset 0 0 60px rgba(120,230,255,.45), inset -10px -16px 50px rgba(0,20,40,.5);
-    backdrop-filter:blur(2px);animation:breathe 5.5s ease-in-out infinite}
-  .core::after{content:"";position:absolute;inset:0;border-radius:50%;
-    background:radial-gradient(circle at 50% 50%, rgba(255,255,255,.9) 0 4%, transparent 14%);
-    animation:pulse 2.6s ease-in-out infinite}
-  .node{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--ice);
-    box-shadow:0 0 12px var(--cyan);transform:translate(-50%,-50%)}
-
-  @keyframes spin{to{transform:rotate(360deg)}}
-  @keyframes breathe{0%,100%{transform:scale(1);filter:none}50%{transform:scale(1.045)}}
-  @keyframes pulse{0%,100%{opacity:.55;transform:scale(.9)}50%{opacity:1;transform:scale(1.15)}}
-
-  .wordmark{position:absolute;top:62%;width:100%;text-align:center;pointer-events:none}
-  .wordmark h1{margin:0;font-family:"DejaVu Sans",system-ui,sans-serif;font-weight:300;
-    font-size:clamp(34px,7vmin,76px);letter-spacing:.42em;text-indent:.42em;color:var(--ice);
-    text-shadow:0 0 26px rgba(90,220,255,.6)}
-  .wordmark .sub{margin-top:.5em;font-size:clamp(10px,1.7vmin,15px);color:var(--cyan);letter-spacing:.3em}
-  .wordmark .sub2{margin-top:.4em;font-size:clamp(9px,1.4vmin,12px);color:#86c0db;opacity:.8;letter-spacing:.18em}
-
-  /* ── HUD panels ── */
-  .hud{position:fixed;font-size:13px;color:var(--hud);text-shadow:0 0 8px rgba(40,150,200,.4)}
+  html,body{height:100%;margin:0;background:#05080f;overflow:hidden;
+    font-family:"DejaVu Sans Mono",ui-monospace,Menlo,Consolas,monospace;color:var(--ice);letter-spacing:.04em}
+  canvas#orb{position:fixed;inset:0;width:100%;height:100%;display:block}
+  .hud{position:fixed;font-size:13px;color:var(--hud);text-shadow:0 0 8px rgba(40,150,200,.45);pointer-events:none}
   .hud .h{color:var(--cyan);letter-spacing:.12em;margin-bottom:8px}
-  .tl{top:30px;left:34px}
-  .tr{top:30px;right:34px;text-align:right}
-  .bl{bottom:30px;left:34px}
-  .hud .ok{color:var(--cyan)} .hud .warm{color:var(--gold)}
-  .hud .row{opacity:.85;line-height:1.7}
-  .laws .h{color:var(--gold)}
-
-  /* command bar */
-  .cmd{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);width:min(620px,86vw);
-    display:flex;gap:8px;align-items:center;
-    background:rgba(10,28,46,.55);border:1px solid rgba(90,220,255,.28);border-radius:999px;
-    padding:10px 14px;backdrop-filter:blur(8px);box-shadow:0 0 30px rgba(20,60,90,.5)}
+  .tl{top:28px;left:32px}.tr{top:28px;right:32px;text-align:right}.bl{bottom:110px;left:32px}
+  .hud .row{opacity:.85;line-height:1.7}.laws .h{color:var(--gold)}
+  #speaking{position:fixed;top:28px;left:50%;transform:translateX(-50%);text-align:center;
+    color:var(--gold);font-size:14px;letter-spacing:.18em;opacity:0;transition:opacity .3s}
+  #speaking.on{opacity:1}
+  .cmd{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);width:min(680px,92vw);
+    display:flex;gap:8px;align-items:center;background:rgba(10,28,46,.55);
+    border:1px solid rgba(90,220,255,.30);border-radius:999px;padding:10px 14px;backdrop-filter:blur(8px);
+    box-shadow:0 0 34px rgba(20,60,90,.55)}
   .cmd input{flex:1;background:transparent;border:0;outline:0;color:var(--ice);font:inherit;letter-spacing:.05em}
   .cmd input::placeholder{color:#6fa6c2}
-  .cmd button{background:rgba(90,220,255,.16);border:1px solid rgba(90,220,255,.4);color:var(--ice);
-    border-radius:999px;padding:7px 16px;font:inherit;cursor:pointer;letter-spacing:.08em}
-  .cmd button:hover{background:rgba(90,220,255,.28)}
-  .answer{position:fixed;bottom:92px;left:50%;transform:translateX(-50%);width:min(720px,90vw);
-    max-height:34vh;overflow:auto;background:rgba(8,20,34,.7);border:1px solid rgba(90,220,255,.22);
+  .cmd button{background:rgba(90,220,255,.16);border:1px solid rgba(90,220,255,.42);color:var(--ice);
+    border-radius:999px;padding:8px 16px;font:inherit;cursor:pointer;letter-spacing:.08em}
+  .cmd button:hover{background:rgba(90,220,255,.30)}.cmd .icon{padding:8px 12px}
+  .answer{position:fixed;bottom:92px;left:50%;transform:translateX(-50%);width:min(740px,92vw);
+    max-height:30vh;overflow:auto;background:rgba(8,20,34,.72);border:1px solid rgba(90,220,255,.22);
     border-radius:14px;padding:14px 18px;backdrop-filter:blur(8px);font-size:13px;line-height:1.6;
     color:#cfeefb;display:none;white-space:pre-wrap}
   .answer.show{display:block}
-  .badge{display:inline-block;border:1px solid rgba(255,200,120,.5);color:var(--gold);
+  .badge{display:inline-block;border:1px solid rgba(255,200,120,.55);color:var(--gold);
     border-radius:6px;padding:1px 7px;font-size:11px;margin-right:6px}
-  @media (max-width:640px){.tr,.bl{font-size:11px}.tl{font-size:11px}}
+  .hint{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);font-size:10px;color:#4d7894;opacity:.7}
+  #drop{position:fixed;inset:0;border:2px dashed rgba(90,220,255,.6);background:rgba(5,15,28,.6);
+    display:none;place-items:center;font-size:22px;color:var(--cyan);z-index:9}
+  #drop.on{display:grid}
 </style>
 </head>
 <body>
-<canvas id="particles"></canvas>
-<div id="stage">
-  <div class="orb-wrap" id="orb">
-    <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div><div class="ring r4"></div>
-    <div class="ticks"></div>
-    <div class="arc arcA"></div><div class="arc arcB"></div><div class="arc arcC"></div>
-    <div class="core"></div>
-    <div class="wordmark">
-      <h1>ORB</h1>
-      <div class="sub">DIGITAL CHIEF OF STAFF</div>
-      <div class="sub2">UNIVERSAL GENOME · MULTI-MODEL COUNCIL</div>
-    </div>
-  </div>
-</div>
+<canvas id="orb"></canvas>
+<div id="drop">⬇ drop your ORB image to make it the core</div>
 
 <div class="hud tl">
   <div class="h">◢ ORB MASTER SYSTEM</div>
-  <div class="row">STATUS........ <span class="ok" id="st-status">ONLINE</span></div>
-  <div class="row">RISK GATE..... <span class="ok">ARMED (code)</span></div>
-  <div class="row">CONFIRM-FIRST. <span class="ok">ENABLED</span></div>
-  <div class="row">JOURNAL....... <span id="st-journal">LEARNING</span></div>
-  <div class="row">ACTIONS....... <span id="st-actions">—</span></div>
+  <div class="row">STATE......... <span id="st-state">IDLE</span></div>
+  <div class="row">RISK GATE..... ARMED (code)</div>
+  <div class="row">CONFIRM-FIRST. ENABLED</div>
+  <div class="row">CORE PULSE.... <span id="st-pulse">NOMINAL</span></div>
 </div>
-
-<div class="hud tr" id="council">
+<div class="hud tr">
   <div class="h">COUNCIL</div>
-  <div class="row">› GPT-EXECUTIVE</div>
-  <div class="row">› GPT-OPERATIONS</div>
-  <div class="row">› GPT-RISK</div>
-  <div class="row">› CLAUDE-EVALUATOR</div>
-  <div class="row">› GEMINI-VISUAL</div>
-  <div class="row">› ORB-FINALIZER</div>
+  <div class="row">› GPT-EXECUTIVE</div><div class="row">› GPT-OPERATIONS</div>
+  <div class="row">› GPT-RISK</div><div class="row">› CLAUDE-EVALUATOR</div>
+  <div class="row">› GEMINI-VISUAL</div><div class="row">› ORB-FINALIZER</div>
 </div>
-
 <div class="hud bl laws">
   <div class="h">THE FIVE LAWS</div>
-  <div class="row">1 risk-first</div>
-  <div class="row">2 edge vs the world</div>
-  <div class="row">3 forward-validate</div>
-  <div class="row">4 recognise + remember</div>
+  <div class="row">1 risk-first</div><div class="row">2 edge vs the world</div>
+  <div class="row">3 forward-validate</div><div class="row">4 recognise + remember</div>
   <div class="row">5 confirm-first, never chase</div>
 </div>
+<div id="speaking">▮ AUDIBLE OUTPUT ACTIVE · CORE PULSE SYNC: PEAK ▮</div>
 
 <div class="answer" id="answer"></div>
 <form class="cmd" id="cmd">
   <input id="q" placeholder="Ask ORB —  what needs my attention today?" autocomplete="off" />
+  <button type="button" class="icon" id="img" title="set ORB image">📷</button>
+  <button type="button" class="icon" id="mic" title="voice input">🎤</button>
   <button type="submit">CONVENE</button>
 </form>
+<input type="file" id="file" accept="image/*" hidden />
+<div class="hint">drag your image onto the orb (or 📷) · click the orb to hear it · set window.ORB_API to go live</div>
 
 <script>
-const API = (window.ORB_API || "").replace(/\/$/,"");
-
-// ── orbiting nodes positioned on the rings ──
-const orb = document.getElementById('orb');
-[[35,0.50],[210,0.50],[95,0.40],[305,0.30],[150,0.20]].forEach(([deg,rad])=>{
-  const n=document.createElement('div');n.className='node';
-  const a=deg*Math.PI/180;
-  n.style.left=(50+Math.cos(a)*rad*100)+'%';
-  n.style.top =(50+Math.sin(a)*rad*100)+'%';
-  orb.appendChild(n);
-});
-
-// ── particle field ──
-const cv=document.getElementById('particles'),cx=cv.getContext('2d');
-let P=[],w,h;
-function resize(){w=cv.width=innerWidth;h=cv.height=innerHeight;
-  P=Array.from({length:140},()=>({x:Math.random()*w,y:Math.random()*h,
-    r:Math.random()*1.8+.3,v:Math.random()*.25+.05,a:Math.random()*.5+.15}));}
+const API=(window.ORB_API||"").replace(/\/$/,"");
+const cv=document.getElementById('orb'),ctx=cv.getContext('2d');
+let W,H,DPR,CX,CY,R;
+function resize(){DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;
+  cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);CX=W/2;CY=H*0.43;R=Math.min(W,H)*0.27;}
 addEventListener('resize',resize);resize();
-(function loop(){cx.clearRect(0,0,w,h);
-  for(const p of P){p.y-=p.v;if(p.y<-2){p.y=h+2;p.x=Math.random()*w;}
-    cx.beginPath();cx.arc(p.x,p.y,p.r,0,7);cx.fillStyle=`rgba(90,220,255,${p.a})`;cx.fill();}
-  requestAnimationFrame(loop);})();
 
-// ── live wiring to the API (optional; degrades to static demo) ──
-async function refresh(){
-  if(!API) return;
-  try{
-    const r=await fetch(API+'/api/orb/cycle',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({userId:'demo-user'})});
-    const d=await r.json();
-    document.getElementById('st-actions').textContent=(d.actions?.length??0)+' surfaced';
-    document.getElementById('st-journal').textContent=d.durable?'PERSISTENT':'LEARNING';
-  }catch(e){document.getElementById('st-status').textContent='OFFLINE (demo)';}
+// ── YOUR exact image as the orb core (with procedural fallback) ──
+let IMG=null;
+function loadImg(src){const i=new Image();i.crossOrigin='anonymous';
+  i.onload=()=>{IMG=i;};i.onerror=()=>{};i.src=src;}
+const saved=localStorage.getItem('orbImage');
+if(saved) loadImg(saved); else loadImg('assets/orb-source.png');  // drop your file here to commit it
+function setImageFromFile(f){const r=new FileReader();
+  r.onload=()=>{localStorage.setItem('orbImage',r.result);loadImg(r.result);};r.readAsDataURL(f);}
+
+// procedural plasma fallback
+const ARMS=3,N=520,twist=5.2;
+const parts=Array.from({length:N},(_,i)=>{const arm=i%ARMS,rad=Math.pow(Math.random(),0.6);
+  return{rad,a0:arm*(2*Math.PI/ARMS)+(Math.random()-.5)*0.5,spd:0.4+Math.random()*0.7,size:0.6+Math.random()*2.2};});
+function ramp(t){const s=[[0,[255,235,180]],[0.12,[255,150,45]],[0.36,[150,70,220]],[0.64,[70,90,255]],[1,[60,160,255]]];
+  for(let i=0;i<s.length-1;i++){const[a,c0]=s[i],[b,c1]=s[i+1];if(t>=a&&t<b){const u=(t-a)/(b-a);
+    return[c0[0]+(c1[0]-c0[0])*u,c0[1]+(c1[1]-c0[1])*u,c0[2]+(c1[2]-c0[2])*u];}}return s[s.length-1][1];}
+const pc=document.createElement('canvas'),pctx=pc.getContext('2d');
+function sizeP(){pc.width=cv.width;pc.height=cv.height;pctx.setTransform(DPR,0,0,DPR,0,0);}sizeP();addEventListener('resize',sizeP);
+
+// ── energy / voice ──
+let energy=0.15,target=0.15,amp=0,speaking=false,listening=false,analyser=null,freq=null,t=0,arcs=[];
+const setState=s=>document.getElementById('st-state').textContent=s;
+function spawnArc(){let a=Math.random()*6.28,rr=R*0.97,pts=[[CX+Math.cos(a)*rr,CY+Math.sin(a)*rr]];
+  const seg=6+(Math.random()*4|0);for(let i=0;i<seg;i++){rr+=20+Math.random()*55;a+=(Math.random()-.5)*0.5;
+    pts.push([CX+Math.cos(a)*rr+(Math.random()-.5)*16,CY+Math.sin(a)*rr+(Math.random()-.5)*16]);}arcs.push({pts,life:1});}
+
+function frame(){
+  t+=0.016;
+  if(analyser){analyser.getByteFrequencyData(freq);let s=0;for(let i=0;i<freq.length;i++)s+=freq[i];amp=Math.min(1,(s/freq.length)/110);}
+  else if(speaking){amp=0.45+0.4*Math.abs(Math.sin(t*9))*Math.random()+0.15*Math.random();}
+  else amp*=0.9;
+  target=(speaking||listening)?(0.55+0.45*amp):(0.15+0.05*Math.sin(t*1.3));
+  energy+=(target-energy)*0.12;
+  document.getElementById('st-pulse').textContent=energy>0.6?'PEAK':energy>0.35?'ELEVATED':'NOMINAL';
+
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  let bg=ctx.createRadialGradient(CX,CY,R*0.2,CX,CY,Math.max(W,H)*0.8);
+  bg.addColorStop(0,'#0c1c33');bg.addColorStop(.5,'#0a1322');bg.addColorStop(1,'#05080f');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+
+  // circuit floor
+  ctx.save();ctx.globalAlpha=.5;ctx.lineWidth=1;const hz=CY+R*0.25;
+  for(let i=-12;i<=12;i++){ctx.strokeStyle=i%2?'rgba(255,150,60,.10)':'rgba(70,200,255,.16)';
+    ctx.beginPath();ctx.moveTo(CX+i*70,H);ctx.lineTo(CX+i*14,hz);ctx.stroke();}
+  for(let k=1;k<9;k++){const y=hz+(H-hz)*Math.pow(k/9,2);ctx.strokeStyle='rgba(70,150,210,'+(.12*k/9)+')';
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}ctx.restore();
+  // pedestal
+  ctx.save();ctx.translate(CX,CY+R+8);ctx.lineWidth=5;
+  for(const[rw,rh,c] of [[R*0.7,R*0.2,'rgba(210,160,80,.9)'],[R*0.55,R*0.15,'rgba(120,90,50,.8)'],[R*0.42,R*0.11,'rgba(230,180,90,.95)']]){
+    ctx.strokeStyle=c;ctx.beginPath();ctx.ellipse(0,0,rw,rh,0,0,7);ctx.stroke();}ctx.restore();
+
+  // outer bloom (intensifies when speaking)
+  ctx.save();ctx.globalCompositeOperation='lighter';
+  const bl=ctx.createRadialGradient(CX,CY,R*0.6,CX,CY,R*1.7);
+  bl.addColorStop(0,`rgba(80,160,255,${0.10+0.30*energy})`);bl.addColorStop(1,'rgba(80,160,255,0)');
+  ctx.fillStyle=bl;ctx.beginPath();ctx.arc(CX,CY,R*1.7,0,7);ctx.fill();ctx.restore();
+
+  // ── the orb core ──
+  const pulse=1+0.05*energy+0.02*Math.sin(t*4);
+  ctx.save();ctx.beginPath();ctx.arc(CX,CY,R*0.99,0,7);ctx.clip();
+  if(IMG){
+    const spin=t*(0.05+0.5*energy);                  // image slowly rotates; faster when speaking
+    ctx.translate(CX,CY);ctx.rotate(spin);ctx.scale(pulse,pulse);
+    const s=Math.max(2*R/IMG.width,2*R/IMG.height)*1.08, w=IMG.width*s,h=IMG.height*s;
+    ctx.globalAlpha=1;ctx.drawImage(IMG,-w/2,-h/2,w,h);
+    if(speaking||energy>0.4){ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.25*energy;ctx.drawImage(IMG,-w/2,-h/2,w,h);}
+  } else {
+    // procedural plasma
+    pctx.setTransform(DPR,0,0,DPR,0,0);pctx.clearRect(0,0,W,H);pctx.globalCompositeOperation='lighter';
+    const rot=t*0.5*(0.6+energy);
+    for(const p of parts){const ang=p.a0+p.rad*twist+rot*p.spd,rr=p.rad*R*0.96;
+      const x=CX+Math.cos(ang)*rr,y=CY+Math.sin(ang)*rr*0.99,c=ramp(p.rad);
+      pctx.fillStyle=`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${(0.10+0.55*energy)*(1-p.rad*0.35)})`;
+      pctx.beginPath();pctx.arc(x,y,p.size*(1+energy*0.8),0,7);pctx.fill();}
+    const cg=pctx.createRadialGradient(CX,CY,0,CX,CY,R*0.5);
+    cg.addColorStop(0,`rgba(255,240,200,${0.5+0.5*energy})`);cg.addColorStop(0.25,`rgba(255,150,60,${0.3+0.4*energy})`);cg.addColorStop(1,'rgba(255,120,40,0)');
+    pctx.fillStyle=cg;pctx.beginPath();pctx.arc(CX,CY,R*0.5,0,7);pctx.fill();pctx.globalCompositeOperation='source-over';
+    ctx.setTransform(DPR,0,0,DPR,0,0);ctx.beginPath();ctx.arc(CX,CY,R*0.99,0,7);ctx.clip();
+    ctx.filter='blur(10px)';ctx.drawImage(pc,0,0,W,H);ctx.filter='none';ctx.globalAlpha=0.9;ctx.drawImage(pc,0,0,W,H);
+  }
+  ctx.restore();
+
+  // glass shell: rim + specular
+  ctx.save();
+  const gl=ctx.createRadialGradient(CX-R*0.3,CY-R*0.3,R*0.1,CX,CY,R);
+  gl.addColorStop(0,'rgba(255,255,255,0.04)');gl.addColorStop(0.82,'rgba(120,200,255,0.0)');
+  gl.addColorStop(0.93,'rgba(150,225,255,0.16)');gl.addColorStop(1,'rgba(210,245,255,0.5)');
+  ctx.fillStyle=gl;ctx.beginPath();ctx.arc(CX,CY,R,0,7);ctx.fill();
+  ctx.strokeStyle='rgba(200,240,255,'+(0.4+0.45*energy)+')';ctx.lineWidth=2;ctx.beginPath();ctx.arc(CX,CY,R,0,7);ctx.stroke();
+  const hl=ctx.createRadialGradient(CX-R*0.35,CY-R*0.45,0,CX-R*0.35,CY-R*0.45,R*0.6);
+  hl.addColorStop(0,'rgba(255,255,255,0.22)');hl.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle=hl;ctx.beginPath();ctx.arc(CX,CY,R,0,7);ctx.fill();ctx.restore();
+
+  // electric arcs
+  if(Math.random()<energy*0.6)spawnArc();
+  ctx.save();ctx.globalCompositeOperation='lighter';ctx.lineCap='round';arcs=arcs.filter(A=>A.life>0);
+  for(const A of arcs){A.life-=0.08;ctx.shadowBlur=14;ctx.shadowColor='rgba(255,170,80,0.9)';
+    ctx.strokeStyle=`rgba(255,180,90,${A.life})`;ctx.lineWidth=5;
+    ctx.beginPath();A.pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.stroke();
+    ctx.shadowBlur=0;ctx.strokeStyle=`rgba(255,245,220,${A.life})`;ctx.lineWidth=1.6;
+    ctx.beginPath();A.pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.stroke();}ctx.restore();
+
+  // waveform
+  const wy=CY+R+90,bars=72,bw=Math.min(7,(W*0.7)/bars);ctx.save();ctx.globalAlpha=0.9;
+  for(let i=0;i<bars;i++){const bx=CX-(bars*bw)/2+i*bw;
+    const env=(speaking||listening)?(0.3+0.7*Math.abs(Math.sin(i*0.5+t*6))*(0.4+amp)):0.06+0.04*Math.abs(Math.sin(i*0.4+t*1.5));
+    const bh=4+env*70;ctx.fillStyle=`rgba(90,220,255,${0.4+0.5*env})`;ctx.fillRect(bx,wy-bh/2,bw-2,bh);}ctx.restore();
+
+  requestAnimationFrame(frame);
 }
-refresh();
+frame();
 
-document.getElementById('cmd').addEventListener('submit',async ev=>{
-  ev.preventDefault();
+// ── speech ──
+function speak(text){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(String(text).replace(/\s+/g,' ').slice(0,600));
+  const vs=speechSynthesis.getVoices();
+  u.voice=vs.find(v=>/Google UK English Male|Daniel|Microsoft Guy|Microsoft David/i.test(v.name))||vs[0];
+  u.rate=1.0;u.pitch=0.9;
+  u.onstart=()=>{speaking=true;setState('SPEAKING');document.getElementById('speaking').classList.add('on');};
+  u.onend=()=>{speaking=false;setState('IDLE');document.getElementById('speaking').classList.remove('on');};
+  speechSynthesis.speak(u);}
+if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
+cv.addEventListener('click',()=>speak('ORB online. Risk gate armed. The council is standing by.'));
+
+// ── command bar → council → speak ──
+document.getElementById('cmd').addEventListener('submit',async ev=>{ev.preventDefault();
   const q=document.getElementById('q').value.trim();if(!q)return;
-  const box=document.getElementById('answer');box.classList.add('show');
-  box.textContent='Convening the council…';
-  if(!API){box.innerHTML='<span class="badge">DEMO</span>Set <b>window.ORB_API</b> to your backend to convene the live council. '+
-    'Then ORB runs the genome cycle, asks GPT-Executive → Operations → Risk → Claude-Evaluator → '+
-    'Gemini-VisualVerifier → ORB-Finalizer, and returns one clean, approval-aware answer.';return;}
-  try{
-    const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({userId:'demo-user',message:q})});
-    const d=await r.json();
-    const need=d.approvalRequired?.count?`<span class="badge">${d.approvalRequired.count} NEED APPROVAL</span>`:'';
+  const box=document.getElementById('answer');box.classList.add('show');box.textContent='Convening the council…';
+  if(!API){const demo='Demo mode. Set window.ORB_API to convene the live council: GPT-Executive, Operations, Risk, Claude-Evaluator, Gemini-VisualVerifier, then ORB-Finalizer. High-risk actions always wait for your approval.';
+    box.innerHTML='<span class="badge">DEMO</span>'+demo;speak(demo);return;}
+  try{const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user',message:q})});
+    const d=await r.json();const need=d.approvalRequired?.count?`<span class="badge">${d.approvalRequired.count} NEED APPROVAL</span>`:'';
     box.innerHTML=need+(d.answer||JSON.stringify(d,null,2));
-  }catch(e){box.textContent='Could not reach ORB API: '+e.message;}
-});
+    speak('You have '+(d.approvalRequired?.count||0)+' actions awaiting approval. '+(d.answer||''));
+  }catch(e){box.textContent='Could not reach ORB API: '+e.message;}});
+
+// ── image: drop / picker ──
+const drop=document.getElementById('drop');
+['dragenter','dragover'].forEach(e=>addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('on');}));
+['dragleave','drop'].forEach(e=>addEventListener(e,ev=>{ev.preventDefault();if(e==='drop'||ev.relatedTarget===null)drop.classList.remove('on');}));
+addEventListener('drop',ev=>{const f=[...(ev.dataTransfer?.files||[])].find(f=>f.type.startsWith('image/'));if(f)setImageFromFile(f);});
+document.getElementById('img').addEventListener('click',()=>document.getElementById('file').click());
+document.getElementById('file').addEventListener('change',e=>{const f=e.target.files[0];if(f)setImageFromFile(f);});
+
+// ── mic ──
+document.getElementById('mic').addEventListener('click',async()=>{
+  if(listening){listening=false;setState('IDLE');analyser=null;return;}
+  try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    const ac=new(window.AudioContext||window.webkitAudioContext)();const src=ac.createMediaStreamSource(stream);
+    analyser=ac.createAnalyser();analyser.fftSize=128;freq=new Uint8Array(analyser.frequencyBinCount);src.connect(analyser);
+    listening=true;setState('LISTENING');}catch(e){alert('Mic unavailable: '+e.message);}});
 </script>
 </body>
 </html>
