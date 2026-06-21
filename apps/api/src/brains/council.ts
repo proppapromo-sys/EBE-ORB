@@ -21,6 +21,7 @@ import { createJournal } from '../services/journalStore.js';
 import { getProviderClient } from './providers.js';
 import { BRAINS, COUNCIL_ORDER } from './brains.js';
 import { saveCouncilRun } from '../services/councilStore.js';
+import { recall, listMemories } from '../services/memoryStore.js';
 import type { BrainRole, BrainResponse } from './types.js';
 
 async function runBrain(
@@ -74,7 +75,13 @@ export async function runCouncil(
   const cycle = await runOrbCycle(connectors, userId, { journal: createJournal(userId) });
   const approvals = cycle.actions.filter((a) => a.requiresApproval);
 
-  const base = { request, cycle: { actions: cycle.actions, vetoed: cycle.vetoed, passed: cycle.passed } };
+  // Law 4 for the assistant: recall what EBE knows about this owner before reasoning.
+  const memories = [...(await recall(userId, request, 6)), ...(await listMemories(userId, 6))];
+  const seen = new Set<string>();
+  const memory = memories.filter((m) => (seen.has(m.id) ? false : (seen.add(m.id), true)))
+    .slice(0, 8).map((m) => ({ type: m.type, title: m.title, content: m.content }));
+
+  const base = { request, memory, cycle: { actions: cycle.actions, vetoed: cycle.vetoed, passed: cycle.passed } };
   const transcript: BrainResponse[] = [];
 
   // 1) GPT-Executive — first reasoning pass
@@ -123,6 +130,7 @@ export async function runCouncil(
   // 6) ORB-Finalizer — combine into one clean response
   const finalizer = await runBrain('finalizer', 'Combine the entire council into one clean, owner-ready response.', {
     request,
+    memory,
     approvalRequired: approvals.map((a) => a.title),
     gatedActions: cycle.actions,
     executiveReasoning: executive.output,

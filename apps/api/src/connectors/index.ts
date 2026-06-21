@@ -4,13 +4,15 @@ import { CalendarConnector } from './calendar.js';
 import { AmazonSellerConnector } from './amazonSeller.js';
 import { StocksConnector } from './stocks.js';
 import { EbeVenueConnector } from './ebeVenue.js';
+import { TasksConnector } from './tasks.js';
 
 export const connectors: OrbConnector[] = [
   new GmailConnector(),
   new CalendarConnector(),
   new AmazonSellerConnector(),
   new StocksConnector(),
-  new EbeVenueConnector()
+  new EbeVenueConnector(),
+  new TasksConnector()
 ];
 
 export function getConnector(name: string) {

@@ -9,6 +9,10 @@ import { BRAINS, COUNCIL_ORDER } from '../brains/brains.js';
 import { getProviderClient } from '../brains/providers.js';
 import { listCouncilRuns, councilLogDurable } from '../services/councilStore.js';
 import { buildAuthUrl, exchangeCode, isConfigured as googleConfigured } from '../connectors/google.js';
+import { remember, listMemories, recall, forget, memoryDurable } from '../services/memoryStore.js';
+import {
+  createTask, listTasks, completeTask, reopenTask, deleteTask, taskDurable, type TaskStatus
+} from '../services/taskStore.js';
 import {
   enqueueAction,
   listActions,
@@ -218,6 +222,82 @@ orbRouter.post('/briefing', async (req, res, next) => {
     const userId = String(req.body?.userId ?? 'demo-user');
     const briefing = await dailyBriefing(userId);
     res.json(briefing);
+  } catch (error) { next(error); }
+});
+
+// ── Memory (what EBE remembers) ─────────────────────────────────────────────
+const MemorySchema = z.object({
+  userId: z.string().min(1).default('demo-user'),
+  type: z.enum(['fact', 'preference', 'person', 'project', 'note']).optional(),
+  title: z.string().min(1),
+  content: z.string().min(1),
+  importance: z.number().min(1).max(10).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional()
+});
+orbRouter.get('/memory', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? 'demo-user');
+    const q = req.query.q ? String(req.query.q) : '';
+    const memories = q ? await recall(userId, q, 20) : await listMemories(userId, 100);
+    res.json({ durable: memoryDurable, memories });
+  } catch (error) { next(error); }
+});
+orbRouter.post('/memory', async (req, res, next) => {
+  try {
+    const p = MemorySchema.parse(req.body ?? {});
+    const memory = await remember(p.userId, p);
+    res.json({ memory });
+  } catch (error) { next(error); }
+});
+orbRouter.delete('/memory/:id', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? req.body?.userId ?? 'demo-user');
+    res.json({ ok: await forget(userId, req.params.id) });
+  } catch (error) { next(error); }
+});
+
+// ── Tasks (what EBE tracks; due tasks become attention signals) ─────────────
+const TaskSchema = z.object({
+  userId: z.string().min(1).default('demo-user'),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  domain: z.string().optional(),
+  priority: z.number().min(1).max(10).optional(),
+  dueAt: z.string().optional()
+});
+orbRouter.get('/tasks', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? 'demo-user');
+    const status = req.query.status as TaskStatus | undefined;
+    res.json({ durable: taskDurable, tasks: await listTasks(userId, status) });
+  } catch (error) { next(error); }
+});
+orbRouter.post('/tasks', async (req, res, next) => {
+  try {
+    const p = TaskSchema.parse(req.body ?? {});
+    res.json({ task: await createTask(p.userId, p) });
+  } catch (error) { next(error); }
+});
+orbRouter.post('/tasks/:id/complete', async (req, res, next) => {
+  try {
+    const userId = String(req.body?.userId ?? 'demo-user');
+    const task = await completeTask(userId, req.params.id);
+    if (!task) return res.status(404).json({ error: 'task not found' });
+    res.json({ task });
+  } catch (error) { next(error); }
+});
+orbRouter.post('/tasks/:id/reopen', async (req, res, next) => {
+  try {
+    const userId = String(req.body?.userId ?? 'demo-user');
+    const task = await reopenTask(userId, req.params.id);
+    if (!task) return res.status(404).json({ error: 'task not found' });
+    res.json({ task });
+  } catch (error) { next(error); }
+});
+orbRouter.delete('/tasks/:id', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? req.body?.userId ?? 'demo-user');
+    res.json({ ok: await deleteTask(userId, req.params.id) });
   } catch (error) { next(error); }
 });
 

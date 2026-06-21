@@ -152,3 +152,31 @@ create table if not exists orb_oauth_tokens (
   updated_at timestamptz default now(),
   unique(user_key, provider)
 );
+
+-- EBE's long-term memory: facts, preferences, context it should remember across sessions.
+create table if not exists orb_memories (
+  id uuid primary key default gen_random_uuid(),
+  user_key text not null,
+  type text not null default 'fact',     -- fact | preference | person | project | note
+  title text not null,
+  content text not null,
+  importance int not null default 5,     -- 1..10
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+create index if not exists orb_memories_user_idx on orb_memories (user_key, importance desc);
+
+-- Tasks EBE tracks; open tasks due soon surface into the genome cycle as attention signals.
+create table if not exists orb_task_items (
+  id uuid primary key default gen_random_uuid(),
+  user_key text not null,
+  title text not null,
+  description text,
+  status text not null default 'open',   -- open | done
+  domain text default 'personal',
+  priority int not null default 5,       -- 1..10
+  due_at timestamptz,
+  created_at timestamptz default now(),
+  completed_at timestamptz
+);
+create index if not exists orb_task_items_user_idx on orb_task_items (user_key, status);
