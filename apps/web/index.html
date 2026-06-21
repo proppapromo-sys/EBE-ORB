@@ -224,13 +224,15 @@ const NC_N=54, nc_nodes=[], nc_edges=[], nc_fire=new Float32Array(NC_N);
     for(const j of order.slice(0,3)){seen.add(Math.min(i,j)+'-'+Math.max(i,j));}}
   for(const e of seen){const[a,b]=e.split('-').map(Number);nc_edges.push([a,b]);}
 })();
-function phaseColor(){                                  // EBE Live phase palette
+function phaseColor(){                                  // EBE Live NeuralCluster phase palette
   switch(phase){
-    case 'listening': return [111,228,200];             // teal #6fe4c8
-    case 'thinking':  return [150,160,255];             // indigo
-    case 'speaking':  return [140,195,255];             // bright blue
-    case 'vision':    return [251,191,36];              // amber #fbbf24
-    default:          return [123,179,223];             // brand #7BB3DF
+    case 'listening':   return [111,228,200];           // teal  #6fe4c8
+    case 'identifying': return [167,139,250];           // violet #a78bfa
+    case 'thinking':    return [150,205,255];           // bright blue
+    case 'vision':      return [251,191,36];            // amber #fbbf24
+    case 'speaking':    return [94,234,212];            // teal-green #5eead4
+    case 'confirming':  return [245,176,66];            // gold
+    default:            return [123,179,223];           // idle, brand #7BB3DF
   }
 }
 function drawNeural(pulse){
@@ -352,14 +354,20 @@ let convoMode=false, wakeMode=false, armedUntil=0, recog=null, recogActive=false
 // "Hey EBE" (eebee) and the ways speech engines tend to hear it
 const WAKE=/\b(?:hey|ok|okay|yo)?\s*(e+\s*b+\s*e+|ee?bee?|ebay|eevee|ebbie|ibi|abby|e\.?\s*b\.?\s*e\.?)\b/i;
 function afterWake(text){const m=WAKE.exec(text);return m?text.slice(m.index+m[0].length).replace(/^[\s,.:!?-]+/,'').trim():'';}
-function pickVoice(vs){
-  // prefer natural / neural human voices, then any good English voice
+function pickVoice(vs,lang){
+  const pre=(lang||'en-US').slice(0,2).toLowerCase();
+  if(pre!=='en'){ // a specific non-English language: match it, prefer natural
+    return vs.find(v=>v.lang&&v.lang.toLowerCase().startsWith(pre)&&/Natural|Neural/i.test(v.name))
+      || vs.find(v=>v.lang&&v.lang.toLowerCase().startsWith(pre)) || vs[0];
+  }
+  // English (default): prefer natural / neural human voices
   return vs.find(v=>/Natural|Neural|Samantha|Aria|Jenny|Ava|Sonia|Libby|Google US English|Google UK English Female/i.test(v.name))
     || vs.find(v=>/en[-_]US|en[-_]GB/i.test(v.lang)) || vs.find(v=>/English/i.test(v.name)) || vs[0];
 }
-function speak(text){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
+function speak(text,lang){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(String(text).replace(/\s+/g,' ').slice(0,800));
-  u.voice=pickVoice(speechSynthesis.getVoices());
+  u.lang=lang||'en-US';
+  u.voice=pickVoice(speechSynthesis.getVoices(),u.lang);
   u.rate=0.97;u.pitch=1.0;
   u.onstart=()=>{speaking=true;setPhase('speaking');document.getElementById('speaking').classList.add('on');
     if(recogActive){try{recog.stop();}catch(e){}}};                 // don't transcribe our own voice
@@ -370,10 +378,35 @@ function speak(text){if(!('speechSynthesis'in window))return;speechSynthesis.can
 if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
 cv.addEventListener('click',()=>speak("Hey, I'm here. What do you need?"));
 
+// EBE speaks English by default, but translates on request.
+const LANG_CODES={english:'en-US',spanish:'es-ES',french:'fr-FR',german:'de-DE',italian:'it-IT',
+  portuguese:'pt-PT',dutch:'nl-NL',russian:'ru-RU',polish:'pl-PL',turkish:'tr-TR',arabic:'ar-SA',
+  hebrew:'he-IL',hindi:'hi-IN',mandarin:'zh-CN',chinese:'zh-CN',cantonese:'zh-HK',japanese:'ja-JP',
+  korean:'ko-KR',vietnamese:'vi-VN',thai:'th-TH',greek:'el-GR',swedish:'sv-SE',polishh:'pl-PL',
+  filipino:'fil-PH',tagalog:'fil-PH',ukrainian:'uk-UA',indonesian:'id-ID',swahili:'sw-KE'};
+function parseTranslate(q){
+  // "translate <text> to/into <lang>" · "say <text> in <lang>" · "how do you say <text> in <lang>"
+  let m=q.match(/^(?:can you |please )?(?:translate|say|how (?:do|would) (?:you|i) say)\s+(.*?)\s+(?:in|to|into)\s+([a-z]+)\s*\??$/i);
+  if(m && LANG_CODES[m[2].toLowerCase()]) return {text:m[1].replace(/^["']|["']$/g,''),lang:m[2].toLowerCase()};
+  return null;
+}
+async function doTranslate(text,langName){
+  const box=document.getElementById('answer');box.classList.add('show');box.textContent='Translating…';setPhase('thinking');
+  if(!API){box.innerHTML='<span class="badge">DEMO</span>Connect me to my system and I can translate for you.';speak("Connect me to my system and I can translate for you.");return;}
+  try{
+    const r=await fetch(API+'/api/orb/translate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text,to:langName})});
+    const d=await r.json();
+    box.innerHTML=`<span class="badge">${langName.toUpperCase()}</span>${d.translated||''}`;
+    speak(d.translated||'', d.langCode||LANG_CODES[langName]||'en-US');   // speak it IN that language
+  }catch(e){box.textContent='Translation failed: '+e.message;speak("Sorry, I couldn't translate that.");}
+}
+
 // ── convene the council (shared by the command bar + voice) ──
 async function convene(q){
   if(!q)return;
   document.getElementById('q').value='';
+  const tr=parseTranslate(q);
+  if(tr){ await doTranslate(tr.text,tr.lang); return; }   // translation request → speak in that language
   const box=document.getElementById('answer');box.classList.add('show');box.textContent='Thinking…';setPhase('thinking');
   if(!API){const demo="I'm in demo mode right now — connect me to my system and I'll really get to work. Anything that spends money or sends something, I'll always check with you first.";
     box.innerHTML='<span class="badge">DEMO</span>'+demo;speak(demo);return;}
@@ -559,7 +592,7 @@ async function renderApprovals(){
     const id=b.closest('.card').dataset.id, act=b.dataset.act;
     b.textContent='…';
     await fetch(`${API}/api/orb/actions/${id}/${act}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user'})});
-    if(act==='approve')speak('Got it, approved.');if(act==='execute')speak("Okay, I'm on it.");
+    if(act==='approve'){setPhase('confirming');speak('Got it, approved.');}if(act==='execute')speak("Okay, I'm on it.");
     renderApprovals();
   }));
 }

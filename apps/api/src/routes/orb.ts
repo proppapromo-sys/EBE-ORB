@@ -14,6 +14,7 @@ import { getWeather, geocode } from '../services/weather.js';
 import { getNews } from '../services/news.js';
 import { getNotepad, saveNotepad, notepadDurable } from '../services/notepadStore.js';
 import { generateOrbImage, imageConfigured } from '../services/geminiImage.js';
+import { translate } from '../services/translate.js';
 import {
   createTask, listTasks, completeTask, reopenTask, deleteTask, taskDurable, type TaskStatus
 } from '../services/taskStore.js';
@@ -278,6 +279,19 @@ orbRouter.put('/notepad', async (req, res, next) => {
     const userId = String(req.body?.userId ?? 'demo-user');
     const content = String(req.body?.content ?? '');
     res.json(await saveNotepad(userId, content));
+  } catch (error) { next(error); }
+});
+
+// Translation — EBE speaks English by default but can translate on request.
+const TranslateSchema = z.object({
+  text: z.string().min(1),
+  to: z.string().min(1),
+  from: z.string().optional()
+});
+orbRouter.post('/translate', async (req, res, next) => {
+  try {
+    const p = TranslateSchema.parse(req.body ?? {});
+    res.json(await translate(p.text, p.to, p.from));
   } catch (error) { next(error); }
 });
 
