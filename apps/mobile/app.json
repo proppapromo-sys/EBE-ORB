@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "EBE",
+    "slug": "ebe-orb",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#05080f",
+    "splash": { "backgroundColor": "#05080f", "resizeMode": "contain" },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "EBE uses your microphone so you can talk to it.",
+        "NSSpeechRecognitionUsageDescription": "EBE uses speech recognition to understand what you say."
+      }
+    },
+    "android": {
+      "permissions": ["INTERNET", "RECORD_AUDIO"],
+      "edgeToEdgeEnabled": true
+    }
+  }
+}
