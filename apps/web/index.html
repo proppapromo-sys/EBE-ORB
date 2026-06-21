@@ -65,11 +65,55 @@
     padding:14px 8px;font:inherit;font-size:12px;cursor:pointer;letter-spacing:.12em;writing-mode:vertical-rl}
   .toggle:hover{background:rgba(90,220,255,.25)}
   .empty{color:#6fa6c2;font-size:12px;text-align:center;padding:30px 10px}
+  /* onboarding / join modal */
+  #join{position:fixed;inset:0;z-index:20;display:none;place-items:center;
+    background:radial-gradient(60% 60% at 50% 40%,rgba(10,30,55,.55),rgba(3,6,12,.86))}
+  #join.on{display:grid}
+  .join-card{width:min(430px,92vw);background:rgba(8,18,32,.96);border:1px solid rgba(90,220,255,.3);
+    border-radius:18px;padding:30px 26px;text-align:center;box-shadow:0 0 60px rgba(30,90,140,.5)}
+  .join-card .logo{width:84px;height:84px;border-radius:50%;margin:0 auto 14px;
+    background:radial-gradient(circle at 38% 32%,#fff 0 5%,#bdf3ff 16%,#3a7fd0 48%,#16243c 100%);
+    box-shadow:0 0 34px rgba(90,220,255,.6),inset -6px -8px 24px rgba(0,16,32,.6);animation:breathe 5s ease-in-out infinite}
+  .join-card h2{margin:.2em 0 .1em;font-family:"DejaVu Sans",system-ui,sans-serif;font-weight:300;
+    font-size:26px;letter-spacing:.12em;color:var(--ice)}
+  .join-card p{margin:.2em 0 18px;font-size:13px;color:#9fd0e6;line-height:1.6}
+  .join-card .gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;
+    background:#fff;color:#202124;border:0;border-radius:999px;padding:12px;font:inherit;font-weight:600;
+    font-size:14px;cursor:pointer;margin-bottom:12px}
+  .join-card .gbtn:hover{background:#f1f3f4}
+  .join-card .or{font-size:11px;color:#5f88a3;margin:8px 0}
+  .join-card input{width:100%;background:rgba(10,24,40,.8);border:1px solid rgba(90,220,255,.3);
+    color:var(--ice);border-radius:10px;padding:11px 14px;font:inherit;font-size:14px;outline:0;margin-bottom:10px}
+  .join-card .join-go{width:100%;background:rgba(90,220,255,.18);border:1px solid rgba(90,220,255,.5);
+    color:var(--ice);border-radius:999px;padding:11px;font:inherit;font-size:14px;cursor:pointer;letter-spacing:.06em}
+  .join-card .join-go:hover{background:rgba(90,220,255,.3)}
+  .join-card .skip{display:block;margin-top:14px;color:#6fa6c2;font-size:12px;cursor:pointer;background:none;border:0}
+  .join-card .laws{margin-top:16px;font-size:10px;color:#5f88a3;letter-spacing:.06em}
+  .join-card .note{font-size:11px;color:var(--gold);margin-top:8px;min-height:14px}
 </style>
 </head>
 <body>
 <canvas id="orb"></canvas>
 <div id="drop">⬇ drop your ORB image to make it the core</div>
+
+<!-- onboarding: greet every new visitor (base44-style join) -->
+<div id="join">
+  <div class="join-card">
+    <div class="logo"></div>
+    <h2>MEET EBE</h2>
+    <p>Your AI Chief of Staff that <b>remembers</b>. Connect your world — Gmail, Calendar, and more — and EBE watches, prioritizes, and asks before it acts.</p>
+    <button class="gbtn" id="join-google">
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.4 5.4 2.5 13.3l7.8 6c1.9-5.6 7.1-9.8 13.7-9.8z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.5 3-2.2 5.5-4.7 7.2l7.3 5.7c4.3-3.9 6.8-9.7 6.8-17.4z"/><path fill="#FBBC05" d="M10.3 28.3c-.5-1.4-.7-2.9-.7-4.3s.3-2.9.7-4.3l-7.8-6C.9 16.9 0 20.3 0 24s.9 7.1 2.5 10.3l7.8-6z"/><path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.3-5.5l-7.3-5.7c-2 1.4-4.7 2.3-8 2.3-6.6 0-11.8-4.2-13.7-9.8l-7.8 6C6.4 42.6 14.6 48 24 48z"/></svg>
+      Continue with Google
+    </button>
+    <div class="or">— or —</div>
+    <input id="join-email" type="email" placeholder="you@email.com" autocomplete="email" />
+    <button class="join-go" id="join-submit">JOIN EBE</button>
+    <div class="note" id="join-note"></div>
+    <button class="skip" id="join-skip">explore first →</button>
+    <div class="laws">RISK-FIRST · CONFIRM-FIRST · IT NEVER ACTS WITHOUT YOUR OK</div>
+  </div>
+</div>
 
 <div class="hud tl">
   <div class="h">◢ ORB MASTER SYSTEM</div>
@@ -388,6 +432,33 @@ async function renderActivity(){
 }
 // refresh approvals after every convene so the panel stays live
 const _convene=convene; convene=async q=>{await _convene(q);if(panel.classList.contains('on'))refreshPanel();};
+
+// ── onboarding: greet every new visitor and ask them to join ──
+const join=document.getElementById('join'), jnote=document.getElementById('join-note');
+let ORB_USER=localStorage.getItem('ebeUser')||'';
+function showJoin(){ if(!localStorage.getItem('ebeJoined')) setTimeout(()=>join.classList.add('on'),700); }
+function closeJoin(){ join.classList.remove('on'); }
+showJoin();
+document.getElementById('join-skip').addEventListener('click',closeJoin);
+join.addEventListener('click',e=>{ if(e.target===join) closeJoin(); });
+
+document.getElementById('join-google').addEventListener('click',async()=>{
+  if(!API){jnote.textContent='Set window.ORB_API to enable Google sign-in.';return;}
+  jnote.textContent='Opening Google…';
+  try{
+    const r=await fetch(API+'/api/orb/connectors/google/auth?userId='+encodeURIComponent(ORB_USER||'demo-user'));
+    const d=await r.json();
+    if(d.url){localStorage.setItem('ebeJoined','1');window.location.href=d.url;}
+    else jnote.textContent=d.error||'Google sign-in is not configured yet.';
+  }catch(e){jnote.textContent='Could not start Google sign-in.';}
+});
+document.getElementById('join-submit').addEventListener('click',async()=>{
+  const email=document.getElementById('join-email').value.trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){jnote.textContent='Enter a valid email.';return;}
+  ORB_USER=email; localStorage.setItem('ebeUser',email); localStorage.setItem('ebeJoined','1');
+  if(API){ try{ await fetch(API+'/api/orb/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email})}); }catch(e){} }
+  closeJoin(); speak('Welcome to EBE. I will remember you.');
+});
 </script>
 </body>
 </html>

@@ -225,6 +225,25 @@ orbRouter.post('/briefing', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// ── Join / onboarding (capture a new owner) ─────────────────────────────────
+const JoinSchema = z.object({
+  email: z.string().email(),
+  name: z.string().optional()
+});
+orbRouter.post('/join', async (req, res, next) => {
+  try {
+    const p = JoinSchema.parse(req.body ?? {});
+    // the user's key is their email; seed a first memory so EBE "remembers" them
+    await remember(p.email, {
+      type: 'person',
+      title: 'Owner',
+      content: `${p.name ? p.name + ' — ' : ''}${p.email} joined EBE ORB.`,
+      importance: 9
+    });
+    res.json({ ok: true, userId: p.email, next: 'connect-google' });
+  } catch (error) { next(error); }
+});
+
 // ── Memory (what EBE remembers) ─────────────────────────────────────────────
 const MemorySchema = z.object({
   userId: z.string().min(1).default('demo-user'),
