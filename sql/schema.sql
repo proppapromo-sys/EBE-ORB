@@ -122,3 +122,18 @@ create table if not exists orb_action_queue (
   executed_at timestamptz
 );
 create index if not exists orb_action_queue_user_idx on orb_action_queue (user_key, status);
+
+-- ORB logs everything: every Multi-Model Council run, with the full transcript.
+create table if not exists orb_council_runs (
+  id uuid primary key default gen_random_uuid(),
+  user_key text not null,
+  request text not null,
+  final_answer text,
+  approval_count int default 0,
+  approval_titles jsonb default '[]'::jsonb,
+  council jsonb default '[]'::jsonb,          -- per-brain {role,label,provider,model,ok,output}
+  cycle jsonb default '{}'::jsonb,            -- the code-gated actions snapshot
+  fully_configured boolean default false,
+  created_at timestamptz default now()
+);
+create index if not exists orb_council_runs_user_idx on orb_council_runs (user_key, created_at desc);

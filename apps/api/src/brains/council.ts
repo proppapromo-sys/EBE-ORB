@@ -20,6 +20,7 @@ import { runOrbCycle, type OrbCycleReport } from '../genome/orbBranch.js';
 import { createJournal } from '../services/journalStore.js';
 import { getProviderClient } from './providers.js';
 import { BRAINS, COUNCIL_ORDER } from './brains.js';
+import { saveCouncilRun } from '../services/councilStore.js';
 import type { BrainRole, BrainResponse } from './types.js';
 
 async function runBrain(
@@ -60,6 +61,8 @@ export type CouncilResult = {
   finalAnswer: string;
   /** True only if every brain ran with its provider configured. */
   fullyConfigured: boolean;
+  /** Id of the persisted run in the council log (null if logging was unavailable). */
+  runId?: string | null;
 };
 
 export async function runCouncil(
@@ -130,7 +133,7 @@ export async function runCouncil(
   });
   transcript.push(finalizer);
 
-  return {
+  const result: CouncilResult = {
     request,
     generatedAt: new Date().toISOString(),
     cycle,
@@ -139,4 +142,6 @@ export async function runCouncil(
     finalAnswer: finalizer.output,
     fullyConfigured: transcript.every((b) => b.ok)
   };
+  result.runId = await saveCouncilRun(userId, result); // ORB logs everything (best-effort)
+  return result;
 }

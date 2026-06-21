@@ -43,8 +43,14 @@ writes the prose — but `approvalRequired` is computed in code and no brain can
 ```bash
 GET  /api/orb/council            # roster + which providers are configured
 POST /api/orb/council            # run the full council
+GET  /api/orb/council/history    # recent runs with full transcripts (ORB logs everything)
 POST /api/orb/ask                # convenes the council by default ({"council":false} = single model)
 ```
+
+Every council run (including council-mode `/ask`) is persisted: request, final answer, the
+code-computed `approvalRequired`, the full per-brain transcript, and a cycle snapshot. Durable in
+Supabase (`orb_council_runs`) when configured, process-memory otherwise. Each run returns a
+`runId`; fetch history with `GET /api/orb/council/history?userId=…&limit=…`.
 
 `/api/orb/ask` is wired straight to the council: a normal ask returns the ORB-Finalizer's clean
 answer plus `approvalRequired`, `cycle`, the full `council` transcript, and `fullyConfigured`.

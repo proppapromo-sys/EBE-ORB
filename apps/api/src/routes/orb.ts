@@ -7,6 +7,7 @@ import { createJournal, journalIsDurable } from '../services/journalStore.js';
 import { runCouncil } from '../brains/council.js';
 import { BRAINS, COUNCIL_ORDER } from '../brains/brains.js';
 import { getProviderClient } from '../brains/providers.js';
+import { listCouncilRuns, councilLogDurable } from '../services/councilStore.js';
 import {
   enqueueAction,
   listActions,
@@ -166,6 +167,15 @@ orbRouter.post('/council', async (req, res, next) => {
       documents: parsed.documents
     });
     res.json(result);
+  } catch (error) { next(error); }
+});
+
+// ORB logs everything: retrieve recent council runs (full transcripts).
+orbRouter.get('/council/history', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? 'demo-user');
+    const limit = Math.min(100, Number(req.query.limit ?? 20) || 20);
+    res.json({ durable: councilLogDurable, runs: await listCouncilRuns(userId, limit) });
   } catch (error) { next(error); }
 });
 
