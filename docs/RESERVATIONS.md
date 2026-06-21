@@ -24,6 +24,15 @@ So EBE is built provider-pluggable:
 > legitimate hands-off path is **EBE contacting the restaurant directly** (email above), or an
 > OpenTable partnership.
 
+## Finding restaurants "in the area" (Google Places)
+To answer *"what are some good restaurants nearby"* or *"book me a restaurant,"* EBE needs a
+**Google Maps Platform** key (Places API New) — this is **separate** from the Gemini key and Google
+sign-in. Enable "Places API (New)" in Google Cloud and set `GOOGLE_PLACES_API_KEY` in `apps/api/.env`.
+
+- *"Good Italian restaurants near me"* → EBE uses your location → lists top spots (rating, price, address, phone).
+- *"Book me a restaurant tomorrow at 7 for 2"* → EBE finds the top-rated nearby spot, then queues a
+  reservation for it (confirm-first). Endpoint: `GET /api/orb/restaurants?q=&area=&lat=&lon=`.
+
 ## Use it
 Say or type a natural request:
 - *"Book a table at Carbone for 2 tomorrow at 7:30pm"*

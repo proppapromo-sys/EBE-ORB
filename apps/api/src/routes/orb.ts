@@ -16,6 +16,7 @@ import { getNotepad, saveNotepad, notepadDurable } from '../services/notepadStor
 import { generateOrbImage, imageConfigured } from '../services/geminiImage.js';
 import { translate } from '../services/translate.js';
 import { opentableLink, opentableConfigured, type ReservationRequest } from '../services/reservations.js';
+import { searchRestaurants, placesConfigured } from '../services/places.js';
 import {
   createTask, listTasks, completeTask, reopenTask, deleteTask, taskDurable, type TaskStatus
 } from '../services/taskStore.js';
@@ -280,6 +281,18 @@ orbRouter.put('/notepad', async (req, res, next) => {
     const userId = String(req.body?.userId ?? 'demo-user');
     const content = String(req.body?.content ?? '');
     res.json(await saveNotepad(userId, content));
+  } catch (error) { next(error); }
+});
+
+// Find restaurants in the area (Google Places).
+orbRouter.get('/restaurants', async (req, res, next) => {
+  try {
+    res.json(await searchRestaurants({
+      query: req.query.q ? String(req.query.q) : undefined,
+      area: req.query.area ? String(req.query.area) : undefined,
+      lat: req.query.lat ? Number(req.query.lat) : undefined,
+      lon: req.query.lon ? Number(req.query.lon) : undefined
+    }));
   } catch (error) { next(error); }
 });
 
