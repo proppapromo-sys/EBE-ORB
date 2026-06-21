@@ -210,36 +210,72 @@ let energy=0.15,target=0.15,amp=0,speaking=false,listening=false,analyser=null,f
 let ripples=[],lastRipple=0;
 const setState=s=>{const e=document.getElementById('st-state');if(e)e.textContent=s;};
 
-// Clean HUD-ring core (JARVIS style) — concentric rings + a glowing center that pulses with the
-// voice; expanding ripple rings ARE the voice waves. No spin, no electric.
-function ringStroke(r,a,w){ctx.strokeStyle=`rgba(120,220,255,${a})`;ctx.lineWidth=w;ctx.beginPath();ctx.arc(CX,CY,r,0,7);ctx.stroke();}
-function drawRingsCore(pulse){
-  const eb=0.45+0.45*energy;
-  ringStroke(R*0.96,0.20*eb,2);ringStroke(R*0.80,0.28*eb,1.5);ringStroke(R*0.64,0.36*eb,1.5);ringStroke(R*0.48,0.48*eb,1.5);
-  // segmented outer HUD arcs
-  ctx.strokeStyle=`rgba(190,240,255,${0.5*eb})`;ctx.lineWidth=4;
-  for(let a=0;a<360;a+=30){ctx.beginPath();ctx.arc(CX,CY,R*0.96,(a+6)*Math.PI/180,(a+24)*Math.PI/180);ctx.stroke();}
-  // tick ring
-  ctx.strokeStyle=`rgba(120,220,255,${0.45*eb})`;ctx.lineWidth=2;
-  for(let a=0;a<360;a+=12){const c=Math.cos(a*Math.PI/180),s=Math.sin(a*Math.PI/180);
-    ctx.beginPath();ctx.moveTo(CX+c*R*0.62,CY+s*R*0.62);ctx.lineTo(CX+c*R*0.68,CY+s*R*0.68);ctx.stroke();}
-  // slow scanner sweep (a thin highlight, not a spin)
-  const sw=t*0.22;ctx.strokeStyle=`rgba(210,245,255,${0.55*eb})`;ctx.lineWidth=3;
-  ctx.beginPath();ctx.arc(CX,CY,R*0.80,sw,sw+0.45);ctx.stroke();
-  // static nodes on the rings
-  ctx.fillStyle=`rgba(210,245,255,${0.85*eb})`;
-  for(const[a,rr] of [[35,0.96],[210,0.96],[95,0.80],[300,0.64],[150,0.48]]){
-    const x=CX+Math.cos(a*Math.PI/180)*R*rr,y=CY+Math.sin(a*Math.PI/180)*R*rr;ctx.beginPath();ctx.arc(x,y,4,0,7);ctx.fill();}
-  // voice-wave ripples
+// ── NeuralCluster core (EBE Live design) — Fibonacci sphere of neurons, 3-nearest-neighbor
+// synapses, particles firing along them, bright thought-core. Phase-tinted, pulses with the voice.
+const NC_N=38, nc_nodes=[], nc_edges=[], nc_fire=new Float32Array(NC_N);
+(function buildNeural(){
+  const ga=Math.PI*(3-Math.sqrt(5));
+  for(let i=0;i<NC_N;i++){const y=1-(i/(NC_N-1))*2;const r=Math.sqrt(Math.max(0,1-y*y));const th=ga*i;
+    nc_nodes.push([Math.cos(th)*r,y,Math.sin(th)*r]);}
+  const d2=(a,b)=>{let s=0;for(let k=0;k<3;k++){const d=nc_nodes[a][k]-nc_nodes[b][k];s+=d*d;}return s;};
+  const seen=new Set();
+  for(let i=0;i<NC_N;i++){const order=[...Array(NC_N).keys()].filter(j=>j!==i).sort((p,q)=>d2(i,p)-d2(i,q));
+    for(const j of order.slice(0,3)){seen.add(Math.min(i,j)+'-'+Math.max(i,j));}}
+  for(const e of seen){const[a,b]=e.split('-').map(Number);nc_edges.push([a,b]);}
+})();
+function phaseColor(){                                  // idle blue · listening teal · speaking brighter
+  if(speaking) return [140,190,255];
+  if(listening) return [111,228,200];
+  return [123,179,223];                                 // brand #7BB3DF
+}
+function drawNeural(pulse){
+  const [cr,cg,cb]=phaseColor();
+  const ay=t*0.16, ax=-0.42+0.06*Math.sin(t*0.25);     // slow, gentle 3D rotation
+  const ca=Math.cos(ay),sa=Math.sin(ay),cx2=Math.cos(ax),sx=Math.sin(ax);
+  const rr=R*0.92*pulse;
+  const P=nc_nodes.map(([x,y,z])=>{
+    let x1=x*ca-z*sa, z1=x*sa+z*ca;                     // rotate Y
+    let y2=y*cx2-z1*sx, z2=y*sx+z1*cx2;                 // rotate X
+    return [CX+x1*rr, CY-y2*rr, z2];
+  });
+  const dep=z=>(z+1)/2;
+  // thought-core glow (pulses with voice)
   ctx.globalCompositeOperation='lighter';
-  for(const rp of ripples){ctx.strokeStyle=`rgba(120,220,255,${rp.life*0.5})`;ctx.lineWidth=2;ctx.beginPath();ctx.arc(CX,CY,rp.r,0,7);ctx.stroke();}
-  // core glow + bright pulsing center
-  const cg=ctx.createRadialGradient(CX,CY,0,CX,CY,R*0.42);
-  cg.addColorStop(0,`rgba(225,250,255,${0.45+0.4*amp})`);cg.addColorStop(0.4,`rgba(90,200,255,${0.22+0.3*amp})`);cg.addColorStop(1,'rgba(60,150,230,0)');
-  ctx.fillStyle=cg;ctx.beginPath();ctx.arc(CX,CY,R*0.42,0,7);ctx.fill();
-  const cr=R*(0.07+0.05*amp)*pulse;
-  ctx.fillStyle='rgba(255,255,255,0.9)';ctx.beginPath();ctx.arc(CX,CY,cr,0,7);ctx.fill();
+  const core=ctx.createRadialGradient(CX,CY,0,CX,CY,R*0.7);
+  core.addColorStop(0,`rgba(210,240,255,${0.30+0.5*amp})`);
+  core.addColorStop(0.4,`rgba(${cr},${cg},${cb},${0.16+0.28*amp})`);
+  core.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+  ctx.fillStyle=core;ctx.beginPath();ctx.arc(CX,CY,R*0.7,0,7);ctx.fill();
   ctx.globalCompositeOperation='source-over';
+  // synapse edges, back-to-front, with a particle firing along each
+  const eds=nc_edges.map(([a,b])=>[a,b,(P[a][2]+P[b][2])/2]).sort((u,v)=>u[2]-v[2]);
+  for(const [a,b] of eds){
+    const A=P[a],B=P[b],d=dep((A[2]+B[2])/2);
+    ctx.strokeStyle=`rgba(${cr},${cg},${cb},${0.05+0.26*d})`;ctx.lineWidth=0.5+1.1*d;
+    ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(B[0],B[1]);ctx.stroke();
+    const tt=Math.sin(t*1.6+a*1.3+b*0.7)*0.5+0.5;
+    const px=A[0]+(B[0]-A[0])*tt, py=A[1]+(B[1]-A[1])*tt;
+    ctx.globalCompositeOperation='lighter';
+    ctx.fillStyle=`rgba(216,240,255,${(0.18+0.5*d)*(0.45+0.55*amp)})`;
+    ctx.beginPath();ctx.arc(px,py,1+1.4*d,0,7);ctx.fill();
+    ctx.globalCompositeOperation='source-over';
+  }
+  // neurons fire (more when speaking/listening or loud)
+  const fr=0.012+(speaking||listening?0.05:0.015)+amp*0.10;
+  for(let i=0;i<NC_N;i++){if(Math.random()<fr)nc_fire[i]=1;nc_fire[i]*=0.92;}
+  // nodes, back-to-front
+  const order=[...Array(NC_N).keys()].sort((i,j)=>P[i][2]-P[j][2]);
+  for(const i of order){const[x,y,z]=P[i],d=dep(z),rad=2.4+4.6*d,f=nc_fire[i];
+    if(f>0.05){
+      ctx.globalCompositeOperation='lighter';
+      ctx.fillStyle=`rgba(${cr},${cg},${cb},${0.22*f})`;ctx.beginPath();ctx.arc(x,y,rad*2.6,0,7);ctx.fill();
+      ctx.globalCompositeOperation='source-over';
+      ctx.fillStyle=`rgba(234,246,255,${0.6+0.4*f})`;ctx.beginPath();ctx.arc(x,y,rad,0,7);ctx.fill();
+    } else {
+      ctx.fillStyle=`rgba(${cr},${cg},${cb},${0.4+0.5*d})`;ctx.beginPath();ctx.arc(x,y,rad,0,7);ctx.fill();
+      ctx.fillStyle=`rgba(223,240,255,${0.4*d})`;ctx.beginPath();ctx.arc(x,y,rad*0.45,0,7);ctx.fill();
+    }
+  }
 }
 
 function frame(){
@@ -283,7 +319,7 @@ function frame(){
     ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';ctx.restore();
     ctx.strokeStyle='rgba(200,240,255,'+(0.35+0.4*energy)+')';ctx.lineWidth=2;ctx.beginPath();ctx.arc(CX,CY,R,0,7);ctx.stroke();
   } else {
-    drawRingsCore(pulse);                                   // default: clean HUD rings
+    drawNeural(pulse);                                     // default: NeuralCluster (EBE Live)
   }
 
   // EBE wordmark under the orb (hidden in immersive live mode)
