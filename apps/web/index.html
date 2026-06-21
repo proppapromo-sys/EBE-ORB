@@ -194,20 +194,17 @@ const pc=document.createElement('canvas'),pctx=pc.getContext('2d');
 function sizeP(){pc.width=cv.width;pc.height=cv.height;pctx.setTransform(DPR,0,0,DPR,0,0);}sizeP();addEventListener('resize',sizeP);
 
 // ── energy / voice ──
-let energy=0.15,target=0.15,amp=0,speaking=false,listening=false,analyser=null,freq=null,t=0,arcs=[];
+let energy=0.15,target=0.15,amp=0,speaking=false,listening=false,analyser=null,freq=null,t=0;
 const setState=s=>document.getElementById('st-state').textContent=s;
-function spawnArc(){let a=Math.random()*6.28,rr=R*0.97,pts=[[CX+Math.cos(a)*rr,CY+Math.sin(a)*rr]];
-  const seg=6+(Math.random()*4|0);for(let i=0;i<seg;i++){rr+=20+Math.random()*55;a+=(Math.random()-.5)*0.5;
-    pts.push([CX+Math.cos(a)*rr+(Math.random()-.5)*16,CY+Math.sin(a)*rr+(Math.random()-.5)*16]);}arcs.push({pts,life:1});}
 
 function frame(){
   t+=0.016;
-  if(analyser){analyser.getByteFrequencyData(freq);let s=0;for(let i=0;i<freq.length;i++)s+=freq[i];amp=Math.min(1,(s/freq.length)/110);}
-  else if(speaking){amp=0.45+0.4*Math.abs(Math.sin(t*9))*Math.random()+0.15*Math.random();}
-  else amp*=0.9;
-  target=(speaking||listening)?(0.55+0.45*amp):(0.15+0.05*Math.sin(t*1.3));
-  energy+=(target-energy)*0.12;
-  document.getElementById('st-pulse').textContent=energy>0.6?'PEAK':energy>0.35?'ELEVATED':'NOMINAL';
+  if(analyser){analyser.getByteFrequencyData(freq);let s=0;for(let i=0;i<freq.length;i++)s+=freq[i];amp=amp*0.85+Math.min(1,(s/freq.length)/110)*0.15;}
+  else if(speaking){amp=0.32+0.22*(0.5+0.5*Math.sin(t*1.6));}   // smooth, slow swell
+  else amp*=0.96;
+  target=(speaking||listening)?(0.42+0.32*amp):(0.12+0.04*Math.sin(t*0.5));
+  energy+=(target-energy)*0.045;                                // slow, liquid easing
+  document.getElementById('st-pulse').textContent=energy>0.55?'PEAK':energy>0.32?'ELEVATED':'NOMINAL';
 
   ctx.setTransform(DPR,0,0,DPR,0,0);
   let bg=ctx.createRadialGradient(CX,CY,R*0.2,CX,CY,Math.max(W,H)*0.8);
@@ -232,18 +229,20 @@ function frame(){
   ctx.fillStyle=bl;ctx.beginPath();ctx.arc(CX,CY,R*1.7,0,7);ctx.fill();ctx.restore();
 
   // ── the orb core ──
-  const pulse=1+0.05*energy+0.02*Math.sin(t*4);
+  const pulse=1+0.025*energy+0.012*Math.sin(t*0.8);   // gentle molten breathing
   ctx.save();ctx.beginPath();ctx.arc(CX,CY,R*0.99,0,7);ctx.clip();
   if(IMG){
-    const spin=t*(0.05+0.5*energy);                  // image slowly rotates; faster when speaking
-    ctx.translate(CX,CY);ctx.rotate(spin);ctx.scale(pulse,pulse);
     const s=Math.max(2*R/IMG.width,2*R/IMG.height)*1.08, w=IMG.width*s,h=IMG.height*s;
-    ctx.globalAlpha=1;ctx.drawImage(IMG,-w/2,-h/2,w,h);
-    if(speaking||energy>0.4){ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.25*energy;ctx.drawImage(IMG,-w/2,-h/2,w,h);}
+    ctx.translate(CX,CY);ctx.scale(pulse,pulse);
+    // slow primary rotation
+    ctx.save();ctx.rotate(t*(0.010+0.045*energy));ctx.globalAlpha=1;ctx.drawImage(IMG,-w/2,-h/2,w,h);ctx.restore();
+    // slow counter-rotating molten layer → liquid-lava churn
+    ctx.save();ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.16+0.20*energy;
+    ctx.rotate(-t*0.006);ctx.drawImage(IMG,-w/2,-h/2,w,h);ctx.restore();
   } else {
     // procedural plasma
     pctx.setTransform(DPR,0,0,DPR,0,0);pctx.clearRect(0,0,W,H);pctx.globalCompositeOperation='lighter';
-    const rot=t*0.5*(0.6+energy);
+    const rot=t*0.08*(0.6+energy);
     for(const p of parts){const ang=p.a0+p.rad*twist+rot*p.spd,rr=p.rad*R*0.96;
       const x=CX+Math.cos(ang)*rr,y=CY+Math.sin(ang)*rr*0.99,c=ramp(p.rad);
       pctx.fillStyle=`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${(0.10+0.55*energy)*(1-p.rad*0.35)})`;
@@ -267,20 +266,13 @@ function frame(){
   hl.addColorStop(0,'rgba(255,255,255,0.22)');hl.addColorStop(1,'rgba(255,255,255,0)');
   ctx.fillStyle=hl;ctx.beginPath();ctx.arc(CX,CY,R,0,7);ctx.fill();ctx.restore();
 
-  // electric arcs
-  if(Math.random()<energy*0.6)spawnArc();
-  ctx.save();ctx.globalCompositeOperation='lighter';ctx.lineCap='round';arcs=arcs.filter(A=>A.life>0);
-  for(const A of arcs){A.life-=0.08;ctx.shadowBlur=14;ctx.shadowColor='rgba(255,170,80,0.9)';
-    ctx.strokeStyle=`rgba(255,180,90,${A.life})`;ctx.lineWidth=5;
-    ctx.beginPath();A.pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.stroke();
-    ctx.shadowBlur=0;ctx.strokeStyle=`rgba(255,245,220,${A.life})`;ctx.lineWidth=1.6;
-    ctx.beginPath();A.pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));ctx.stroke();}ctx.restore();
+  // (lightning removed — molten, no electric arcs)
 
-  // waveform
-  const wy=CY+R+90,bars=72,bw=Math.min(7,(W*0.7)/bars);ctx.save();ctx.globalAlpha=0.9;
+  // waveform — slow, smooth swell
+  const wy=CY+R+90,bars=72,bw=Math.min(7,(W*0.7)/bars);ctx.save();ctx.globalAlpha=0.85;
   for(let i=0;i<bars;i++){const bx=CX-(bars*bw)/2+i*bw;
-    const env=(speaking||listening)?(0.3+0.7*Math.abs(Math.sin(i*0.5+t*6))*(0.4+amp)):0.06+0.04*Math.abs(Math.sin(i*0.4+t*1.5));
-    const bh=4+env*70;ctx.fillStyle=`rgba(90,220,255,${0.4+0.5*env})`;ctx.fillRect(bx,wy-bh/2,bw-2,bh);}ctx.restore();
+    const env=(speaking||listening)?(0.25+0.55*Math.abs(Math.sin(i*0.25+t*1.6))*(0.5+amp)):0.05+0.03*Math.abs(Math.sin(i*0.2+t*0.5));
+    const bh=4+env*60;ctx.fillStyle=`rgba(120,200,255,${0.35+0.45*env})`;ctx.fillRect(bx,wy-bh/2,bw-2,bh);}ctx.restore();
 
   requestAnimationFrame(frame);
 }
