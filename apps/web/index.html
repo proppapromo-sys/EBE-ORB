@@ -165,6 +165,7 @@
     <div class="tab" data-tab="notes">NOTES</div>
     <div class="tab" data-tab="news">NEWS</div>
     <div class="tab" data-tab="activity">ACTIVITY</div>
+    <div class="tab" data-tab="wallet">WALLET</div>
     <div class="tab" data-tab="settings">SETTINGS</div>
   </div>
   <div class="body" id="panel-body"><div class="empty">Loading…</div></div>
@@ -543,10 +544,52 @@ async function doReserve(r){
   }catch(e){box.textContent='Reservation failed: '+e.message;speak("Sorry, I couldn't set up that reservation.");}
 }
 
+// ── pay a bill by voice (confirm-first): "pay <who> $<amount>" / "take care of this bill" ──
+let pendingPay=null;  // a payment ORB has set up and is waiting for you to confirm out loud
+function parsePayBill(q){
+  const t=q.toLowerCase();
+  if(!/\b(pay|send|wire|settle|take care of|handle)\b/.test(t)) return null;
+  // require real money context so "pay attention to…" never triggers a payment
+  if(!(/\b(bill|invoice|owe|payment)\b/.test(t) || /\$\s*[0-9]/.test(t) || /\bdollars?\b/.test(t))) return null;
+  const amt=q.match(/\$?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:dollars|usd)?/i);
+  const amount=amt?parseFloat(amt[1].replace(/,/g,'')):null;
+  // payee: "to X" or "pay X" (strip amount/filler)
+  let payee=null;
+  let m=q.match(/\bto\s+([A-Za-z0-9'&.\- ]{2,40})/i)||q.match(/\b(?:pay|for)\s+([A-Za-z0-9'&.\- ]{2,40})/i);
+  if(m){payee=m[1].replace(/\$?\s*[0-9][0-9,]*(?:\.[0-9]{1,2})?\s*(?:dollars|usd)?/i,'').replace(/\b(the|my|this|that|bill|invoice|please)\b/gi,'').trim();}
+  return { payee:payee||null, amount };
+}
+async function doPayBill(p){
+  const box=document.getElementById('answer');box.classList.add('show');
+  if(!API){const m="Connect me first and I can pay bills for you — always after your okay.";box.innerHTML='<span class="badge">WALLET</span>'+m;speak(m);return;}
+  if(!p.amount||!p.payee){const m="Sure — who am I paying, and how much? You can also add it in the Wallet tab.";box.innerHTML='<span class="badge">WALLET</span>'+m;speak(m);return;}
+  try{
+    const res=await (await fetch(API+'/api/orb/wallet/pay',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({userId:ORB_USER||'demo-user',payee:p.payee,amount:p.amount})})).json();
+    if(res.ok){pendingPay=res.txn?.id||null;box.innerHTML='<span class="badge">CONFIRM</span>'+esc(res.say);speak(res.say);}
+    else{box.innerHTML='<span class="badge">WALLET</span>'+esc(res.error||'Could not set that up.');speak(res.error||"I couldn't set that up.");}
+  }catch(e){box.textContent='Payment setup failed: '+e.message;speak("Sorry, I couldn't set up that payment.");}
+}
+async function resolvePendingPay(confirm){
+  const box=document.getElementById('answer');box.classList.add('show');
+  const url=confirm?`/api/orb/wallet/payments/${pendingPay}/confirm`:`/api/orb/wallet/payments/${pendingPay}/cancel`;
+  try{const res=await (await fetch(API+url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:ORB_USER||'demo-user'})})).json();
+    const say=res.say||(confirm?'Done.':'Okay, I dropped it.');box.innerHTML='<span class="badge">WALLET</span>'+esc(say);speak(say);
+  }catch(e){speak("Sorry, that didn't go through.");}
+  pendingPay=null;
+}
+
 // ── convene the council (shared by the command bar + voice) ──
 async function convene(q){
   if(!q)return;
   document.getElementById('q').value='';
+  // If a payment is waiting on your word, "confirm/yes/send it" pays; "cancel/no/stop" drops it.
+  if(pendingPay){
+    if(/\b(confirm|yes|yep|do it|send it|pay it|go ahead|approved?)\b/i.test(q)){ await resolvePendingPay(true); return; }
+    if(/\b(cancel|no|nope|stop|don'?t|drop it)\b/i.test(q)){ await resolvePendingPay(false); return; }
+  }
+  const pb=parsePayBill(q);
+  if(pb){ await doPayBill(pb); return; }                    // "pay the charcoal supplier $1,240"
   const pp=parsePersona(q);
   if(pp){ setPersona(pp); return; }                        // "executive mode" / "be friendly" / "advisor mode"
   const rv=parseReserve(q);
@@ -690,6 +733,7 @@ async function refreshPanel(){
     else if(tab==='notes') await renderNotes();
     else if(tab==='news') await renderNews();
     else if(tab==='settings') await renderSettings();
+    else if(tab==='wallet') await renderWallet();
     else await renderActivity();
   } catch(e){pbody.innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
 }
@@ -758,6 +802,68 @@ async function renderSettings(){
         refreshPanel();}catch(e){note.style.color='#ff9b9b';note.textContent=e.message;}
     });
   });
+}
+// WALLET — ORB's money. Balance, add funds, confirm pending bills, see history.
+const money=(c,cur)=>new Intl.NumberFormat('en-US',{style:'currency',currency:(cur||'usd').toUpperCase()}).format((c||0)/100);
+async function renderWallet(){
+  const uid=ORB_USER||'demo-user';
+  const d=await (await fetch(API+'/api/orb/wallet?userId='+encodeURIComponent(uid))).json();
+  const w=d.wallet||{balanceCents:0,currency:'usd'};
+  const pending=(d.pending||[]);
+  const hist=(d.txns||[]).filter(t=>t.status!=='pending').slice(0,12);
+  pbody.innerHTML=`
+    <div class="card" style="text-align:center">
+      <div class="m">ORB Wallet balance</div>
+      <div style="font-size:30px;font-weight:600;color:#bdf3ff;margin:4px 0">${money(w.balanceCents,w.currency)}</div>
+      <div class="btns" style="justify-content:center">
+        <input id="topup-amt" type="number" min="1" step="1" placeholder="Amount" style="width:90px;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);border-radius:8px;color:#cfeefb;font:inherit;padding:8px;outline:0" />
+        <button class="go" id="topup-btn">ADD FUNDS</button>
+      </div>
+    </div>
+    ${pending.length?'<div class="m" style="margin:10px 0 4px">⏳ Needs your confirm</div>':''}
+    ${pending.map(t=>`<div class="card" data-id="${t.id}">
+      <div class="t">${money(t.amountCents,t.currency)} → ${esc(t.payee||'')}</div>
+      <div class="m"><span class="pill medium">${esc(t.rail)}</span>${t.memo?' '+esc(t.memo):''}</div>
+      <div class="set-note m" style="min-height:14px"></div>
+      <div class="btns"><button class="go" data-act="confirm">CONFIRM &amp; PAY</button><button class="no" data-act="cancel">CANCEL</button></div>
+    </div>`).join('')}
+    <div class="m" style="margin:12px 0 4px">Add a bill</div>
+    <div class="card">
+      <input id="pay-payee" placeholder="Who to pay" style="width:100%;margin:3px 0;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);border-radius:8px;color:#cfeefb;font:inherit;padding:9px;outline:0" />
+      <input id="pay-amt" type="number" min="1" step="0.01" placeholder="Amount" style="width:100%;margin:3px 0;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);border-radius:8px;color:#cfeefb;font:inherit;padding:9px;outline:0" />
+      <select id="pay-rail" style="width:100%;margin:3px 0;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);border-radius:8px;color:#cfeefb;font:inherit;padding:9px;outline:0">
+        ${(d.rails||[]).map(r=>`<option value="${r.rail}"${r.ready?'':' disabled'}>${esc(r.label)}${r.ready?'':' (connect first)'}</option>`).join('')}
+      </select>
+      <div class="set-note m" id="pay-note" style="min-height:14px"></div>
+      <div class="btns"><button class="go" id="pay-btn">SET UP PAYMENT</button></div>
+    </div>
+    ${hist.length?'<div class="m" style="margin:12px 0 4px">History</div>':''}
+    ${hist.map(t=>`<div class="card"><div class="t">${t.type==='topup'?'+ ':'− '}${money(t.amountCents,t.currency)} ${t.payee?'→ '+esc(t.payee):''}</div>
+      <div class="m"><span class="pill ${t.status==='paid'?'ok':''}">${esc(t.status)}</span> ${esc(t.note||'')}</div></div>`).join('')}`;
+
+  document.getElementById('topup-btn').addEventListener('click',async()=>{
+    const amt=parseFloat(document.getElementById('topup-amt').value);if(!amt||amt<=0)return;
+    await fetch(API+'/api/orb/wallet/topup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:uid,amount:amt})});
+    refreshPanel();
+  });
+  document.getElementById('pay-btn').addEventListener('click',async()=>{
+    const payee=document.getElementById('pay-payee').value.trim();
+    const amount=parseFloat(document.getElementById('pay-amt').value);
+    const rail=document.getElementById('pay-rail').value;
+    const note=document.getElementById('pay-note');
+    if(!payee||!amount){note.style.color='#ff9b9b';note.textContent='Need a payee and amount.';return;}
+    const res=await (await fetch(API+'/api/orb/wallet/pay',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:uid,payee,amount,rail})})).json();
+    if(res.ok){note.style.color='#7fe6a1';note.textContent=res.say;speak(res.say);setTimeout(refreshPanel,1200);}
+    else{note.style.color='#ff9b9b';note.textContent=res.error||'Could not set up.';}
+  });
+  pbody.querySelectorAll('.card[data-id] button[data-act]').forEach(b=>b.addEventListener('click',async()=>{
+    const card=b.closest('.card'),id2=card.dataset.id,act=b.dataset.act,note=card.querySelector('.set-note');
+    b.textContent='…';
+    const url=act==='confirm'?`/api/orb/wallet/payments/${id2}/confirm`:`/api/orb/wallet/payments/${id2}/cancel`;
+    const res=await (await fetch(API+url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:uid})})).json();
+    if(res.say){note.textContent=res.say;speak(res.say);}
+    setTimeout(refreshPanel,1000);
+  }));
 }
 async function renderBriefing(){
   const r=await fetch(API+'/api/orb/briefing',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user'})});

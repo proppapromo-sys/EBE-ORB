@@ -10,6 +10,7 @@ import { clearUserJournal } from './journalStore.js';
 import { clearUserCouncilRuns } from './councilStore.js';
 import { clearUserTokens } from './oauthStore.js';
 import { clearUserCredentials } from './credentialStore.js';
+import { clearUserWallet } from './walletStore.js';
 
 export async function deleteAccount(userKey: string): Promise<{ deleted: string[] }> {
   const steps: [string, () => Promise<void>][] = [
@@ -20,7 +21,8 @@ export async function deleteAccount(userKey: string): Promise<{ deleted: string[
     ['journal', () => clearUserJournal(userKey)],
     ['councilRuns', () => clearUserCouncilRuns(userKey)],
     ['connections', () => clearUserTokens(userKey)],
-    ['businessKeys', () => clearUserCredentials(userKey)]
+    ['businessKeys', () => clearUserCredentials(userKey)],
+    ['wallet', () => clearUserWallet(userKey)]
   ];
   const deleted: string[] = [];
   for (const [name, fn] of steps) {
