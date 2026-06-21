@@ -44,9 +44,9 @@
   #panel.on{transform:translateX(0)}
   #panel header{padding:16px 18px;border-bottom:1px solid rgba(90,220,255,.18);display:flex;gap:10px;align-items:center}
   #panel header .h{color:var(--cyan);letter-spacing:.12em;font-size:14px;flex:1}
-  #panel .tabs{display:flex;gap:6px;padding:10px 14px}
-  #panel .tab{flex:1;text-align:center;padding:7px;border:1px solid rgba(90,220,255,.25);border-radius:8px;
-    cursor:pointer;font-size:12px;color:var(--hud)}
+  #panel .tabs{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px}
+  #panel .tab{flex:1 1 28%;text-align:center;padding:7px;border:1px solid rgba(90,220,255,.25);border-radius:8px;
+    cursor:pointer;font-size:11px;color:var(--hud)}
   #panel .tab.sel{background:rgba(90,220,255,.18);color:var(--ice)}
   #panel .body{flex:1;overflow:auto;padding:8px 14px}
   .card{border:1px solid rgba(90,220,255,.18);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:rgba(10,24,40,.5)}
@@ -121,6 +121,9 @@
   <div class="row">RISK GATE..... ARMED (code)</div>
   <div class="row">CONFIRM-FIRST. ENABLED</div>
   <div class="row">CORE PULSE.... <span id="st-pulse">NOMINAL</span></div>
+  <div class="row">TIME.......... <span id="st-time">—</span></div>
+  <div class="row">WEATHER....... <span id="st-weather">—</span></div>
+  <div class="row">NET........... <span id="st-net">—</span></div>
 </div>
 <div class="hud tr">
   <div class="h">COUNCIL</div>
@@ -145,7 +148,7 @@
   <button type="submit">CONVENE</button>
 </form>
 <input type="file" id="file" accept="image/*" hidden />
-<div class="hint">👂 say "Hey EBE" · 🎤 push to talk · click the orb to hear it · APPROVALS tab (right edge) to act · set window.ORB_API to go live</div>
+<div class="hint">👂 say "Hey EBE" · 🎤 push to talk · click the orb to hear it · CONTROL tab (right edge): approvals · notes · news · set window.ORB_API to go live</div>
 
 <button class="toggle" id="toggle">APPROVALS</button>
 <aside id="panel">
@@ -153,6 +156,8 @@
   <div class="tabs">
     <div class="tab sel" data-tab="approvals">APPROVALS</div>
     <div class="tab" data-tab="briefing">BRIEFING</div>
+    <div class="tab" data-tab="notes">NOTES</div>
+    <div class="tab" data-tab="news">NEWS</div>
     <div class="tab" data-tab="activity">ACTIVITY</div>
   </div>
   <div class="body" id="panel-body"><div class="empty">Loading…</div></div>
@@ -381,8 +386,33 @@ function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>
 async function refreshPanel(){
   if(!API){pbody.innerHTML='<div class="empty">Set <b>window.ORB_API</b> to manage live approvals and view the council log.</div>';return;}
   pbody.innerHTML='<div class="empty">Loading…</div>';
-  try{ tab==='approvals' ? await renderApprovals() : tab==='briefing' ? await renderBriefing() : await renderActivity(); }
-  catch(e){pbody.innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
+  try{
+    if(tab==='approvals') await renderApprovals();
+    else if(tab==='briefing') await renderBriefing();
+    else if(tab==='notes') await renderNotes();
+    else if(tab==='news') await renderNews();
+    else await renderActivity();
+  } catch(e){pbody.innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
+}
+let noteTimer=null;
+async function renderNotes(){
+  const r=await fetch(API+'/api/orb/notepad?userId='+encodeURIComponent(ORB_USER||'demo-user'));
+  const d=await r.json();
+  pbody.innerHTML=`<div class="m" style="margin-bottom:6px">Notepad ${d.updatedAt?'· saved '+new Date(d.updatedAt).toLocaleTimeString():''} <span id="note-state" style="color:#7fe6a1"></span></div>
+    <textarea id="note-area" style="width:100%;height:54vh;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);
+      border-radius:10px;color:#cfeefb;font:inherit;font-size:13px;padding:12px;outline:0;resize:none">${esc(d.content||'')}</textarea>`;
+  const ta=document.getElementById('note-area');
+  ta.addEventListener('input',()=>{document.getElementById('note-state').textContent='…';
+    clearTimeout(noteTimer);noteTimer=setTimeout(async()=>{
+      await fetch(API+'/api/orb/notepad',{method:'PUT',headers:{'content-type':'application/json'},
+        body:JSON.stringify({userId:ORB_USER||'demo-user',content:ta.value})});
+      document.getElementById('note-state').textContent='✓ saved';},700);});
+}
+async function renderNews(){
+  const r=await fetch(API+'/api/orb/news');const d=await r.json();
+  pbody.innerHTML=`<div class="m" style="margin-bottom:8px">Source: ${esc(d.source)}${d.available?'':' (sample)'}</div>`+
+    (d.headlines||[]).map(h=>`<div class="card"><div class="t">${h.url?`<a href="${esc(h.url)}" target="_blank" style="color:#bdf3ff;text-decoration:none">${esc(h.title)}</a>`:esc(h.title)}</div>
+      <div class="m">${esc(h.source||'')}</div></div>`).join('');
 }
 async function renderBriefing(){
   const r=await fetch(API+'/api/orb/briefing',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user'})});
@@ -432,6 +462,43 @@ async function renderActivity(){
 }
 // refresh approvals after every convene so the panel stays live
 const _convene=convene; convene=async q=>{await _convene(q);if(panel.classList.contains('on'))refreshPanel();};
+
+// ── EBE's senses: time, weather, connection speed ──
+function tickClock(){
+  const d=new Date(), h=d.getHours();
+  const part=h<12?'morning':h<17?'afternoon':h<21?'evening':'night';
+  const el=document.getElementById('st-time'); if(el) el.textContent=d.toLocaleTimeString()+' · '+part;
+}
+setInterval(tickClock,1000); tickClock();
+
+async function senseWeather(){
+  if(!API) return;
+  const set=t=>{const e=document.getElementById('st-weather'); if(e) e.textContent=t;};
+  const go=async(qs)=>{ const r=await fetch(API+'/api/orb/weather'+qs); return r.json(); };
+  try{
+    let w;
+    if(navigator.geolocation){
+      w=await new Promise(res=>navigator.geolocation.getCurrentPosition(
+        p=>res(go(`?lat=${p.coords.latitude}&lon=${p.coords.longitude}`)),
+        ()=>res(go('')), {timeout:4000}));
+    } else { w=await go(''); }
+    if(w && (w.tempF!=null)) set(`${w.tempF}°F · ${w.description||''}${w.available?'':' (sample)'}`);
+    else set('—');
+  }catch(e){ set('—'); }
+}
+
+async function senseNet(){
+  if(!API){const e=document.getElementById('st-net'); if(e) e.textContent='local';return;}
+  const set=t=>{const e=document.getElementById('st-net'); if(e) e.textContent=t;};
+  try{
+    const t0=performance.now(); await fetch(API+'/api/orb/ping',{cache:'no-store'}); const ms=Math.round(performance.now()-t0);
+    const bytes=2_000_000, s0=performance.now();
+    const buf=await (await fetch(API+'/api/orb/speedtest?bytes='+bytes,{cache:'no-store'})).arrayBuffer();
+    const secs=(performance.now()-s0)/1000; const mbps=((buf.byteLength*8)/1e6/secs);
+    set(`${ms}ms · ${mbps.toFixed(0)} Mbps`);
+  }catch(e){ set('offline'); }
+}
+senseWeather(); senseNet(); setInterval(senseNet,45000); setInterval(senseWeather,600000);
 
 // ── onboarding: greet every new visitor and ask them to join ──
 const join=document.getElementById('join'), jnote=document.getElementById('join-note');

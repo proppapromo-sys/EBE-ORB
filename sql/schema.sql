@@ -180,3 +180,10 @@ create table if not exists orb_task_items (
   completed_at timestamptz
 );
 create index if not exists orb_task_items_user_idx on orb_task_items (user_key, status);
+
+-- EBE's notepad: one autosaved scratchpad per owner.
+create table if not exists orb_notepad (
+  user_key text primary key,
+  content text not null default '',
+  updated_at timestamptz default now()
+);

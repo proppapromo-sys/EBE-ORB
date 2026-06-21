@@ -10,6 +10,9 @@ import { getProviderClient } from '../brains/providers.js';
 import { listCouncilRuns, councilLogDurable } from '../services/councilStore.js';
 import { buildAuthUrl, exchangeCode, isConfigured as googleConfigured } from '../connectors/google.js';
 import { remember, listMemories, recall, forget, memoryDurable } from '../services/memoryStore.js';
+import { getWeather, geocode } from '../services/weather.js';
+import { getNews } from '../services/news.js';
+import { getNotepad, saveNotepad, notepadDurable } from '../services/notepadStore.js';
 import {
   createTask, listTasks, completeTask, reopenTask, deleteTask, taskDurable, type TaskStatus
 } from '../services/taskStore.js';
@@ -223,6 +226,67 @@ orbRouter.post('/briefing', async (req, res, next) => {
     const briefing = await dailyBriefing(userId);
     res.json(briefing);
   } catch (error) { next(error); }
+});
+
+// ── EBE's senses: time, weather, news, notepad, connection ──────────────────
+orbRouter.get('/now', (_req, res) => {
+  const d = new Date();
+  const h = d.getHours();
+  res.json({
+    iso: d.toISOString(),
+    epoch: d.getTime(),
+    date: d.toDateString(),
+    time: d.toLocaleTimeString(),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    dayPart: h < 12 ? 'morning' : h < 17 ? 'afternoon' : h < 21 ? 'evening' : 'night'
+  });
+});
+
+orbRouter.get('/weather', async (req, res, next) => {
+  try {
+    const city = req.query.city ? String(req.query.city) : '';
+    let lat = Number(req.query.lat), lon = Number(req.query.lon), place = city;
+    if (city && (!Number.isFinite(lat) || !Number.isFinite(lon))) {
+      const g = await geocode(city);
+      if (g) { lat = g.lat; lon = g.lon; place = g.name; }
+    }
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      lat = Number(process.env.DEFAULT_LAT); lon = Number(process.env.DEFAULT_LON); place = place || process.env.DEFAULT_CITY || '';
+    }
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return res.json({ available: false, note: 'Provide ?city= or ?lat=&lon= (or set DEFAULT_LAT/LON).' });
+    }
+    res.json(await getWeather(lat, lon, place));
+  } catch (error) { next(error); }
+});
+
+orbRouter.get('/news', async (req, res, next) => {
+  try {
+    res.json(await getNews(req.query.topic ? String(req.query.topic) : undefined));
+  } catch (error) { next(error); }
+});
+
+orbRouter.get('/notepad', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? 'demo-user');
+    res.json({ durable: notepadDurable, ...(await getNotepad(userId)) });
+  } catch (error) { next(error); }
+});
+orbRouter.put('/notepad', async (req, res, next) => {
+  try {
+    const userId = String(req.body?.userId ?? 'demo-user');
+    const content = String(req.body?.content ?? '');
+    res.json(await saveNotepad(userId, content));
+  } catch (error) { next(error); }
+});
+
+// Connection awareness: latency probe + sized download for a client-side speed estimate.
+orbRouter.get('/ping', (_req, res) => res.json({ t: Date.now() }));
+orbRouter.get('/speedtest', (req, res) => {
+  const bytes = Math.min(8_000_000, Math.max(1024, Number(req.query.bytes) || 2_000_000));
+  res.set('content-type', 'application/octet-stream');
+  res.set('cache-control', 'no-store');
+  res.send(Buffer.alloc(bytes, 0));
 });
 
 // ── Join / onboarding (capture a new owner) ─────────────────────────────────
