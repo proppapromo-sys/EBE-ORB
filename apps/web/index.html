@@ -102,7 +102,6 @@
 </head>
 <body>
 <canvas id="orb"></canvas>
-<div id="drop">⬇ drop your ORB image to make it the core</div>
 
 <!-- onboarding: greet every new visitor (base44-style join) -->
 <div id="join">
@@ -150,13 +149,10 @@
 <div class="answer" id="answer"></div>
 <form class="cmd" id="cmd">
   <input id="q" placeholder="Ask ORB —  what needs my attention today?" autocomplete="off" />
-  <button type="button" class="icon" id="img" title="set ORB image">📷</button>
-  <button type="button" class="icon" id="gen" title="Gemini: generate a fresh orb (type a style first, optional)">✨</button>
-  <button type="button" class="icon" id="wake" title="wake word: say &quot;Hey ORB&quot;">👂</button>
+  <button type="button" class="icon" id="wake" title="hands-free: say &quot;Hey ORB&quot; anytime">📡</button>
   <button type="button" class="icon" id="mic" title="push to talk">🎤</button>
-  <button type="submit">CONVENE</button>
+  <button type="submit">ASK</button>
 </form>
-<input type="file" id="file" accept="image/*" hidden />
 <div class="hint">● GO LIVE = just the orb, always listening — say "Hey ORB" anytime · (tap EXIT to bring controls back)</div>
 
 <button id="live">● GO LIVE</button>
@@ -191,9 +187,7 @@ let IMG=null;
 function loadImg(src){const i=new Image();i.crossOrigin='anonymous';
   i.onload=()=>{IMG=i;};i.onerror=()=>{};i.src=src;}
 const saved=localStorage.getItem('orbImage');
-if(saved) loadImg(saved);  // default = clean HUD rings core; a dropped/Gemini image overrides it
-function setImageFromFile(f){const r=new FileReader();
-  r.onload=()=>{localStorage.setItem('orbImage',r.result);loadImg(r.result);};r.readAsDataURL(f);}
+if(saved) loadImg(saved);  // the orb image is locked; we just load whatever was set
 
 // procedural plasma fallback
 const ARMS=3,N=520,twist=5.2;
@@ -578,28 +572,8 @@ async function convene(q){
 
 document.getElementById('cmd').addEventListener('submit',ev=>{ev.preventDefault();convene(document.getElementById('q').value.trim());});
 
-// ── image: drop / picker ──
-const drop=document.getElementById('drop');
-['dragenter','dragover'].forEach(e=>addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('on');}));
-['dragleave','drop'].forEach(e=>addEventListener(e,ev=>{ev.preventDefault();if(e==='drop'||ev.relatedTarget===null)drop.classList.remove('on');}));
-addEventListener('drop',ev=>{const f=[...(ev.dataTransfer?.files||[])].find(f=>f.type.startsWith('image/'));if(f)setImageFromFile(f);});
-document.getElementById('img').addEventListener('click',()=>document.getElementById('file').click());
-document.getElementById('file').addEventListener('change',e=>{const f=e.target.files[0];if(f)setImageFromFile(f);});
-
-// ✨ Gemini generates a fresh, lightning-free orb (uses whatever you typed as the style)
-document.getElementById('gen').addEventListener('click',async()=>{
-  const box=document.getElementById('answer');box.classList.add('show');
-  if(!API){box.innerHTML='<span class="badge">GEMINI</span>Connect the backend (window.ORB_API) and set GEMINI_API_KEY first.';return;}
-  box.innerHTML='<span class="badge">GEMINI</span>Generating a fresh orb…';setPhase('vision');
-  const prompt=document.getElementById('q').value.trim();
-  try{
-    const r=await fetch(API+'/api/orb/vision/orb-image',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prompt})});
-    const d=await r.json();
-    if(d.available&&d.dataUrl){localStorage.setItem('orbImage',d.dataUrl);loadImg(d.dataUrl);
-      box.innerHTML='<span class="badge">GEMINI</span>New orb applied. ✨';speak('I refreshed the orb.');}
-    else box.innerHTML='<span class="badge">GEMINI</span>'+(d.note||'Could not generate. Check GEMINI_API_KEY.');
-  }catch(e){box.textContent='Gemini error: '+e.message;}
-});
+// The ORB image is locked for now — image picker, drag-drop, and ✨ generate are intentionally
+// removed so the orb stays exactly as set. (We'll re-enable adjustments later.)
 
 // ── voice input: speech-to-text + hands-free conversation loop ──
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
