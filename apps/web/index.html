@@ -108,15 +108,15 @@
 <div id="join">
   <div class="join-card">
     <div class="logo"></div>
-    <h2>MEET EBE</h2>
-    <p>Your AI Chief of Staff that <b>remembers</b>. Connect your world — Gmail, Calendar, and more — and EBE watches, prioritizes, and asks before it acts.</p>
+    <h2>MEET ORB</h2>
+    <p>Your AI Chief of Staff that <b>remembers</b>. Connect your world — Gmail, Calendar, and more — and ORB watches, prioritizes, and asks before it acts.</p>
     <button class="gbtn" id="join-google">
       <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.4 5.4 2.5 13.3l7.8 6c1.9-5.6 7.1-9.8 13.7-9.8z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.5 3-2.2 5.5-4.7 7.2l7.3 5.7c4.3-3.9 6.8-9.7 6.8-17.4z"/><path fill="#FBBC05" d="M10.3 28.3c-.5-1.4-.7-2.9-.7-4.3s.3-2.9.7-4.3l-7.8-6C.9 16.9 0 20.3 0 24s.9 7.1 2.5 10.3l7.8-6z"/><path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.3-5.5l-7.3-5.7c-2 1.4-4.7 2.3-8 2.3-6.6 0-11.8-4.2-13.7-9.8l-7.8 6C6.4 42.6 14.6 48 24 48z"/></svg>
       Continue with Google
     </button>
     <div class="or">— or —</div>
     <input id="join-email" type="email" placeholder="you@email.com" autocomplete="email" />
-    <button class="join-go" id="join-submit">JOIN EBE</button>
+    <button class="join-go" id="join-submit">JOIN ORB</button>
     <div class="note" id="join-note"></div>
     <button class="skip" id="join-skip">explore first →</button>
     <div class="laws">RISK-FIRST · CONFIRM-FIRST · IT NEVER ACTS WITHOUT YOUR OK</div>
@@ -152,12 +152,12 @@
   <input id="q" placeholder="Ask ORB —  what needs my attention today?" autocomplete="off" />
   <button type="button" class="icon" id="img" title="set ORB image">📷</button>
   <button type="button" class="icon" id="gen" title="Gemini: generate a fresh orb (type a style first, optional)">✨</button>
-  <button type="button" class="icon" id="wake" title="wake word: say &quot;Hey EBE&quot;">👂</button>
+  <button type="button" class="icon" id="wake" title="wake word: say &quot;Hey ORB&quot;">👂</button>
   <button type="button" class="icon" id="mic" title="push to talk">🎤</button>
   <button type="submit">CONVENE</button>
 </form>
 <input type="file" id="file" accept="image/*" hidden />
-<div class="hint">● GO LIVE = just the orb, always listening — say "Hey EBE" anytime · (tap EXIT to bring controls back)</div>
+<div class="hint">● GO LIVE = just the orb, always listening — say "Hey ORB" anytime · (tap EXIT to bring controls back)</div>
 
 <button id="live">● GO LIVE</button>
 <button class="toggle" id="toggle">APPROVALS</button>
@@ -339,11 +339,11 @@ function frame(){
     drawNeural(pulse);                                     // default: NeuralCluster (EBE Live)
   }
 
-  // EBE wordmark under the orb (hidden in immersive live mode)
+  // ORB wordmark under the orb (hidden in immersive live mode)
   if(!document.body.classList.contains('live')){
     ctx.save();ctx.textAlign='center';
     ctx.fillStyle='rgba(200,240,255,0.9)';ctx.font='300 '+Math.round(R*0.16)+'px "DejaVu Sans",system-ui,sans-serif';
-    ctx.fillText('E B E', CX, CY+R*1.30);
+    ctx.fillText('O R B', CX, CY+R*1.30);
     ctx.fillStyle='rgba(120,200,255,0.6)';ctx.font='600 '+Math.round(R*0.05)+'px "DejaVu Sans Mono",monospace';
     ctx.fillText('D I G I T A L   C H I E F   O F   S T A F F', CX, CY+R*1.46);
     ctx.restore();
@@ -355,8 +355,8 @@ frame();
 
 // ── speech (ORB's voice) ──
 let convoMode=false, wakeMode=false, armedUntil=0, recog=null, recogActive=false;
-// "Hey EBE" (eebee) and the ways speech engines tend to hear it
-const WAKE=/\b(?:hey|ok|okay|yo)?\s*(e+\s*b+\s*e+|ee?bee?|ebay|eevee|ebbie|ibi|abby|e\.?\s*b\.?\s*e\.?)\b/i;
+// "Hey ORB" and the ways speech engines tend to mishear "orb"
+const WAKE=/\b(?:hey|ok|okay|yo)?\s*(orb|orbs?|orbe|ourb|aurb|orp|or\s*b)\b/i;
 function afterWake(text){const m=WAKE.exec(text);return m?text.slice(m.index+m[0].length).replace(/^[\s,.:!?-]+/,'').trim():'';}
 function pickVoice(vs,lang){
   const pre=(lang||'en-US').slice(0,2).toLowerCase();
@@ -603,8 +603,8 @@ function buildRecog(){
     if(convoMode){convene(q);return;}
     if(wakeMode){
       if(WAKE.test(q)){const cmd=afterWake(q);
-        if(cmd.length>2){convene(cmd);}                       // "Hey EBE, what's urgent?"
-        else{armedUntil=Date.now()+9000;setPhase('listening');speak("Yeah? I'm listening.");}  // just "Hey EBE"
+        if(cmd.length>2){convene(cmd);}                       // "Hey ORB, what's urgent?"
+        else{armedUntil=Date.now()+9000;setPhase('listening');speak("Yeah? I'm listening.");}  // just "Hey ORB"
       } else if(armedUntil>Date.now()){armedUntil=0;convene(q);} // command right after the wake
     }};
   r.onerror=()=>{};
