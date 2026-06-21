@@ -96,17 +96,19 @@
 <form class="cmd" id="cmd">
   <input id="q" placeholder="Ask ORB —  what needs my attention today?" autocomplete="off" />
   <button type="button" class="icon" id="img" title="set ORB image">📷</button>
-  <button type="button" class="icon" id="mic" title="voice input">🎤</button>
+  <button type="button" class="icon" id="wake" title="wake word: say &quot;Hey EBE&quot;">👂</button>
+  <button type="button" class="icon" id="mic" title="push to talk">🎤</button>
   <button type="submit">CONVENE</button>
 </form>
 <input type="file" id="file" accept="image/*" hidden />
-<div class="hint">🎤 talk hands-free · click the orb to hear it · APPROVALS tab (right edge) to act on what ORB surfaces · set window.ORB_API to go live</div>
+<div class="hint">👂 say "Hey EBE" · 🎤 push to talk · click the orb to hear it · APPROVALS tab (right edge) to act · set window.ORB_API to go live</div>
 
 <button class="toggle" id="toggle">APPROVALS</button>
 <aside id="panel">
   <header><div class="h">◢ ORB CONTROL</div><button class="icon" id="panel-close" style="background:none;border:0;color:#8fb9d4;cursor:pointer;font-size:16px">✕</button></header>
   <div class="tabs">
     <div class="tab sel" data-tab="approvals">APPROVALS</div>
+    <div class="tab" data-tab="briefing">BRIEFING</div>
     <div class="tab" data-tab="activity">ACTIVITY</div>
   </div>
   <div class="body" id="panel-body"><div class="empty">Loading…</div></div>
@@ -233,7 +235,10 @@ function frame(){
 frame();
 
 // ── speech (ORB's voice) ──
-let convoMode=false, recog=null, recogActive=false;
+let convoMode=false, wakeMode=false, armedUntil=0, recog=null, recogActive=false;
+// "Hey EBE" (eebee) and the ways speech engines tend to hear it
+const WAKE=/\b(?:hey|ok|okay|yo)?\s*(e+\s*b+\s*e+|ee?bee?|ebay|eevee|ebbie|ibi|abby|e\.?\s*b\.?\s*e\.?)\b/i;
+function afterWake(text){const m=WAKE.exec(text);return m?text.slice(m.index+m[0].length).replace(/^[\s,.:!?-]+/,'').trim():'';}
 function speak(text){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(String(text).replace(/\s+/g,' ').slice(0,600));
   const vs=speechSynthesis.getVoices();
@@ -242,7 +247,7 @@ function speak(text){if(!('speechSynthesis'in window))return;speechSynthesis.can
   u.onstart=()=>{speaking=true;setState('SPEAKING');document.getElementById('speaking').classList.add('on');
     if(recogActive){try{recog.stop();}catch(e){}}};                 // don't transcribe our own voice
   u.onend=()=>{speaking=false;document.getElementById('speaking').classList.remove('on');
-    if(convoMode){setState('LISTENING');startRecog();}else setState('IDLE');};
+    if(convoMode||wakeMode){setState('LISTENING');startRecog();}else setState('IDLE');};
   speechSynthesis.speak(u);}
 if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
 cv.addEventListener('click',()=>speak('ORB online. Risk gate armed. The council is standing by.'));
@@ -285,19 +290,38 @@ function buildRecog(){
   r.onstart=()=>{recogActive=true;if(convoMode)setState('LISTENING');};
   r.onresult=ev=>{let txt='';for(let i=ev.resultIndex;i<ev.results.length;i++)txt+=ev.results[i][0].transcript;
     document.getElementById('q').value=txt;
-    if(ev.results[ev.results.length-1].isFinal){const q=txt.trim();if(q)convene(q);}};
+    if(!ev.results[ev.results.length-1].isFinal)return;
+    const q=txt.trim();if(!q)return;
+    if(convoMode){convene(q);return;}
+    if(wakeMode){
+      if(WAKE.test(q)){const cmd=afterWake(q);
+        if(cmd.length>2){convene(cmd);}                       // "Hey EBE, what's urgent?"
+        else{armedUntil=Date.now()+9000;setState('LISTENING');speak('EBE here.');}  // just "Hey EBE"
+      } else if(armedUntil>Date.now()){armedUntil=0;convene(q);} // command right after the wake
+    }};
   r.onerror=()=>{};
-  r.onend=()=>{recogActive=false;if(convoMode&&!speaking)setTimeout(startRecog,400);}; // keep listening
+  r.onend=()=>{recogActive=false;if((convoMode||wakeMode)&&!speaking)setTimeout(startRecog,400);}; // keep listening
   return r;
 }
 document.getElementById('mic').addEventListener('click',async()=>{
   if(!SR){alert('Voice input needs Chrome or Edge (Web Speech API).');return;}
   if(convoMode){convoMode=false;listening=false;setState('IDLE');document.getElementById('mic').style.color='';
-    try{recog&&recog.stop();}catch(e){}analyser=null;return;}
+    try{recog&&recog.stop();}catch(e){}if(!wakeMode)analyser=null;return;}
   convoMode=true;listening=true;recog=recog||buildRecog();
   document.getElementById('mic').style.color='#ffc878';
   await startMicAnalyser();setState('LISTENING');startRecog();
   if(!speaking)speak('Listening.');
+});
+
+// 👂 always-on wake word: say "Hey EBE"
+document.getElementById('wake').addEventListener('click',async()=>{
+  if(!SR){alert('Wake word needs Chrome or Edge (Web Speech API).');return;}
+  if(wakeMode){wakeMode=false;armedUntil=0;document.getElementById('wake').style.color='';
+    if(!convoMode){listening=false;setState('IDLE');try{recog&&recog.stop();}catch(e){}analyser=null;}return;}
+  wakeMode=true;listening=true;recog=recog||buildRecog();
+  document.getElementById('wake').style.color='#7fe6a1';
+  await startMicAnalyser();setState('LISTENING');startRecog();
+  if(!speaking)speak('Wake word armed. Say, hey E B E.');
 });
 
 // ── Approvals & Activity panel (the confirm-first loop, on screen) ──
@@ -313,8 +337,20 @@ function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>
 async function refreshPanel(){
   if(!API){pbody.innerHTML='<div class="empty">Set <b>window.ORB_API</b> to manage live approvals and view the council log.</div>';return;}
   pbody.innerHTML='<div class="empty">Loading…</div>';
-  try{ tab==='approvals' ? await renderApprovals() : await renderActivity(); }
+  try{ tab==='approvals' ? await renderApprovals() : tab==='briefing' ? await renderBriefing() : await renderActivity(); }
   catch(e){pbody.innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
+}
+async function renderBriefing(){
+  const r=await fetch(API+'/api/orb/briefing',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user'})});
+  const d=await r.json();const rep=d.report||{};const acts=rep.actions||[];
+  pbody.innerHTML=`<div class="card"><div class="t">Morning briefing</div>
+    <div class="m">${esc(d.summary||'').replace(/\n/g,'<br>')}</div>
+    <div class="btns"><button class="go" id="read-brief">🔊 READ IT</button></div></div>`+
+    acts.map(a=>`<div class="card"><div class="t">${esc(a.title)}</div>
+      <div class="m"><span class="pill ${a.riskLevel}">${a.riskLevel.toUpperCase()}</span>
+      ${a.requiresApproval?'<span class="pill medium">approve</span>':'<span class="pill ok">auto</span>'}
+      ${esc(a.domain)}</div></div>`).join('');
+  const rb=document.getElementById('read-brief');if(rb)rb.addEventListener('click',()=>speak(d.summary||'No briefing.'));
 }
 async function renderApprovals(){
   // surface fresh actions onto the queue, then list everything still pending/approved

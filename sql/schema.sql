@@ -137,3 +137,18 @@ create table if not exists orb_council_runs (
   created_at timestamptz default now()
 );
 create index if not exists orb_council_runs_user_idx on orb_council_runs (user_key, created_at desc);
+
+-- OAuth tokens for live connectors (Gmail, Calendar, …). Refreshed in place.
+create table if not exists orb_oauth_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_key text not null,
+  provider text not null,            -- 'google' | 'amazon' | …
+  access_token text not null,
+  refresh_token text,
+  scope text,
+  token_type text default 'Bearer',
+  expires_at bigint,                 -- epoch ms
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique(user_key, provider)
+);

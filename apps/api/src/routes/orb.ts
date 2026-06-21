@@ -8,6 +8,7 @@ import { runCouncil } from '../brains/council.js';
 import { BRAINS, COUNCIL_ORDER } from '../brains/brains.js';
 import { getProviderClient } from '../brains/providers.js';
 import { listCouncilRuns, councilLogDurable } from '../services/councilStore.js';
+import { buildAuthUrl, exchangeCode, isConfigured as googleConfigured } from '../connectors/google.js';
 import {
   enqueueAction,
   listActions,
@@ -53,8 +54,41 @@ orbRouter.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'EBE ORB API', timestamp: new Date().toISOString() });
 });
 
-orbRouter.get('/connectors', (_req, res) => {
-  res.json({ connectors: connectors.map((c) => ({ name: c.name, domain: c.domain })) });
+orbRouter.get('/connectors', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? 'demo-user');
+    const list = await Promise.all(
+      connectors.map(async (c) => ({ name: c.name, domain: c.domain, status: await c.status(userId) }))
+    );
+    res.json({ connectors: list });
+  } catch (error) { next(error); }
+});
+
+// ── OAuth: connect a live data source (Google → Gmail + Calendar) ────────────
+orbRouter.get('/connectors/:name/auth', (req, res) => {
+  const userId = String(req.query.userId ?? 'demo-user');
+  const name = req.params.name;
+  if (name === 'gmail' || name === 'google_calendar' || name === 'google') {
+    if (!googleConfigured()) return res.status(400).json({ error: 'Google OAuth not configured. Set GOOGLE_CLIENT_ID/SECRET.' });
+    return res.json({ provider: 'google', url: buildAuthUrl(`google|${userId}`) });
+  }
+  return res.status(404).json({ error: `No OAuth flow wired for connector "${name}".` });
+});
+
+orbRouter.get('/oauth/google/callback', async (req, res, next) => {
+  try {
+    const code = String(req.query.code ?? '');
+    const state = String(req.query.state ?? '');
+    const userId = state.startsWith('google|') ? state.slice('google|'.length) : 'demo-user';
+    if (!code) return res.status(400).send('Missing authorization code.');
+    await exchangeCode(userId, code);
+    const back = process.env.OAUTH_SUCCESS_REDIRECT;
+    if (back) return res.redirect(back);
+    res.set('content-type', 'text/html').send(
+      '<body style="background:#05080f;color:#bdf3ff;font-family:monospace;text-align:center;padding-top:18%">' +
+      '✅ Google connected to ORB. You can close this tab.</body>'
+    );
+  } catch (error) { next(error); }
 });
 
 orbRouter.post('/context', async (req, res, next) => {
