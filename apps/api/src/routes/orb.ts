@@ -17,7 +17,7 @@ import { generateOrbImage, imageConfigured } from '../services/geminiImage.js';
 import { translate } from '../services/translate.js';
 import { opentableLink, opentableConfigured, type ReservationRequest } from '../services/reservations.js';
 import { searchRestaurants, placesConfigured } from '../services/places.js';
-import { mailerConfigured } from '../services/mailer.js';
+import { mailerConfigured, sendMail } from '../services/mailer.js';
 import {
   createTask, listTasks, completeTask, reopenTask, deleteTask, taskDurable, type TaskStatus
 } from '../services/taskStore.js';
@@ -313,6 +313,16 @@ orbRouter.get('/restaurants', async (req, res, next) => {
       lat: req.query.lat ? Number(req.query.lat) : undefined,
       lon: req.query.lon ? Number(req.query.lon) : undefined
     }));
+  } catch (error) { next(error); }
+});
+
+// Send a test email to confirm Resend + orb@ebehq.com are wired.
+orbRouter.post('/email/test', async (req, res, next) => {
+  try {
+    const to = String(req.body?.to ?? process.env.EBE_REPLY_TO ?? '');
+    if (!to) return res.status(400).json({ error: 'Provide "to", or set EBE_REPLY_TO in .env.' });
+    const m = await sendMail(to, 'EBE test email', "Hi — this is EBE. If you're reading this, email sending works. 🎉");
+    res.json({ configured: mailerConfigured(), ...m });
   } catch (error) { next(error); }
 });
 
