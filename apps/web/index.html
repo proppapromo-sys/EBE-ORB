@@ -71,8 +71,8 @@
     font:inherit;font-size:12px;letter-spacing:.14em;cursor:pointer}
   #live:hover{background:rgba(90,220,255,.28)}
   body.live .hud,body.live .cmd,body.live .hint,body.live #panel,body.live .toggle{display:none!important}
-  body.live #live{opacity:.35}
-  body.live #live:hover{opacity:1}
+  body.live #live{opacity:1;background:rgba(255,90,90,.18);border-color:rgba(255,140,140,.6)}
+  body.live #live:hover{background:rgba(255,90,90,.32)}
   /* onboarding / join modal */
   #join{position:fixed;inset:0;z-index:20;display:none;place-items:center;
     background:radial-gradient(60% 60% at 50% 40%,rgba(10,30,55,.55),rgba(3,6,12,.86))}
@@ -643,22 +643,18 @@ const liveBtn=document.getElementById('live');
 async function setLive(on,greet){
   document.body.classList.toggle('live',on);
   liveBtn.textContent=on?'✕ EXIT':'● GO LIVE';
-  localStorage.setItem('ebeLive',on?'1':'0');
   resize();
   if(on){
     document.getElementById('answer')?.classList.remove('show');
     if(panel) panel.classList.remove('on');
-    const ok=await armWake(true);
+    await armWake(true);
     if(greet && !speaking) greetProactive();
-  } else { await armWake(false); }
+  } else { await armWake(false); try{speechSynthesis.cancel();}catch(e){} }
 }
 liveBtn.addEventListener('click',()=>setLive(!document.body.classList.contains('live'),true));
-// restore live VIEW on reload; (re)arm the mic on the first tap (browsers need a gesture)
-if(localStorage.getItem('ebeLive')==='1'){
-  document.body.classList.add('live');liveBtn.textContent='✕ EXIT';resize();
-  const once=()=>{armWake(true);removeEventListener('pointerdown',once);};
-  addEventListener('pointerdown',once,{once:true});
-}
+// Esc always exits live mode and stops listening (safety hatch).
+addEventListener('keydown',e=>{ if(e.key==='Escape' && document.body.classList.contains('live')) setLive(false); });
+// NOTE: live mode is never auto-restored on reload — a refresh always shows the controls.
 
 // ── Approvals & Activity panel (the confirm-first loop, on screen) ──
 const panel=document.getElementById('panel'),pbody=document.getElementById('panel-body');
