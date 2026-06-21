@@ -37,6 +37,34 @@
   #drop{position:fixed;inset:0;border:2px dashed rgba(90,220,255,.6);background:rgba(5,15,28,.6);
     display:none;place-items:center;font-size:22px;color:var(--cyan);z-index:9}
   #drop.on{display:grid}
+  /* approvals / activity panel */
+  #panel{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);z-index:8;
+    background:rgba(7,16,28,.92);border-left:1px solid rgba(90,220,255,.25);backdrop-filter:blur(10px);
+    transform:translateX(100%);transition:transform .3s;display:flex;flex-direction:column}
+  #panel.on{transform:translateX(0)}
+  #panel header{padding:16px 18px;border-bottom:1px solid rgba(90,220,255,.18);display:flex;gap:10px;align-items:center}
+  #panel header .h{color:var(--cyan);letter-spacing:.12em;font-size:14px;flex:1}
+  #panel .tabs{display:flex;gap:6px;padding:10px 14px}
+  #panel .tab{flex:1;text-align:center;padding:7px;border:1px solid rgba(90,220,255,.25);border-radius:8px;
+    cursor:pointer;font-size:12px;color:var(--hud)}
+  #panel .tab.sel{background:rgba(90,220,255,.18);color:var(--ice)}
+  #panel .body{flex:1;overflow:auto;padding:8px 14px}
+  .card{border:1px solid rgba(90,220,255,.18);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:rgba(10,24,40,.5)}
+  .card .t{font-size:13px;color:var(--ice);margin-bottom:4px}
+  .card .m{font-size:11px;color:#8fb9d4;line-height:1.5}
+  .pill{display:inline-block;font-size:10px;border-radius:5px;padding:1px 6px;margin-right:5px;border:1px solid}
+  .pill.high{color:#ff9a9a;border-color:#ff9a9a55}.pill.medium{color:var(--gold);border-color:#ffc87855}
+  .pill.low{color:var(--cyan);border-color:#5adcff55}.pill.ok{color:#7fe6a1;border-color:#7fe6a155}
+  .card .btns{margin-top:8px;display:flex;gap:6px}
+  .card button{flex:1;font:inherit;font-size:11px;border-radius:7px;padding:6px;cursor:pointer;
+    background:rgba(90,220,255,.14);border:1px solid rgba(90,220,255,.4);color:var(--ice)}
+  .card button.go{background:rgba(127,230,161,.16);border-color:#7fe6a166}
+  .card button.no{background:rgba(255,120,120,.12);border-color:#ff787866;color:#ffb0b0}
+  .toggle{position:fixed;top:50%;right:0;transform:translateY(-50%);z-index:7;background:rgba(10,28,46,.7);
+    border:1px solid rgba(90,220,255,.35);border-right:0;color:var(--ice);border-radius:10px 0 0 10px;
+    padding:14px 8px;font:inherit;font-size:12px;cursor:pointer;letter-spacing:.12em;writing-mode:vertical-rl}
+  .toggle:hover{background:rgba(90,220,255,.25)}
+  .empty{color:#6fa6c2;font-size:12px;text-align:center;padding:30px 10px}
 </style>
 </head>
 <body>
@@ -72,7 +100,17 @@
   <button type="submit">CONVENE</button>
 </form>
 <input type="file" id="file" accept="image/*" hidden />
-<div class="hint">🎤 talk to ORB hands-free · click the orb to hear it · drag an image onto it · set window.ORB_API to go live</div>
+<div class="hint">🎤 talk hands-free · click the orb to hear it · APPROVALS tab (right edge) to act on what ORB surfaces · set window.ORB_API to go live</div>
+
+<button class="toggle" id="toggle">APPROVALS</button>
+<aside id="panel">
+  <header><div class="h">◢ ORB CONTROL</div><button class="icon" id="panel-close" style="background:none;border:0;color:#8fb9d4;cursor:pointer;font-size:16px">✕</button></header>
+  <div class="tabs">
+    <div class="tab sel" data-tab="approvals">APPROVALS</div>
+    <div class="tab" data-tab="activity">ACTIVITY</div>
+  </div>
+  <div class="body" id="panel-body"><div class="empty">Loading…</div></div>
+</aside>
 
 <script>
 const API=(window.ORB_API||"").replace(/\/$/,"");
@@ -261,6 +299,59 @@ document.getElementById('mic').addEventListener('click',async()=>{
   await startMicAnalyser();setState('LISTENING');startRecog();
   if(!speaking)speak('Listening.');
 });
+
+// ── Approvals & Activity panel (the confirm-first loop, on screen) ──
+const panel=document.getElementById('panel'),pbody=document.getElementById('panel-body');
+let tab='approvals';
+function openPanel(o){panel.classList.toggle('on',o);if(o)refreshPanel();}
+document.getElementById('toggle').addEventListener('click',()=>openPanel(!panel.classList.contains('on')));
+document.getElementById('panel-close').addEventListener('click',()=>openPanel(false));
+document.querySelectorAll('#panel .tab').forEach(el=>el.addEventListener('click',()=>{
+  tab=el.dataset.tab;document.querySelectorAll('#panel .tab').forEach(t=>t.classList.toggle('sel',t===el));refreshPanel();}));
+
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+async function refreshPanel(){
+  if(!API){pbody.innerHTML='<div class="empty">Set <b>window.ORB_API</b> to manage live approvals and view the council log.</div>';return;}
+  pbody.innerHTML='<div class="empty">Loading…</div>';
+  try{ tab==='approvals' ? await renderApprovals() : await renderActivity(); }
+  catch(e){pbody.innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
+}
+async function renderApprovals(){
+  // surface fresh actions onto the queue, then list everything still pending/approved
+  await fetch(API+'/api/orb/cycle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user',enqueue:true})});
+  const r=await fetch(API+'/api/orb/actions?userId=demo-user');const d=await r.json();
+  const live=(d.actions||[]).filter(a=>a.status==='pending'||a.status==='approved');
+  if(!live.length){pbody.innerHTML='<div class="empty">No actions awaiting you. ORB is clear. ✓</div>';return;}
+  pbody.innerHTML=live.map(a=>`<div class="card" data-id="${a.id}">
+    <div class="t">${esc(a.title)}</div>
+    <div class="m"><span class="pill ${a.riskLevel}">${a.riskLevel.toUpperCase()}</span>
+      <span class="pill ${a.status==='approved'?'ok':''}">${a.status}</span>
+      ${a.connector?esc(a.connector):''}</div>
+    <div class="m">${esc(a.description||'')}</div>
+    <div class="btns">${a.status==='pending'
+      ?`<button class="go" data-act="approve">APPROVE</button><button class="no" data-act="reject">REJECT</button>`
+      :`<button class="go" data-act="execute">EXECUTE (dry-run)</button>`}</div></div>`).join('');
+  pbody.querySelectorAll('button[data-act]').forEach(b=>b.addEventListener('click',async()=>{
+    const id=b.closest('.card').dataset.id, act=b.dataset.act;
+    b.textContent='…';
+    await fetch(`${API}/api/orb/actions/${id}/${act}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user'})});
+    if(act==='approve')speak('Approved.');if(act==='execute')speak('Executing, dry run.');
+    renderApprovals();
+  }));
+}
+async function renderActivity(){
+  const r=await fetch(API+'/api/orb/council/history?userId=demo-user&limit=15');const d=await r.json();
+  const runs=d.runs||[];
+  if(!runs.length){pbody.innerHTML='<div class="empty">No council runs yet. Ask ORB something.</div>';return;}
+  pbody.innerHTML=runs.map(run=>`<div class="card">
+    <div class="t">${esc(run.request)}</div>
+    <div class="m"><span class="pill medium">${run.approvalCount} need approval</span>
+      <span class="pill ${run.fullyConfigured?'ok':''}">${run.fullyConfigured?'live council':'degraded'}</span>
+      ${new Date(run.createdAt).toLocaleString()}</div>
+    <div class="m">${esc((run.finalAnswer||'').slice(0,180))}</div></div>`).join('');
+}
+// refresh approvals after every convene so the panel stays live
+const _convene=convene; convene=async q=>{await _convene(q);if(panel.classList.contains('on'))refreshPanel();};
 </script>
 </body>
 </html>
