@@ -22,19 +22,22 @@ import { getProviderClient } from './providers.js';
 import { BRAINS, COUNCIL_ORDER } from './brains.js';
 import { saveCouncilRun } from '../services/councilStore.js';
 import { recall, listMemories } from '../services/memoryStore.js';
+import { toneFor } from './personality.js';
 import type { BrainRole, BrainResponse } from './types.js';
 
 async function runBrain(
   role: BrainRole,
   task: string,
   context: unknown,
-  images?: string[]
+  images?: string[],
+  extraSystem?: string
 ): Promise<BrainResponse> {
   const spec = BRAINS[role];
   const client = getProviderClient(spec.provider);
   const user = `TASK:\n${task}\n\nCONTEXT:\n${JSON.stringify(context, null, 2)}`;
+  const system = extraSystem ? `${spec.system}\n\n${extraSystem}` : spec.system;
   try {
-    const { text, ok, note } = await client.complete({ model: spec.model, system: spec.system, user, images });
+    const { text, ok, note } = await client.complete({ model: spec.model, system, user, images });
     return { role, label: spec.label, provider: spec.provider, model: spec.model, output: text, ok, note };
   } catch (err) {
     return {
@@ -99,7 +102,7 @@ function detectLevel(request: string): CouncilLevel {
 export async function runCouncil(
   userId: string,
   request: string,
-  opts: { images?: string[]; documents?: string; level?: CouncilLevel; maxLevel?: CouncilLevel } = {}
+  opts: { images?: string[]; documents?: string; level?: CouncilLevel; maxLevel?: CouncilLevel; personality?: string; customPersona?: string } = {}
 ): Promise<CouncilResult> {
   // 0) The Heart runs first — code-level risk gate, the only authority over actions.
   const cycle = await runOrbCycle(connectors, userId, { journal: createJournal(userId) });
@@ -134,7 +137,7 @@ export async function runCouncil(
     request, memory, approvalRequired: approvals.map((a) => a.title), gatedActions: cycle.actions,
     executiveReasoning: out.executive, executionPlan: out.operations, riskChallenge: out.risk,
     evaluation: out.evaluator, visualConfirmation: out.visual
-  });
+  }, undefined, toneFor(opts.personality, opts.customPersona));
   transcript.push(finalizer);
 
   const result: CouncilResult = {

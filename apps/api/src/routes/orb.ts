@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { askOrb, gatherContext, createAction, dailyBriefing } from '../agents/masterAgent.js';
+import { askOrb, gatherContext, createAction, dailyBriefing, proactive } from '../agents/masterAgent.js';
 import { connectors, getConnector } from '../connectors/index.js';
 import { runOrbCycle } from '../genome/orbBranch.js';
 import { createJournal, journalIsDurable } from '../services/journalStore.js';
@@ -62,7 +62,9 @@ const AskSchema = z.object({
   documents: z.string().optional(),
   images: z.array(z.string()).optional(),
   level: z.enum(['standard', 'important', 'high', 'critical']).optional(),
-  plan: z.string().optional()       // caps how many brains may convene
+  plan: z.string().optional(),      // caps how many brains may convene
+  personality: z.enum(['executive', 'friendly', 'advisor', 'custom']).optional(),
+  customPersona: z.string().optional()
 });
 
 orbRouter.get('/health', (_req, res) => {
@@ -144,7 +146,9 @@ orbRouter.post('/ask', async (req, res, next) => {
       documents: parsed.documents,
       images: parsed.images,
       level: parsed.level,
-      plan: parsed.plan
+      plan: parsed.plan,
+      personality: parsed.personality,
+      customPersona: parsed.customPersona
     });
     res.json(result);
   } catch (error) { next(error); }
@@ -249,6 +253,15 @@ orbRouter.get('/council/history', async (req, res, next) => {
     const userId = String(req.query.userId ?? 'demo-user');
     const limit = Math.min(100, Number(req.query.limit ?? 20) || 20);
     res.json({ durable: councilLogDurable, runs: await listCouncilRuns(userId, limit) });
+  } catch (error) { next(error); }
+});
+
+// Proactive ORB — EBE speaks first: a short spoken alert of the top priorities.
+orbRouter.post('/proactive', async (req, res, next) => {
+  try {
+    const userId = String(req.body?.userId ?? 'demo-user');
+    const name = req.body?.name ? String(req.body.name) : undefined;
+    res.json(await proactive(userId, name));
   } catch (error) { next(error); }
 });
 

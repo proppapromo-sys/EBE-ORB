@@ -37,7 +37,7 @@ export async function gatherContext(userId: string): Promise<ConnectorResult[]> 
 export async function askOrb(
   userId: string,
   message: string,
-  opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string } = {}
+  opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string; personality?: string; customPersona?: string } = {}
 ) {
   const context = await gatherContext(userId);
 
@@ -59,7 +59,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
 
   const council = await runCouncil(userId, message, {
     documents: opts.documents, images: opts.images,
-    level: opts.level, maxLevel: opts.plan ? getPlan(opts.plan).maxCouncil : undefined
+    level: opts.level, maxLevel: opts.plan ? getPlan(opts.plan).maxCouncil : undefined,
+    personality: opts.personality, customPersona: opts.customPersona
   });
   return {
     mode: 'council' as const,
@@ -91,6 +92,25 @@ export async function dailyBriefing(userId: string): Promise<{ report: OrbCycleR
   ];
   if (auto.length) lines.push(`Auto-safe: ${auto.map((a) => a.title).join(', ')}.`);
   return { report, summary: lines.join('\n') };
+}
+
+/**
+ * Proactive ORB — EBE speaks first. A short, spoken-ready alert of the top priorities, built
+ * straight from the genome cycle (pure code: fast, free, always works). Greets by name if known.
+ */
+export async function proactive(userId: string, name?: string): Promise<{ alert: string; count: number; actions: OrbAction[] }> {
+  const report = await runOrbCycle(connectors, userId, { journal: createJournal(userId) });
+  const top = report.actions.slice(0, 3);
+  const hour = new Date().getHours();
+  const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  if (!top.length) {
+    return { alert: `${greet}${name ? ', ' + name : ''}. You're all clear — nothing needs your attention right now.`, count: 0, actions: [] };
+  }
+  const items = top.map((a, i) => `${i + 1}. ${a.title}`).join(' ');
+  const needApproval = report.actions.filter((a) => a.requiresApproval).length;
+  const alert = `${greet}${name ? ', ' + name : ''}. You have ${report.actions.length} thing${report.actions.length === 1 ? '' : 's'} that need attention. Top priorities: ${items}` +
+    (needApproval ? ` ${needApproval} need your okay.` : '') + ' Want a full briefing?';
+  return { alert, count: report.actions.length, actions: top };
 }
 
 export function createInsight(input: Partial<OrbInsight>): OrbInsight {
