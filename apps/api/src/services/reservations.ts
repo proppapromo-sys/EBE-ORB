@@ -66,7 +66,7 @@ export async function bookReservation(r: ReservationRequest): Promise<BookingRes
       `\n\nName: ${r.ownerName || 'EBE (on behalf of the guest)'}` +
       (r.ownerContact ? `\nReply to: ${r.ownerContact}` : '') +
       `\n\nCould you please confirm availability? Thank you.`;
-    const m = await sendMail(r.restaurantEmail, subject, body);
+    const m = await sendMail(r.restaurantEmail, subject, body, r.ownerContact); // replies → the owner
     if (m.sent) {
       return { status: 'requested', link,
         confirmation: m.id, note: `Request emailed to ${r.restaurant}. I'll let you know when they confirm.` };
