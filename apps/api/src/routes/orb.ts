@@ -21,6 +21,8 @@ import { mailerConfigured, sendMail } from '../services/mailer.js';
 import { PLANS } from '../billing/plans.js';
 import { deleteAccount } from '../services/account.js';
 import { transcribe, sttConfigured } from '../services/stt.js';
+import { INTEGRATIONS, getIntegration, testConnection } from '../services/integrations.js';
+import { saveCredential, getCredential, deleteCredential, maskValue } from '../services/credentialStore.js';
 import {
   createTask, listTasks, completeTask, reopenTask, deleteTask, taskDurable, type TaskStatus
 } from '../services/taskStore.js';
@@ -137,6 +139,65 @@ orbRouter.get('/connectors', async (req, res, next) => {
       connectors.map(async (c) => ({ name: c.name, domain: c.domain, status: await c.status(userId) }))
     );
     res.json({ connectors: list });
+  } catch (error) { next(error); }
+});
+
+// ── Self-connect integrations (customer pastes their OWN business keys) ───────
+// List the catalog + whether THIS user has each connected (never returns secret values).
+orbRouter.get('/integrations', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? 'demo-user');
+    const items = await Promise.all(
+      INTEGRATIONS.map(async (i) => {
+        const cred = await getCredential(userId, i.provider);
+        const preview = cred
+          ? Object.fromEntries(Object.entries(cred).map(([k, v]) => [k, maskValue(String(v))]))
+          : null;
+        return {
+          provider: i.provider, label: i.label, domain: i.domain, blurb: i.blurb,
+          docs: i.docs, fields: i.fields, connected: Boolean(cred), preview
+        };
+      })
+    );
+    res.json({ integrations: items });
+  } catch (error) { next(error); }
+});
+
+const IntegrationSaveSchema = z.object({
+  userId: z.string().min(1).default('demo-user'),
+  fields: z.record(z.string(), z.string())
+});
+
+// Save a customer's keys for one provider. We TEST them live first — bad keys never get stored.
+orbRouter.post('/integrations/:provider', async (req, res, next) => {
+  try {
+    const provider = req.params.provider;
+    const meta = getIntegration(provider);
+    if (!meta) return res.status(404).json({ error: `Unknown integration "${provider}".` });
+    const { userId, fields } = IntegrationSaveSchema.parse(req.body);
+    // Only keep the fields this integration actually defines (ignore anything extra).
+    const clean: Record<string, string> = {};
+    for (const f of meta.fields) {
+      const v = (fields[f.key] ?? '').trim();
+      if (!v) return res.status(400).json({ error: `Missing "${f.label}".` });
+      clean[f.key] = v;
+    }
+    const test = await testConnection(provider, clean);
+    if (!test.ok) return res.status(400).json({ ok: false, error: test.note });
+    await saveCredential(userId, provider, clean);
+    res.json({ ok: true, connected: true, note: test.note });
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Invalid keys.' });
+    next(error);
+  }
+});
+
+// Disconnect a provider for this user (wipes the stored keys).
+orbRouter.delete('/integrations/:provider', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? req.body?.userId ?? 'demo-user');
+    await deleteCredential(userId, req.params.provider);
+    res.json({ ok: true, connected: false });
   } catch (error) { next(error); }
 });
 
