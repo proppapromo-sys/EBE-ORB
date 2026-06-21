@@ -393,7 +393,8 @@ function speak(text,lang){if(!('speechSynthesis'in window))return;speechSynthesi
     if(convoMode||wakeMode){setPhase('listening');startRecog();}else setPhase('idle');};
   speechSynthesis.speak(u);}
 if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
-cv.addEventListener('click',()=>speak("Hey, I'm here. What do you need?"));
+// Tapping the orb STARTS a real conversation (greet, then listen) — not a dead-end greeting.
+cv.addEventListener('click',()=>{ if(!convoMode) startConversation(); });
 
 // EBE speaks English by default, but translates on request.
 const LANG_CODES={english:'en-US',spanish:'es-ES',french:'fr-FR',german:'de-DE',italian:'it-IT',
@@ -610,14 +611,22 @@ function buildRecog(){
   r.onend=()=>{recogActive=false;if((convoMode||wakeMode)&&!speaking)setTimeout(startRecog,400);}; // keep listening
   return r;
 }
-document.getElementById('mic').addEventListener('click',async()=>{
+// Turn ON the hands-free conversation loop: greet, then actually listen for your reply.
+async function startConversation(greeting){
   if(!SR){alert('Voice input needs Chrome or Edge (Web Speech API).');return;}
-  if(convoMode){convoMode=false;listening=false;setPhase('idle');document.getElementById('mic').style.color='';
-    try{recog&&recog.stop();}catch(e){}if(!wakeMode)analyser=null;return;}
   convoMode=true;listening=true;recog=recog||buildRecog();
   document.getElementById('mic').style.color='#ffc878';
   await startMicAnalyser();setPhase('listening');startRecog();
-  if(!speaking)speak("Okay, I'm listening.");
+  if(!speaking)speak(greeting||"Hey, I'm here. What do you need?");
+}
+function stopConversation(){
+  convoMode=false;listening=false;setPhase('idle');document.getElementById('mic').style.color='';
+  try{recog&&recog.stop();}catch(e){}if(!wakeMode)analyser=null;
+}
+document.getElementById('mic').addEventListener('click',async()=>{
+  if(!SR){alert('Voice input needs Chrome or Edge (Web Speech API).');return;}
+  if(convoMode){stopConversation();return;}
+  await startConversation("Okay, I'm listening.");
 });
 
 // 👂 always-on wake word: say "Hey EBE"
