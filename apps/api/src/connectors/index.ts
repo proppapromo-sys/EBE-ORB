@@ -6,6 +6,7 @@ import { StocksConnector } from './stocks.js';
 import { EbeVenueConnector } from './ebeVenue.js';
 import { TasksConnector } from './tasks.js';
 import { WeatherConnector } from './weather.js';
+import { ReservationsConnector } from './reservations.js';
 
 export const connectors: OrbConnector[] = [
   new GmailConnector(),
@@ -14,7 +15,8 @@ export const connectors: OrbConnector[] = [
   new StocksConnector(),
   new EbeVenueConnector(),
   new TasksConnector(),
-  new WeatherConnector()
+  new WeatherConnector(),
+  new ReservationsConnector()
 ];
 
 export function getConnector(name: string) {

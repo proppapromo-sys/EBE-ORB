@@ -15,6 +15,7 @@ import { getNews } from '../services/news.js';
 import { getNotepad, saveNotepad, notepadDurable } from '../services/notepadStore.js';
 import { generateOrbImage, imageConfigured } from '../services/geminiImage.js';
 import { translate } from '../services/translate.js';
+import { opentableLink, opentableConfigured, type ReservationRequest } from '../services/reservations.js';
 import {
   createTask, listTasks, completeTask, reopenTask, deleteTask, taskDurable, type TaskStatus
 } from '../services/taskStore.js';
@@ -279,6 +280,39 @@ orbRouter.put('/notepad', async (req, res, next) => {
     const userId = String(req.body?.userId ?? 'demo-user');
     const content = String(req.body?.content ?? '');
     res.json(await saveNotepad(userId, content));
+  } catch (error) { next(error); }
+});
+
+// Reservations — make a restaurant booking (confirm-first: queued for the owner's approval).
+const ReserveSchema = z.object({
+  userId: z.string().min(1).default('demo-user'),
+  restaurant: z.string().min(1),
+  date: z.string().min(1),                 // YYYY-MM-DD
+  time: z.string().optional(),             // HH:mm
+  partySize: z.number().int().positive().optional(),
+  city: z.string().optional(),
+  restaurantId: z.string().optional(),
+  notes: z.string().optional()
+});
+orbRouter.post('/reserve', async (req, res, next) => {
+  try {
+    const p = ReserveSchema.parse(req.body ?? {});
+    const reservation: ReservationRequest = {
+      restaurant: p.restaurant, date: p.date, time: p.time ?? '19:00',
+      partySize: p.partySize ?? 2, city: p.city, restaurantId: p.restaurantId, notes: p.notes
+    };
+    const link = opentableLink(reservation);
+    const action = createAction({
+      title: `Reserve ${reservation.restaurant} · ${reservation.date} ${reservation.time} · party of ${reservation.partySize}`,
+      description: `Book a table at ${reservation.restaurant} for ${reservation.partySize} on ${reservation.date} at ${reservation.time}.`,
+      domain: 'personal',
+      riskLevel: 'medium',                 // a real commitment → needs your approval
+      toolName: 'reservations.book',
+      payload: { connector: 'reservations', reservation, link }
+    });
+    const queued = await enqueueAction(p.userId, action);
+    res.json({ action: queued, link, opentableConnected: opentableConfigured(),
+      message: 'Reservation queued for your approval. Approve it and EBE opens the booking to confirm.' });
   } catch (error) { next(error); }
 });
 

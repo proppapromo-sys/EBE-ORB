@@ -427,10 +427,48 @@ async function setVoiceLang(sl){
   box.innerHTML='<span class="badge">'+sl.name.toUpperCase()+'</span>'+phrase;speak(phrase,sl.code);
 }
 
+// "book/reserve a table at <name> for <n> [tomorrow|today|fri…] [at 7pm]"
+function parseReserve(q){
+  if(!/\b(book|reserve|reservation|table)\b/i.test(q)) return null;
+  const at=q.match(/\b(?:at|@)\s+([A-Za-z0-9'&.\- ]+?)(?=\s+(?:for|on|at|tomorrow|today|tonight|this|next|\d)|$)/i);
+  const restaurant=(at?at[1]:'').trim(); if(!restaurant) return null;
+  const ps=q.match(/\b(?:for|party of)\s+(\d{1,2})\b/i)||q.match(/\b(\d{1,2})\s+(?:people|guests|pax)\b/i);
+  const partySize=ps?parseInt(ps[1]):2;
+  // time like 7pm / 7:30 pm / 19:00
+  let time='19:00'; const tm=q.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  if(tm){let h=parseInt(tm[1])%12; if(/pm/i.test(tm[3]))h+=12; time=String(h).padStart(2,'0')+':'+(tm[2]||'00');}
+  else{const t24=q.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/); if(t24)time=t24[0].padStart(5,'0');}
+  // date: today / tonight / tomorrow / weekday → YYYY-MM-DD (default tomorrow)
+  const d=new Date(); const lc=q.toLowerCase();
+  if(/\btomorrow\b/.test(lc))d.setDate(d.getDate()+1);
+  else if(/\btoday|tonight\b/.test(lc)){}
+  else{const days=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+    const wd=days.findIndex(n=>lc.includes(n));
+    if(wd>=0){let add=(wd-d.getDay()+7)%7; if(add===0)add=7; d.setDate(d.getDate()+add);} else d.setDate(d.getDate()+1);}
+  const date=d.toISOString().slice(0,10);
+  return {restaurant,partySize,time,date};
+}
+async function doReserve(r){
+  const box=document.getElementById('answer');box.classList.add('show');box.textContent='Setting up the reservation…';setPhase('thinking');
+  if(!API){box.innerHTML='<span class="badge">DEMO</span>Connect me and I\'ll line up the table for your approval.';speak("Connect me and I'll line up the table for your approval.");return;}
+  try{
+    const res=await fetch(API+'/api/orb/reserve',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({userId:ORB_USER||'demo-user',...r})});
+    const d=await res.json();
+    setPhase('confirming');
+    box.innerHTML=`<span class="badge">RESERVATION</span>${esc(r.restaurant)} · ${r.date} ${r.time} · party of ${r.partySize}<br>`+
+      `<a href="${d.link}" target="_blank" style="color:#bdf3ff">Open to confirm on OpenTable →</a><br>`+
+      `<span class="m">Queued for your approval (check the Approvals tab).</span>`;
+    speak(`Okay — I've lined up a table at ${r.restaurant} for ${r.partySize} on ${r.date} at ${r.time}. It's waiting for your okay.`,voiceLang.code);
+  }catch(e){box.textContent='Reservation failed: '+e.message;speak("Sorry, I couldn't set up that reservation.");}
+}
+
 // ── convene the council (shared by the command bar + voice) ──
 async function convene(q){
   if(!q)return;
   document.getElementById('q').value='';
+  const rv=parseReserve(q);
+  if(rv){ await doReserve(rv); return; }                   // restaurant reservation (confirm-first)
   const sl=parseSetLang(q);
   if(sl){ await setVoiceLang(sl); return; }                // persistent language switch
   const tr=parseTranslate(q);
