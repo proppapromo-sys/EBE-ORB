@@ -406,19 +406,47 @@ async function doTranslate(text,langName){
   }catch(e){box.textContent='Translation failed: '+e.message;speak("Sorry, I couldn't translate that.");}
 }
 
+// EBE's persistent speaking language (default English; user can switch it any time).
+let voiceLang=(()=>{try{return JSON.parse(localStorage.getItem('ebeVoiceLang'))||{name:'english',code:'en-US'};}catch(e){return {name:'english',code:'en-US'};}})();
+function parseSetLang(q){
+  // "speak/switch back to english", "english only" → reset
+  if(/\benglish\b/i.test(q) && /\b(speak|talk|respond|reply|switch|back|go|change|only)\b/i.test(q)) return {name:'english',code:'en-US'};
+  // "speak/talk/respond/switch (to me) in/to <lang>", "from now on speak <lang>"
+  const m=q.match(/\b(?:speak|talk|respond|reply|switch|change|converse)\b(?:\s+to me)?\s+(?:in|to|into)\s+([a-z]+)\b/i)
+        || q.match(/\bfrom now on\b[^a-z]*(?:speak|talk|use)?\s*([a-z]+)\b/i);
+  if(m){const name=m[1].toLowerCase(); if(LANG_CODES[name]&&name!=='english') return {name,code:LANG_CODES[name]};}
+  return null;
+}
+async function setVoiceLang(sl){
+  voiceLang=sl; localStorage.setItem('ebeVoiceLang',JSON.stringify(sl));
+  const box=document.getElementById('answer');box.classList.add('show');setPhase('confirming');
+  if(sl.code==='en-US'){box.innerHTML='<span class="badge">EN</span>Sure — back to English.';speak("Sure, back to English.");return;}
+  const phrase=`Okay — I'll talk with you in ${sl.name} from now on.`;
+  if(API){try{const r=await fetch(API+'/api/orb/translate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:phrase,to:sl.name})});
+    const d=await r.json();box.innerHTML='<span class="badge">'+sl.name.toUpperCase()+'</span>'+(d.translated||phrase);speak(d.translated||phrase,sl.code);return;}catch(e){}}
+  box.innerHTML='<span class="badge">'+sl.name.toUpperCase()+'</span>'+phrase;speak(phrase,sl.code);
+}
+
 // ── convene the council (shared by the command bar + voice) ──
 async function convene(q){
   if(!q)return;
   document.getElementById('q').value='';
+  const sl=parseSetLang(q);
+  if(sl){ await setVoiceLang(sl); return; }                // persistent language switch
   const tr=parseTranslate(q);
-  if(tr){ await doTranslate(tr.text,tr.lang); return; }   // translation request → speak in that language
+  if(tr){ await doTranslate(tr.text,tr.lang); return; }    // one-off translation → speak in that language
   const box=document.getElementById('answer');box.classList.add('show');box.textContent='Thinking…';setPhase('thinking');
   if(!API){const demo="I'm in demo mode right now — connect me to my system and I'll really get to work. Anything that spends money or sends something, I'll always check with you first.";
-    box.innerHTML='<span class="badge">DEMO</span>'+demo;speak(demo);return;}
+    box.innerHTML='<span class="badge">DEMO</span>'+demo;speak(demo,voiceLang.code);return;}
   try{const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user',message:q})});
     const d=await r.json();const need=d.approvalRequired?.count?`<span class="badge">${d.approvalRequired.count} NEED APPROVAL</span>`:'';
-    box.innerHTML=need+(d.answer||JSON.stringify(d,null,2));
-    speak(d.answer||'Okay.');   // Claude's words carry the approvals naturally
+    let answer=d.answer||'Okay.', sayLang='en-US';
+    if(voiceLang.code!=='en-US'){                          // answer in the chosen language
+      try{const t2=await fetch(API+'/api/orb/translate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:answer,to:voiceLang.name})});
+        const td=await t2.json(); if(td.translated){answer=td.translated;sayLang=voiceLang.code;}}catch(e){}
+    }
+    box.innerHTML=need+answer;
+    speak(answer,sayLang);
   }catch(e){box.textContent='Could not reach ORB API: '+e.message;speak("Sorry, I can't reach my system right now.");}}
 
 document.getElementById('cmd').addEventListener('submit',ev=>{ev.preventDefault();convene(document.getElementById('q').value.trim());});
