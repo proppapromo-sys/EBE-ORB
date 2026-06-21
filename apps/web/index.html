@@ -444,6 +444,8 @@ function extractWhen(q){
 }
 function getGeo(){return new Promise(res=>{if(!navigator.geolocation)return res(null);
   navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lon:p.coords.longitude}),()=>res(null),{timeout:4000});});}
+// the signed-in user's email (from the join popup) → reservation replies route to them
+function ownerEmail(){return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ORB_USER||'')?ORB_USER:'';}
 
 // "book/reserve a table at <name> for <n> [tomorrow|fri] [at 7pm]"
 function parseReserve(q){
@@ -479,7 +481,7 @@ async function doRestaurants(fr){
     if(fr.book){
       const w=fr.when||extractWhen(''); const pick=top[0];
       const rd=await (await fetch(API+'/api/orb/reserve',{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({userId:ORB_USER||'demo-user',restaurant:pick.name,date:w.date,time:w.time,partySize:w.partySize,city:fr.area})})).json();
+        body:JSON.stringify({userId:ORB_USER||'demo-user',ownerContact:ownerEmail(),restaurant:pick.name,date:w.date,time:w.time,partySize:w.partySize,city:fr.area})})).json();
       setPhase('confirming');
       box.innerHTML+=`<div class="card"><div class="t">Booking ${esc(pick.name)} · ${w.date} ${w.time} · party of ${w.partySize}</div><div class="m"><a href="${rd.link}" target="_blank" style="color:#bdf3ff">Confirm →</a> · queued for your approval</div></div>`;
       speak(`I'd go with ${pick.name} — top rated. I've lined up a table for ${w.partySize} on ${w.date} at ${w.time}, waiting for your okay.`,voiceLang.code);
@@ -491,7 +493,7 @@ async function doReserve(r){
   if(!API){box.innerHTML='<span class="badge">DEMO</span>Connect me and I\'ll line up the table for your approval.';speak("Connect me and I'll line up the table for your approval.");return;}
   try{
     const res=await fetch(API+'/api/orb/reserve',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({userId:ORB_USER||'demo-user',...r})});
+      body:JSON.stringify({userId:ORB_USER||'demo-user',ownerContact:ownerEmail(),...r})});
     const d=await res.json();
     setPhase('confirming');
     box.innerHTML=`<span class="badge">RESERVATION</span>${esc(r.restaurant)} · ${r.date} ${r.time} · party of ${r.partySize}<br>`+
