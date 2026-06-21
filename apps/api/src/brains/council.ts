@@ -22,29 +22,43 @@ import { getProviderClient } from './providers.js';
 import { BRAINS, COUNCIL_ORDER } from './brains.js';
 import { saveCouncilRun } from '../services/councilStore.js';
 import { recall, listMemories } from '../services/memoryStore.js';
-import { toneFor } from './personality.js';
-import type { BrainRole, BrainResponse } from './types.js';
+import { personaTone, personaProvider } from './personality.js';
+import type { BrainRole, BrainResponse, BrainProvider } from './types.js';
+
+// Model to use when ORB's voice is routed to a given provider (persona feel; still one ORB).
+const VOICE_MODEL: Record<BrainProvider, string> = {
+  openai: 'gpt-4.1', anthropic: 'claude-sonnet-4-6', gemini: 'gemini-2.5-flash'
+};
+/** Pick a configured provider for ORB's voice: preferred persona provider, else any configured. */
+function voiceProvider(want?: BrainProvider): BrainProvider {
+  const order: BrainProvider[] = [want, 'anthropic', 'openai', 'gemini'].filter(Boolean) as BrainProvider[];
+  for (const p of order) if (getProviderClient(p).configured) return p;
+  return BRAINS.finalizer.provider;
+}
 
 async function runBrain(
   role: BrainRole,
   task: string,
   context: unknown,
   images?: string[],
-  extraSystem?: string
+  extraSystem?: string,
+  override?: { provider: BrainProvider; model: string }
 ): Promise<BrainResponse> {
   const spec = BRAINS[role];
-  const client = getProviderClient(spec.provider);
+  const provider = override?.provider ?? spec.provider;
+  const model = override?.model ?? spec.model;
+  const client = getProviderClient(provider);
   const user = `TASK:\n${task}\n\nCONTEXT:\n${JSON.stringify(context, null, 2)}`;
   const system = extraSystem ? `${spec.system}\n\n${extraSystem}` : spec.system;
   try {
-    const { text, ok, note } = await client.complete({ model: spec.model, system, user, images });
-    return { role, label: spec.label, provider: spec.provider, model: spec.model, output: text, ok, note };
+    const { text, ok, note } = await client.complete({ model, system, user, images });
+    return { role, label: spec.label, provider, model, output: text, ok, note };
   } catch (err) {
     return {
       role,
       label: spec.label,
-      provider: spec.provider,
-      model: spec.model,
+      provider,
+      model,
       output: '',
       ok: false,
       note: err instanceof Error ? err.message : 'brain error'
@@ -133,11 +147,12 @@ export async function runCouncil(
   await run('evaluator', 'Deeply review the council so far and any documents.', { request, documents: opts.documents, executiveReasoning: out.executive, executionPlan: out.operations, riskChallenge: out.risk });
   await run('visual', 'Confirm visuals/data and give a final agreement check (AGREE/DISAGREE).', { request, executionPlan: out.operations, evaluation: out.evaluator, imagesProvided: (opts.images ?? []).length }, opts.images);
   // ORB-Finalizer (the voice) always runs — it answers from whatever brains convened.
+  const vp = voiceProvider(personaProvider(opts.personality));
   const finalizer = await runBrain('finalizer', 'Combine everything into one clean, owner-ready response.', {
     request, memory, approvalRequired: approvals.map((a) => a.title), gatedActions: cycle.actions,
     executiveReasoning: out.executive, executionPlan: out.operations, riskChallenge: out.risk,
     evaluation: out.evaluator, visualConfirmation: out.visual
-  }, undefined, toneFor(opts.personality, opts.customPersona));
+  }, undefined, personaTone(opts.personality, opts.customPersona), { provider: vp, model: VOICE_MODEL[vp] });
   transcript.push(finalizer);
 
   const result: CouncilResult = {

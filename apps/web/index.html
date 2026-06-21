@@ -411,15 +411,17 @@ let voiceLang=(()=>{try{return JSON.parse(localStorage.getItem('ebeVoiceLang'))|
 // EBE's personality mode (executive · friendly · advisor · custom), persisted.
 let persona=localStorage.getItem('ebePersona')||'friendly';
 function parsePersona(q){
-  if(/\b(executive|formal|professional|business)\s*(mode)?\b/i.test(q)&&/\b(be|mode|talk|sound|switch|go)\b/i.test(q)) return 'executive';
-  if(/\b(advisor|adviser|coach|strategist)\s*(mode)?\b/i.test(q)&&/\b(be|mode|talk|sound|switch|go|act)\b/i.test(q)) return 'advisor';
-  if(/\b(friendly|casual|chill|relaxed|warm)\s*(mode)?\b/i.test(q)&&/\b(be|mode|talk|sound|switch|go|act|more)\b/i.test(q)) return 'friendly';
+  if(!/\b(be|mode|talk|sound|switch|go|act|become|more)\b/i.test(q)) return null;
+  if(/\b(executive|formal|professional|business|direct)\b/i.test(q)) return 'executive';
+  if(/\b(advisor|adviser|coach|strategist|thoughtful|analytical)\b/i.test(q)) return 'advisor';
+  if(/\b(explorer|research|curious|exploratory)\b/i.test(q)) return 'explorer';
+  if(/\b(friendly|casual|chill|relaxed|warm)\b/i.test(q)) return 'friendly';
   return null;
 }
 function setPersona(p){persona=p;localStorage.setItem('ebePersona',p);setPhase('confirming');
   const box=document.getElementById('answer');box.classList.add('show');
-  box.innerHTML='<span class="badge">'+p.toUpperCase()+'</span>Okay — '+p+' mode.';
-  speak(({executive:"Done. I'll keep it brief and direct.",advisor:"Got it. I'll give you my recommendation each time.",friendly:"You got it — keeping it easygoing."})[p],voiceLang.code);}
+  box.innerHTML='<span class="badge">ORB · '+p.toUpperCase()+'</span>Okay — '+p+' mode.';
+  speak(({executive:"Done. Brief and direct from here.",advisor:"Got it — I'll give you my recommendation each time.",explorer:"On it — I'll dig in and connect the dots.",friendly:"You got it — keeping it easygoing."})[p]||"Okay.",voiceLang.code);}
 function parseSetLang(q){
   // "speak/switch back to english", "english only" → reset
   if(/\benglish\b/i.test(q) && /\b(speak|talk|respond|reply|switch|back|go|change|only)\b/i.test(q)) return {name:'english',code:'en-US'};
