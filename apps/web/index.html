@@ -191,7 +191,7 @@ let IMG=null;
 function loadImg(src){const i=new Image();i.crossOrigin='anonymous';
   i.onload=()=>{IMG=i;};i.onerror=()=>{};i.src=src;}
 const saved=localStorage.getItem('orbImage');
-if(saved) loadImg(saved); else loadImg('assets/orb-source.png');  // drop your file here to commit it
+if(saved) loadImg(saved);  // default = clean HUD rings core; a dropped/Gemini image overrides it
 function setImageFromFile(f){const r=new FileReader();
   r.onload=()=>{localStorage.setItem('orbImage',r.result);loadImg(r.result);};r.readAsDataURL(f);}
 
@@ -207,7 +207,40 @@ function sizeP(){pc.width=cv.width;pc.height=cv.height;pctx.setTransform(DPR,0,0
 
 // ── energy / voice ──
 let energy=0.15,target=0.15,amp=0,speaking=false,listening=false,analyser=null,freq=null,t=0,voiceKick=0;
-const setState=s=>document.getElementById('st-state').textContent=s;
+let ripples=[],lastRipple=0;
+const setState=s=>{const e=document.getElementById('st-state');if(e)e.textContent=s;};
+
+// Clean HUD-ring core (JARVIS style) — concentric rings + a glowing center that pulses with the
+// voice; expanding ripple rings ARE the voice waves. No spin, no electric.
+function ringStroke(r,a,w){ctx.strokeStyle=`rgba(120,220,255,${a})`;ctx.lineWidth=w;ctx.beginPath();ctx.arc(CX,CY,r,0,7);ctx.stroke();}
+function drawRingsCore(pulse){
+  const eb=0.45+0.45*energy;
+  ringStroke(R*0.96,0.20*eb,2);ringStroke(R*0.80,0.28*eb,1.5);ringStroke(R*0.64,0.36*eb,1.5);ringStroke(R*0.48,0.48*eb,1.5);
+  // segmented outer HUD arcs
+  ctx.strokeStyle=`rgba(190,240,255,${0.5*eb})`;ctx.lineWidth=4;
+  for(let a=0;a<360;a+=30){ctx.beginPath();ctx.arc(CX,CY,R*0.96,(a+6)*Math.PI/180,(a+24)*Math.PI/180);ctx.stroke();}
+  // tick ring
+  ctx.strokeStyle=`rgba(120,220,255,${0.45*eb})`;ctx.lineWidth=2;
+  for(let a=0;a<360;a+=12){const c=Math.cos(a*Math.PI/180),s=Math.sin(a*Math.PI/180);
+    ctx.beginPath();ctx.moveTo(CX+c*R*0.62,CY+s*R*0.62);ctx.lineTo(CX+c*R*0.68,CY+s*R*0.68);ctx.stroke();}
+  // slow scanner sweep (a thin highlight, not a spin)
+  const sw=t*0.22;ctx.strokeStyle=`rgba(210,245,255,${0.55*eb})`;ctx.lineWidth=3;
+  ctx.beginPath();ctx.arc(CX,CY,R*0.80,sw,sw+0.45);ctx.stroke();
+  // static nodes on the rings
+  ctx.fillStyle=`rgba(210,245,255,${0.85*eb})`;
+  for(const[a,rr] of [[35,0.96],[210,0.96],[95,0.80],[300,0.64],[150,0.48]]){
+    const x=CX+Math.cos(a*Math.PI/180)*R*rr,y=CY+Math.sin(a*Math.PI/180)*R*rr;ctx.beginPath();ctx.arc(x,y,4,0,7);ctx.fill();}
+  // voice-wave ripples
+  ctx.globalCompositeOperation='lighter';
+  for(const rp of ripples){ctx.strokeStyle=`rgba(120,220,255,${rp.life*0.5})`;ctx.lineWidth=2;ctx.beginPath();ctx.arc(CX,CY,rp.r,0,7);ctx.stroke();}
+  // core glow + bright pulsing center
+  const cg=ctx.createRadialGradient(CX,CY,0,CX,CY,R*0.42);
+  cg.addColorStop(0,`rgba(225,250,255,${0.45+0.4*amp})`);cg.addColorStop(0.4,`rgba(90,200,255,${0.22+0.3*amp})`);cg.addColorStop(1,'rgba(60,150,230,0)');
+  ctx.fillStyle=cg;ctx.beginPath();ctx.arc(CX,CY,R*0.42,0,7);ctx.fill();
+  const cr=R*(0.07+0.05*amp)*pulse;
+  ctx.fillStyle='rgba(255,255,255,0.9)';ctx.beginPath();ctx.arc(CX,CY,cr,0,7);ctx.fill();
+  ctx.globalCompositeOperation='source-over';
+}
 
 function frame(){
   t+=0.016;
@@ -222,81 +255,46 @@ function frame(){
   document.getElementById('st-pulse').textContent=energy>0.55?'PEAK':energy>0.32?'ELEVATED':'NOMINAL';
 
   ctx.setTransform(DPR,0,0,DPR,0,0);
-  let bg=ctx.createRadialGradient(CX,CY,R*0.2,CX,CY,Math.max(W,H)*0.8);
-  bg.addColorStop(0,'#0c1c33');bg.addColorStop(.5,'#0a1322');bg.addColorStop(1,'#05080f');
+  let bg=ctx.createRadialGradient(CX,CY,R*0.2,CX,CY,Math.max(W,H)*0.85);
+  bg.addColorStop(0,'#0a1830');bg.addColorStop(.5,'#070f1d');bg.addColorStop(1,'#03060c');
   ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
 
-  // circuit floor
-  ctx.save();ctx.globalAlpha=.5;ctx.lineWidth=1;const hz=CY+R*0.25;
-  for(let i=-12;i<=12;i++){ctx.strokeStyle=i%2?'rgba(255,150,60,.10)':'rgba(70,200,255,.16)';
-    ctx.beginPath();ctx.moveTo(CX+i*70,H);ctx.lineTo(CX+i*14,hz);ctx.stroke();}
-  for(let k=1;k<9;k++){const y=hz+(H-hz)*Math.pow(k/9,2);ctx.strokeStyle='rgba(70,150,210,'+(.12*k/9)+')';
-    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}ctx.restore();
-  // pedestal
-  ctx.save();ctx.translate(CX,CY+R+8);ctx.lineWidth=5;
-  for(const[rw,rh,c] of [[R*0.7,R*0.2,'rgba(210,160,80,.9)'],[R*0.55,R*0.15,'rgba(120,90,50,.8)'],[R*0.42,R*0.11,'rgba(230,180,90,.95)']]){
-    ctx.strokeStyle=c;ctx.beginPath();ctx.ellipse(0,0,rw,rh,0,0,7);ctx.stroke();}ctx.restore();
+  // advance voice-wave ripples (the rings that emanate as it speaks/listens)
+  for(const rp of ripples){rp.r+=R*0.013;rp.life-=0.018;}
+  ripples=ripples.filter(rp=>rp.life>0);
+  if((speaking||listening)&&amp>0.5&&t-lastRipple>0.18){ripples.push({r:R*0.16,life:1});lastRipple=t;}
 
-  // PULSATES at voice-wave speed — the scale + glow ripple with the live speech amplitude
+  // PULSATES at voice-wave speed
   const pulse = 1 + 0.012*Math.sin(t*0.9) + 0.10*amp + 0.05*amp*Math.sin(t*18);
 
-  // outer bloom ripples with the voice
+  // soft outer bloom that ripples with the voice
   ctx.save();ctx.globalCompositeOperation='lighter';
-  const bl=ctx.createRadialGradient(CX,CY,R*0.55,CX,CY,R*1.8*(1+0.06*amp));
-  bl.addColorStop(0,`rgba(90,170,255,${0.06+0.16*energy+0.30*amp})`);bl.addColorStop(1,'rgba(90,170,255,0)');
-  ctx.fillStyle=bl;ctx.beginPath();ctx.arc(CX,CY,R*1.9,0,7);ctx.fill();ctx.restore();
+  const bl=ctx.createRadialGradient(CX,CY,R*0.35,CX,CY,R*1.7*(1+0.06*amp));
+  bl.addColorStop(0,`rgba(90,180,255,${0.05+0.14*energy+0.26*amp})`);bl.addColorStop(1,'rgba(90,180,255,0)');
+  ctx.fillStyle=bl;ctx.beginPath();ctx.arc(CX,CY,R*1.8,0,7);ctx.fill();ctx.restore();
 
-  // ── the orb core (static texture, pulsating to the voice — not a spinning picture) ──
-  ctx.save();ctx.beginPath();ctx.arc(CX,CY,R*0.99,0,7);ctx.clip();
   if(IMG){
+    // optional custom / Gemini image core (pulsates, no spin)
+    ctx.save();ctx.beginPath();ctx.arc(CX,CY,R*0.99,0,7);ctx.clip();
     const s=Math.max(2*R/IMG.width,2*R/IMG.height)*1.05, w=IMG.width*s,h=IMG.height*s;
-    ctx.translate(CX,CY);ctx.scale(pulse,pulse);
-    ctx.drawImage(IMG,-w/2,-h/2,w,h);                     // no rotation
-    // living shimmer: a second copy that brightens and breathes with each voice ripple
-    ctx.globalCompositeOperation='lighter';
-    ctx.globalAlpha=0.06+0.45*amp;
-    const z=1.04+0.06*amp;
-    ctx.drawImage(IMG,-w*z/2,-h*z/2,w*z,h*z);
-    ctx.globalAlpha=1;
-    // core glow swells on each ripple
-    const cg=ctx.createRadialGradient(0,0,0,0,0,R*0.6);
-    cg.addColorStop(0,`rgba(255,190,110,${0.05+0.28*amp})`);cg.addColorStop(1,'rgba(255,120,40,0)');
-    ctx.fillStyle=cg;ctx.beginPath();ctx.arc(0,0,R*0.6,0,7);ctx.fill();
-    ctx.globalCompositeOperation='source-over';
+    ctx.translate(CX,CY);ctx.scale(pulse,pulse);ctx.drawImage(IMG,-w/2,-h/2,w,h);
+    ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.06+0.4*amp;
+    const z=1.04+0.06*amp;ctx.drawImage(IMG,-w*z/2,-h*z/2,w*z,h*z);
+    ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';ctx.restore();
+    ctx.strokeStyle='rgba(200,240,255,'+(0.35+0.4*energy)+')';ctx.lineWidth=2;ctx.beginPath();ctx.arc(CX,CY,R,0,7);ctx.stroke();
   } else {
-    // procedural plasma
-    pctx.setTransform(DPR,0,0,DPR,0,0);pctx.clearRect(0,0,W,H);pctx.globalCompositeOperation='lighter';
-    const rot=t*0.08*(0.6+energy);
-    for(const p of parts){const ang=p.a0+p.rad*twist+rot*p.spd,rr=p.rad*R*0.96;
-      const x=CX+Math.cos(ang)*rr,y=CY+Math.sin(ang)*rr*0.99,c=ramp(p.rad);
-      pctx.fillStyle=`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${(0.10+0.55*energy)*(1-p.rad*0.35)})`;
-      pctx.beginPath();pctx.arc(x,y,p.size*(1+energy*0.8),0,7);pctx.fill();}
-    const cg=pctx.createRadialGradient(CX,CY,0,CX,CY,R*0.5);
-    cg.addColorStop(0,`rgba(255,240,200,${0.5+0.5*energy})`);cg.addColorStop(0.25,`rgba(255,150,60,${0.3+0.4*energy})`);cg.addColorStop(1,'rgba(255,120,40,0)');
-    pctx.fillStyle=cg;pctx.beginPath();pctx.arc(CX,CY,R*0.5,0,7);pctx.fill();pctx.globalCompositeOperation='source-over';
-    ctx.setTransform(DPR,0,0,DPR,0,0);ctx.beginPath();ctx.arc(CX,CY,R*0.99,0,7);ctx.clip();
-    ctx.filter='blur(10px)';ctx.drawImage(pc,0,0,W,H);ctx.filter='none';ctx.globalAlpha=0.9;ctx.drawImage(pc,0,0,W,H);
+    drawRingsCore(pulse);                                   // default: clean HUD rings
   }
-  ctx.restore();
 
-  // glass shell: rim + specular
-  ctx.save();
-  const gl=ctx.createRadialGradient(CX-R*0.3,CY-R*0.3,R*0.1,CX,CY,R);
-  gl.addColorStop(0,'rgba(255,255,255,0.04)');gl.addColorStop(0.82,'rgba(120,200,255,0.0)');
-  gl.addColorStop(0.93,'rgba(150,225,255,0.16)');gl.addColorStop(1,'rgba(210,245,255,0.5)');
-  ctx.fillStyle=gl;ctx.beginPath();ctx.arc(CX,CY,R,0,7);ctx.fill();
-  ctx.strokeStyle='rgba(200,240,255,'+(0.4+0.45*energy)+')';ctx.lineWidth=2;ctx.beginPath();ctx.arc(CX,CY,R,0,7);ctx.stroke();
-  const hl=ctx.createRadialGradient(CX-R*0.35,CY-R*0.45,0,CX-R*0.35,CY-R*0.45,R*0.6);
-  hl.addColorStop(0,'rgba(255,255,255,0.22)');hl.addColorStop(1,'rgba(255,255,255,0)');
-  ctx.fillStyle=hl;ctx.beginPath();ctx.arc(CX,CY,R,0,7);ctx.fill();ctx.restore();
-
-  // (lightning removed — molten, no electric arcs)
-
-  // waveform — slow, smooth swell
-  const wy=CY+R+90,bars=72,bw=Math.min(7,(W*0.7)/bars);ctx.save();ctx.globalAlpha=0.85;
-  for(let i=0;i<bars;i++){const bx=CX-(bars*bw)/2+i*bw;
-    const env=(speaking||listening)?(0.15+0.85*amp*Math.abs(Math.sin(i*0.5+t*9))):0.05+0.03*Math.abs(Math.sin(i*0.2+t*0.5));
-    const bh=4+env*64;ctx.fillStyle=`rgba(120,200,255,${0.35+0.5*env})`;ctx.fillRect(bx,wy-bh/2,bw-2,bh);}ctx.restore();
+  // EBE wordmark under the orb (hidden in immersive live mode)
+  if(!document.body.classList.contains('live')){
+    ctx.save();ctx.textAlign='center';
+    ctx.fillStyle='rgba(200,240,255,0.9)';ctx.font='300 '+Math.round(R*0.16)+'px "DejaVu Sans",system-ui,sans-serif';
+    ctx.fillText('E B E', CX, CY+R*1.30);
+    ctx.fillStyle='rgba(120,200,255,0.6)';ctx.font='600 '+Math.round(R*0.05)+'px "DejaVu Sans Mono",monospace';
+    ctx.fillText('D I G I T A L   C H I E F   O F   S T A F F', CX, CY+R*1.46);
+    ctx.restore();
+  }
 
   requestAnimationFrame(frame);
 }
@@ -318,25 +316,25 @@ function speak(text){if(!('speechSynthesis'in window))return;speechSynthesis.can
   u.rate=0.97;u.pitch=1.0;
   u.onstart=()=>{speaking=true;setState('SPEAKING');document.getElementById('speaking').classList.add('on');
     if(recogActive){try{recog.stop();}catch(e){}}};                 // don't transcribe our own voice
-  u.onboundary=()=>{voiceKick=1;};                                   // ripple on each word — voice-wave sync
+  u.onboundary=()=>{voiceKick=1;ripples.push({r:R*0.16,life:1});}; // ripple on each word — voice-wave sync
   u.onend=()=>{speaking=false;document.getElementById('speaking').classList.remove('on');
     if(convoMode||wakeMode){setState('LISTENING');startRecog();}else setState('IDLE');};
   speechSynthesis.speak(u);}
 if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
-cv.addEventListener('click',()=>speak('ORB online. Risk gate armed. The council is standing by.'));
+cv.addEventListener('click',()=>speak("Hey, I'm here. What do you need?"));
 
 // ── convene the council (shared by the command bar + voice) ──
 async function convene(q){
   if(!q)return;
   document.getElementById('q').value='';
-  const box=document.getElementById('answer');box.classList.add('show');box.textContent='Convening the council…';
-  if(!API){const demo='Demo mode. Set window dot ORB underscore A P I to convene the live council: GPT-Executive, Operations, Risk, Claude-Evaluator, Gemini-VisualVerifier, then ORB-Finalizer. High-risk actions always wait for your approval.';
-    box.innerHTML='<span class="badge">DEMO</span>'+demo.replace('window dot ORB underscore A P I','<b>window.ORB_API</b>');speak(demo);return;}
+  const box=document.getElementById('answer');box.classList.add('show');box.textContent='Thinking…';
+  if(!API){const demo="I'm in demo mode right now — connect me to my system and I'll really get to work. Anything that spends money or sends something, I'll always check with you first.";
+    box.innerHTML='<span class="badge">DEMO</span>'+demo;speak(demo);return;}
   try{const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user',message:q})});
     const d=await r.json();const need=d.approvalRequired?.count?`<span class="badge">${d.approvalRequired.count} NEED APPROVAL</span>`:'';
     box.innerHTML=need+(d.answer||JSON.stringify(d,null,2));
     speak(d.answer||'Okay.');   // Claude's words carry the approvals naturally
-  }catch(e){box.textContent='Could not reach ORB API: '+e.message;speak('I could not reach the ORB backend.');}}
+  }catch(e){box.textContent='Could not reach ORB API: '+e.message;speak("Sorry, I can't reach my system right now.");}}
 
 document.getElementById('cmd').addEventListener('submit',ev=>{ev.preventDefault();convene(document.getElementById('q').value.trim());});
 
@@ -384,7 +382,7 @@ function buildRecog(){
     if(wakeMode){
       if(WAKE.test(q)){const cmd=afterWake(q);
         if(cmd.length>2){convene(cmd);}                       // "Hey EBE, what's urgent?"
-        else{armedUntil=Date.now()+9000;setState('LISTENING');speak('EBE here.');}  // just "Hey EBE"
+        else{armedUntil=Date.now()+9000;setState('LISTENING');speak("Yeah? I'm listening.");}  // just "Hey EBE"
       } else if(armedUntil>Date.now()){armedUntil=0;convene(q);} // command right after the wake
     }};
   r.onerror=()=>{};
@@ -398,7 +396,7 @@ document.getElementById('mic').addEventListener('click',async()=>{
   convoMode=true;listening=true;recog=recog||buildRecog();
   document.getElementById('mic').style.color='#ffc878';
   await startMicAnalyser();setState('LISTENING');startRecog();
-  if(!speaking)speak('Listening.');
+  if(!speaking)speak("Okay, I'm listening.");
 });
 
 // 👂 always-on wake word: say "Hey EBE"
@@ -417,7 +415,7 @@ async function armWake(on){
 document.getElementById('wake').addEventListener('click',async()=>{
   if(!SR){alert('Wake word needs Chrome or Edge (Web Speech API).');return;}
   const turningOn=!wakeMode; await armWake(turningOn);
-  if(turningOn && !speaking) speak('Wake word armed. Say, hey E B E.');
+  if(turningOn && !speaking) speak("I'm listening — just say my name whenever.");
 });
 
 // ● the one button — go completely live: only the orb, always listening, first person
@@ -431,7 +429,7 @@ async function setLive(on,greet){
     document.getElementById('answer')?.classList.remove('show');
     if(panel) panel.classList.remove('on');
     const ok=await armWake(true);
-    if(greet){ if(ok&&!speaking) speak("I'm live. Just say my name, then tell me what you need."); }
+    if(greet){ if(ok&&!speaking) speak("I'm here. What's up?"); }
   } else { await armWake(false); }
 }
 liveBtn.addEventListener('click',()=>setLive(!document.body.classList.contains('live'),true));
@@ -514,7 +512,7 @@ async function renderApprovals(){
     const id=b.closest('.card').dataset.id, act=b.dataset.act;
     b.textContent='…';
     await fetch(`${API}/api/orb/actions/${id}/${act}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user'})});
-    if(act==='approve')speak('Approved.');if(act==='execute')speak('Executing, dry run.');
+    if(act==='approve')speak('Got it, approved.');if(act==='execute')speak("Okay, I'm on it.");
     renderApprovals();
   }));
 }
@@ -593,7 +591,7 @@ document.getElementById('join-submit').addEventListener('click',async()=>{
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){jnote.textContent='Enter a valid email.';return;}
   ORB_USER=email; localStorage.setItem('ebeUser',email); localStorage.setItem('ebeJoined','1');
   if(API){ try{ await fetch(API+'/api/orb/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email})}); }catch(e){} }
-  closeJoin(); speak('Welcome to EBE. I will remember you.');
+  closeJoin(); speak("Hey, good to meet you. I'll remember you from here on.");
 });
 </script>
 </body>
