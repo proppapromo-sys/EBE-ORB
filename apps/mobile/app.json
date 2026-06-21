@@ -10,12 +10,14 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.ebehq.orb",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "EBE uses your microphone so you can talk to it.",
         "NSSpeechRecognitionUsageDescription": "EBE uses speech recognition to understand what you say."
       }
     },
     "android": {
+      "package": "com.ebehq.orb",
       "permissions": ["INTERNET", "RECORD_AUDIO"],
       "edgeToEdgeEnabled": true
     }
