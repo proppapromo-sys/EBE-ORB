@@ -208,6 +208,7 @@ function sizeP(){pc.width=cv.width;pc.height=cv.height;pctx.setTransform(DPR,0,0
 // ── energy / voice ──
 let energy=0.15,target=0.15,amp=0,speaking=false,listening=false,analyser=null,freq=null,t=0,voiceKick=0;
 let ripples=[],lastRipple=0,phase='idle',ncCol=[123,179,223];
+let bargeFrames=0; // barge-in: how many recent frames the user has been talking OVER ORB
 const setState=s=>{const e=document.getElementById('st-state');if(e)e.textContent=s;};
 function setPhase(p){phase=p;setState(p.toUpperCase());}
 
@@ -299,7 +300,13 @@ function frame(){
   t+=0.016;
   voiceKick*=0.80;                                              // per-word kick decays fast
   if(analyser){analyser.getByteFrequencyData(freq);let s=0;for(let i=0;i<freq.length;i++)s+=freq[i];
-    amp=amp*0.6+Math.min(1,(s/freq.length)/100)*0.4;}          // real audio (fast, voice-rate)
+    amp=amp*0.6+Math.min(1,(s/freq.length)/100)*0.4;                // real audio (fast, voice-rate)
+    // BARGE-IN: if you start talking while ORB is speaking, it stops and listens to you.
+    if(speaking&&(convoMode||wakeMode)){
+      if(amp>0.55)bargeFrames++;else bargeFrames=Math.max(0,bargeFrames-1);
+      if(bargeFrames>7){bargeFrames=0;try{speechSynthesis.cancel();}catch(e){}} // onend restarts listening
+    } else bargeFrames=0;
+  }
   else if(speaking){                                            // simulate a voice waveform envelope
     amp=Math.min(1, 0.16 + 0.55*voiceKick + 0.16*Math.abs(Math.sin(t*12)) + 0.10*Math.abs(Math.sin(t*23)));
   } else amp*=0.86;
@@ -381,6 +388,13 @@ function speakable(text){return String(text||'')
   .replace(/^\s*\d+[.)]\s+/gm,'')              // numbered lists
   .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/gu,'') // emoji/symbols
   .replace(/\s+/g,' ').trim();}
+// Render the answer for the SCREEN: turn **bold** into real bold, drop stray markdown symbols.
+function mdToHtml(text){return String(text||'')
+  .replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))  // escape first (safe)
+  .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>')                         // **bold** -> <b>
+  .replace(/\*([^*]+)\*/g,'$1').replace(/[_~`#]/g,'')              // strip leftover * _ ~ ` #
+  .replace(/^\s*[-•]\s+/gm,'• ')                                   // tidy bullets
+  .replace(/\n/g,'<br>');}
 function speak(text,lang){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(speakable(text).slice(0,800));
   u.lang=lang||'en-US';
@@ -393,8 +407,12 @@ function speak(text,lang){if(!('speechSynthesis'in window))return;speechSynthesi
     if(convoMode||wakeMode){setPhase('listening');startRecog();}else setPhase('idle');};
   speechSynthesis.speak(u);}
 if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
-// Tapping the orb STARTS a real conversation (greet, then listen) — not a dead-end greeting.
-cv.addEventListener('click',()=>{ if(!convoMode) startConversation(); });
+// Tapping the orb: if it's talking, cut it off and listen; otherwise start a conversation.
+cv.addEventListener('click',()=>{
+  if(speaking){ try{speechSynthesis.cancel();}catch(e){}                 // stop talking immediately
+    if(!convoMode&&!wakeMode) startConversation(""); return; }            // and start listening
+  if(!convoMode) startConversation();
+});
 
 // EBE speaks English by default, but translates on request.
 const LANG_CODES={english:'en-US',spanish:'es-ES',french:'fr-FR',german:'de-DE',italian:'it-IT',
@@ -554,7 +572,7 @@ async function convene(q){
       try{const t2=await fetch(API+'/api/orb/translate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:answer,to:voiceLang.name})});
         const td=await t2.json(); if(td.translated){answer=td.translated;sayLang=voiceLang.code;}}catch(e){}
     }
-    box.innerHTML=need+answer;
+    box.innerHTML=need+mdToHtml(answer);
     speak(answer,sayLang);
   }catch(e){box.textContent='Could not reach ORB API: '+e.message;speak("Sorry, I can't reach my system right now.");}}
 
@@ -587,7 +605,7 @@ document.getElementById('gen').addEventListener('click',async()=>{
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 function startRecog(){if(!recog||recogActive||speaking)return;try{recog.start();}catch(e){}}
 async function startMicAnalyser(){
-  try{const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  try{const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
     const ac=new(window.AudioContext||window.webkitAudioContext)();const src=ac.createMediaStreamSource(stream);
     analyser=ac.createAnalyser();analyser.fftSize=128;freq=new Uint8Array(analyser.frequencyBinCount);src.connect(analyser);
   }catch(e){/* visuals only; recognition can still run */}
@@ -617,7 +635,8 @@ async function startConversation(greeting){
   convoMode=true;listening=true;recog=recog||buildRecog();
   document.getElementById('mic').style.color='#ffc878';
   await startMicAnalyser();setPhase('listening');startRecog();
-  if(!speaking)speak(greeting||"Hey, I'm here. What do you need?");
+  const g = greeting===undefined ? "Hey, I'm here. What do you need?" : greeting;  // "" = listen silently
+  if(g && !speaking)speak(g);
 }
 function stopConversation(){
   convoMode=false;listening=false;setPhase('idle');document.getElementById('mic').style.color='';
