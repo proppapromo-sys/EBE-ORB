@@ -369,8 +369,20 @@ function pickVoice(vs,lang){
   return en.find(v=>/Natural|Neural|Samantha|Aria|Jenny|Ava|Sonia|Libby|Google/i.test(v.name))
     || en.find(v=>/en[-_]US/i.test(v.lang)) || en[0] || vs.find(v=>/English/i.test(v.name)) || vs[0];
 }
+// Strip anything a person wouldn't say out loud: markdown symbols, bullets, emoji, code ticks.
+function speakable(text){return String(text||'')
+  .replace(/```[\s\S]*?```/g,' ')            // code blocks
+  .replace(/`([^`]*)`/g,'$1')                 // inline code
+  .replace(/!\[[^\]]*\]\([^)]*\)/g,' ')       // images
+  .replace(/\[([^\]]*)\]\([^)]*\)/g,'$1')     // links -> text
+  .replace(/[*_~]+/g,'')                       // * _ ~ bold/italic marks
+  .replace(/^#{1,6}\s+/gm,'')                  // # headers
+  .replace(/^\s*[-•▪‣]\s+/gm,'')               // bullet points
+  .replace(/^\s*\d+[.)]\s+/gm,'')              // numbered lists
+  .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/gu,'') // emoji/symbols
+  .replace(/\s+/g,' ').trim();}
 function speak(text,lang){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
-  const u=new SpeechSynthesisUtterance(String(text).replace(/\s+/g,' ').slice(0,800));
+  const u=new SpeechSynthesisUtterance(speakable(text).slice(0,800));
   u.lang=lang||'en-US';
   u.voice=pickVoice(speechSynthesis.getVoices(),u.lang);
   u.rate=0.97;u.pitch=1.0;

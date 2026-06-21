@@ -50,17 +50,21 @@ export class OrbFeed implements DataFeed {
   ) {}
 
   async candidates(): Promise<Item[]> {
-    const all: Item[] = [];
-    for (const c of this.connectors) {
-      if (typeof c.signals !== 'function') continue;
-      try {
-        const sigs = await c.signals(this.userId);
-        for (const s of sigs) all.push({ ...s, connector: c.name });
-      } catch {
-        // a single connector failing must never break the loop (resilience)
-      }
-    }
-    return all;
+    // Hear every connector AT ONCE — no connector waits on another (speed). A slow or
+    // hanging connector is bounded by a timeout so it can never stall the whole cycle.
+    const live = this.connectors.filter((c) => typeof c.signals === 'function');
+    const settled = await Promise.all(
+      live.map(async (c) => {
+        try {
+          const sigs = await withTimeout(c.signals!(this.userId), 4000);
+          return sigs.map((s) => ({ ...s, connector: c.name }));
+        } catch {
+          // a single connector failing or timing out must never break the loop (resilience)
+          return [] as Item[];
+        }
+      })
+    );
+    return settled.flat();
   }
 }
 
@@ -114,6 +118,14 @@ export class OrbHands implements Execution {
 
 function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
+}
+
+/** Bound a promise by a deadline so one stuck connector can never freeze the cycle. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timeout')), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
 }
 
 /** Turn a cleared signal into an ORB action — risk level decides approval, never the model. */

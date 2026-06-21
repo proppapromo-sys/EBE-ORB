@@ -141,11 +141,17 @@ export async function runCouncil(
     transcript.push(b); out[role] = b.output;
   };
 
+  // SPEED: instead of 5–6 model calls in series, run them in concurrent stages.
+  // Stage 1 — the executive reasons first (everyone else builds on it).
   await run('executive', request, { ...base, documents: opts.documents });
+  // Stage 2 — operations turns that reasoning into a plan (risk/visual reference the plan).
   await run('operations', 'Turn the executive reasoning into an execution plan.', { ...base, executiveReasoning: out.executive });
-  await run('risk', 'Challenge the plan. Find mistakes, conflicts, and law violations.', { ...base, executiveReasoning: out.executive, executionPlan: out.operations });
-  await run('evaluator', 'Deeply review the council so far and any documents.', { request, documents: opts.documents, executiveReasoning: out.executive, executionPlan: out.operations, riskChallenge: out.risk });
-  await run('visual', 'Confirm visuals/data and give a final agreement check (AGREE/DISAGREE).', { request, executionPlan: out.operations, evaluation: out.evaluator, imagesProvided: (opts.images ?? []).length }, opts.images);
+  // Stage 3 — risk, evaluator and visual all critique the same material AT ONCE (independent).
+  await Promise.all([
+    run('risk', 'Challenge the plan. Find mistakes, conflicts, and law violations.', { ...base, executiveReasoning: out.executive, executionPlan: out.operations }),
+    run('evaluator', 'Deeply review the council so far and any documents.', { request, documents: opts.documents, executiveReasoning: out.executive, executionPlan: out.operations }),
+    run('visual', 'Confirm visuals/data and give a final agreement check (AGREE/DISAGREE).', { request, executionPlan: out.operations, imagesProvided: (opts.images ?? []).length }, opts.images)
+  ]);
   // ORB-Finalizer (the voice) always runs — it answers from whatever brains convened.
   const vp = voiceProvider(personaProvider(opts.personality));
   const finalizer = await runBrain('finalizer', 'Combine everything into one clean, owner-ready response.', {

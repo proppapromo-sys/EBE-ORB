@@ -39,9 +39,9 @@ export async function askOrb(
   message: string,
   opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string; personality?: string; customPersona?: string } = {}
 ) {
-  const context = await gatherContext(userId);
-
   if (opts.council === false) {
+    // Single-model path still needs the raw connector context for its prompt.
+    const context = await gatherContext(userId);
     const cycle = await runOrbCycle(connectors, userId, { journal: createJournal(userId) });
     const prompt = `User request: ${message}
 
@@ -65,7 +65,6 @@ Flag every action whose requiresApproval is true — never imply it can run on i
   return {
     mode: 'council' as const,
     answer: council.finalAnswer,
-    context,
     cycle: council.cycle,
     approvalRequired: council.approvalRequired,
     council: council.council,
