@@ -17,6 +17,7 @@ import { generateOrbImage, imageConfigured } from '../services/geminiImage.js';
 import { translate } from '../services/translate.js';
 import { opentableLink, opentableConfigured, type ReservationRequest } from '../services/reservations.js';
 import { searchRestaurants, placesConfigured } from '../services/places.js';
+import { mailerConfigured } from '../services/mailer.js';
 import {
   createTask, listTasks, completeTask, reopenTask, deleteTask, taskDurable, type TaskStatus
 } from '../services/taskStore.js';
@@ -63,6 +64,25 @@ const AskSchema = z.object({
 
 orbRouter.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'EBE ORB API', timestamp: new Date().toISOString() });
+});
+
+// What's connected (booleans only — never exposes key values).
+orbRouter.get('/status', (_req, res) => {
+  res.json({
+    ai: {
+      openai: getProviderClient('openai').configured,
+      anthropic: getProviderClient('anthropic').configured,
+      gemini: getProviderClient('gemini').configured
+    },
+    features: {
+      googleSignIn: googleConfigured(),     // Gmail + Calendar (GOOGLE_CLIENT_ID/SECRET)
+      orbImage: imageConfigured(),          // ✨ Gemini image gen (GEMINI_API_KEY)
+      restaurants: placesConfigured(),      // Google Places (GOOGLE_PLACES_API_KEY) — separate key
+      autoBookEmail: mailerConfigured(),    // RESEND_API_KEY + EBE_FROM_EMAIL
+      opentablePartner: opentableConfigured()
+    },
+    persistence: { supabase: journalIsDurable }
+  });
 });
 
 orbRouter.get('/connectors', async (req, res, next) => {
