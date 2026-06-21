@@ -4,6 +4,10 @@ import 'dotenv/config';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { orbRouter } from './routes/orb.js';
+import { loadPlatformKeys } from './services/platformKeys.js';
+
+// Pull any owner-set AI keys (set from Settings) into memory before serving requests.
+void loadPlatformKeys();
 
 const app = express();
 app.use(cors());

@@ -4,13 +4,14 @@
  * native functionality (not a webview), which is what satisfies Apple Guideline 4.2.
  */
 import 'dotenv/config';
+import { getPlatformKey } from './platformKeys.js';
 
 export function sttConfigured(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY);
+  return Boolean(getPlatformKey('OPENAI_API_KEY'));
 }
 
 export async function transcribe(base64Audio: string, mime = 'audio/m4a'): Promise<{ text: string; note?: string }> {
-  const key = process.env.OPENAI_API_KEY;
+  const key = getPlatformKey('OPENAI_API_KEY');
   if (!key) return { text: '', note: 'OPENAI_API_KEY not set' };
   try {
     const buf = Buffer.from(base64Audio, 'base64');

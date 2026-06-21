@@ -5,11 +5,12 @@
  * GEMINI_API_KEY or no egress it returns { available:false, note } instead of throwing.
  */
 import 'dotenv/config';
+import { getPlatformKey } from './platformKeys.js';
 
 const MODEL = process.env.ORB_IMAGE_MODEL || 'gemini-2.5-flash-image-preview';
 
 export function imageConfigured(): boolean {
-  return Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+  return Boolean(getPlatformKey('GEMINI_API_KEY') || getPlatformKey('GOOGLE_API_KEY'));
 }
 
 const DEFAULT_PROMPT =
@@ -19,7 +20,7 @@ const DEFAULT_PROMPT =
   'perfectly centered, square composition, photorealistic 3D render, high detail.';
 
 export async function generateOrbImage(prompt?: string): Promise<{ available: boolean; dataUrl?: string; note?: string }> {
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const key = getPlatformKey('GEMINI_API_KEY') || getPlatformKey('GOOGLE_API_KEY');
   if (!key) return { available: false, note: 'GEMINI_API_KEY not set' };
   const text = prompt && prompt.trim() ? prompt.trim() : DEFAULT_PROMPT;
   try {

@@ -6,14 +6,15 @@
  * OpenAI uses the installed SDK; Anthropic and Gemini use their REST APIs over fetch (no extra deps).
  */
 import 'dotenv/config';
-import { openai } from '../services/openai.js';
+import { getOpenAI } from '../services/openai.js';
+import { getPlatformKey } from '../services/platformKeys.js';
 import type { BrainProvider, BrainProviderClient } from './types.js';
 
 type CompleteOpts = { model: string; system: string; user: string; images?: string[] };
 
 function stub(provider: BrainProvider, envVar: string): { text: string; ok: boolean; note: string } {
   return {
-    text: `[${provider} not configured] Set ${envVar} to enable this brain. (Council ran in degraded mode.)`,
+    text: `[${provider} not configured] Add your ${provider} key in Settings to enable this brain. (Council ran in degraded mode.)`,
     ok: false,
     note: `${envVar} missing`
   };
@@ -21,10 +22,11 @@ function stub(provider: BrainProvider, envVar: string): { text: string; ok: bool
 
 const openaiClient: BrainProviderClient = {
   provider: 'openai',
-  configured: Boolean(openai),
+  get configured() { return Boolean(getPlatformKey('OPENAI_API_KEY')); },
   async complete({ model, system, user }: CompleteOpts) {
-    if (!openai) return stub('openai', 'OPENAI_API_KEY');
-    const res = await openai.chat.completions.create({
+    const client = getOpenAI();
+    if (!client) return stub('openai', 'OPENAI_API_KEY');
+    const res = await client.chat.completions.create({
       model,
       messages: [
         { role: 'system', content: system },
@@ -38,9 +40,9 @@ const openaiClient: BrainProviderClient = {
 
 const anthropicClient: BrainProviderClient = {
   provider: 'anthropic',
-  configured: Boolean(process.env.ANTHROPIC_API_KEY),
+  get configured() { return Boolean(getPlatformKey('ANTHROPIC_API_KEY')); },
   async complete({ model, system, user }: CompleteOpts) {
-    const key = process.env.ANTHROPIC_API_KEY;
+    const key = getPlatformKey('ANTHROPIC_API_KEY');
     if (!key) return stub('anthropic', 'ANTHROPIC_API_KEY');
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -65,9 +67,9 @@ const anthropicClient: BrainProviderClient = {
 
 const geminiClient: BrainProviderClient = {
   provider: 'gemini',
-  configured: Boolean(process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY),
+  get configured() { return Boolean(getPlatformKey('GEMINI_API_KEY') ?? getPlatformKey('GOOGLE_API_KEY')); },
   async complete({ model, system, user, images }: CompleteOpts) {
-    const key = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY;
+    const key = getPlatformKey('GEMINI_API_KEY') ?? getPlatformKey('GOOGLE_API_KEY');
     if (!key) return stub('gemini', 'GEMINI_API_KEY');
     const parts: Record<string, unknown>[] = [{ text: user }];
     for (const img of images ?? []) {
