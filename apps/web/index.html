@@ -143,6 +143,7 @@
 <form class="cmd" id="cmd">
   <input id="q" placeholder="Ask ORB —  what needs my attention today?" autocomplete="off" />
   <button type="button" class="icon" id="img" title="set ORB image">📷</button>
+  <button type="button" class="icon" id="gen" title="Gemini: generate a fresh orb (type a style first, optional)">✨</button>
   <button type="button" class="icon" id="wake" title="wake word: say &quot;Hey EBE&quot;">👂</button>
   <button type="button" class="icon" id="mic" title="push to talk">🎤</button>
   <button type="submit">CONVENE</button>
@@ -199,11 +200,14 @@ const setState=s=>document.getElementById('st-state').textContent=s;
 
 function frame(){
   t+=0.016;
-  if(analyser){analyser.getByteFrequencyData(freq);let s=0;for(let i=0;i<freq.length;i++)s+=freq[i];amp=amp*0.85+Math.min(1,(s/freq.length)/110)*0.15;}
-  else if(speaking){amp=0.32+0.22*(0.5+0.5*Math.sin(t*1.6));}   // smooth, slow swell
-  else amp*=0.96;
-  target=(speaking||listening)?(0.42+0.32*amp):(0.12+0.04*Math.sin(t*0.5));
-  energy+=(target-energy)*0.045;                                // slow, liquid easing
+  voiceKick*=0.80;                                              // per-word kick decays fast
+  if(analyser){analyser.getByteFrequencyData(freq);let s=0;for(let i=0;i<freq.length;i++)s+=freq[i];
+    amp=amp*0.6+Math.min(1,(s/freq.length)/100)*0.4;}          // real audio (fast, voice-rate)
+  else if(speaking){                                            // simulate a voice waveform envelope
+    amp=Math.min(1, 0.16 + 0.55*voiceKick + 0.16*Math.abs(Math.sin(t*12)) + 0.10*Math.abs(Math.sin(t*23)));
+  } else amp*=0.86;
+  target=(speaking||listening)?(0.45+0.3*amp):(0.12+0.04*Math.sin(t*0.5));
+  energy+=(target-energy)*0.10;                                 // overall glow level (smooth)
   document.getElementById('st-pulse').textContent=energy>0.55?'PEAK':energy>0.32?'ELEVATED':'NOMINAL';
 
   ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -222,31 +226,30 @@ function frame(){
   for(const[rw,rh,c] of [[R*0.7,R*0.2,'rgba(210,160,80,.9)'],[R*0.55,R*0.15,'rgba(120,90,50,.8)'],[R*0.42,R*0.11,'rgba(230,180,90,.95)']]){
     ctx.strokeStyle=c;ctx.beginPath();ctx.ellipse(0,0,rw,rh,0,0,7);ctx.stroke();}ctx.restore();
 
-  // heartbeat — the orb PULSATES with the conversation (no spinning)
-  const beat = 0.5 + 0.5*Math.sin(t*5.2);                 // ~0.8 Hz pulse
-  const pulse = 1 + 0.018*Math.sin(t*0.9) + (0.04 + 0.14*amp)*energy*beat;
+  // PULSATES at voice-wave speed — the scale + glow ripple with the live speech amplitude
+  const pulse = 1 + 0.012*Math.sin(t*0.9) + 0.10*amp + 0.05*amp*Math.sin(t*18);
 
-  // outer bloom throbs in time with the voice
+  // outer bloom ripples with the voice
   ctx.save();ctx.globalCompositeOperation='lighter';
-  const bl=ctx.createRadialGradient(CX,CY,R*0.55,CX,CY,R*1.8*(1+0.05*energy*beat));
-  bl.addColorStop(0,`rgba(90,170,255,${0.07+0.34*energy*(0.5+0.5*beat)})`);bl.addColorStop(1,'rgba(90,170,255,0)');
-  ctx.fillStyle=bl;ctx.beginPath();ctx.arc(CX,CY,R*1.8,0,7);ctx.fill();ctx.restore();
+  const bl=ctx.createRadialGradient(CX,CY,R*0.55,CX,CY,R*1.8*(1+0.06*amp));
+  bl.addColorStop(0,`rgba(90,170,255,${0.06+0.16*energy+0.30*amp})`);bl.addColorStop(1,'rgba(90,170,255,0)');
+  ctx.fillStyle=bl;ctx.beginPath();ctx.arc(CX,CY,R*1.9,0,7);ctx.fill();ctx.restore();
 
-  // ── the orb core (static texture, pulsating — alive, not a spinning picture) ──
+  // ── the orb core (static texture, pulsating to the voice — not a spinning picture) ──
   ctx.save();ctx.beginPath();ctx.arc(CX,CY,R*0.99,0,7);ctx.clip();
   if(IMG){
     const s=Math.max(2*R/IMG.width,2*R/IMG.height)*1.05, w=IMG.width*s,h=IMG.height*s;
     ctx.translate(CX,CY);ctx.scale(pulse,pulse);
     ctx.drawImage(IMG,-w/2,-h/2,w,h);                     // no rotation
-    // living shimmer: a second copy breathing in/out, brighter as it speaks
+    // living shimmer: a second copy that brightens and breathes with each voice ripple
     ctx.globalCompositeOperation='lighter';
-    ctx.globalAlpha=0.08+0.34*energy*beat;
-    const z=1.05+0.05*Math.sin(t*1.7);
+    ctx.globalAlpha=0.06+0.45*amp;
+    const z=1.04+0.06*amp;
     ctx.drawImage(IMG,-w*z/2,-h*z/2,w*z,h*z);
     ctx.globalAlpha=1;
-    // core glow swells with each pulse
+    // core glow swells on each ripple
     const cg=ctx.createRadialGradient(0,0,0,0,0,R*0.6);
-    cg.addColorStop(0,`rgba(255,190,110,${0.06+0.22*energy*beat})`);cg.addColorStop(1,'rgba(255,120,40,0)');
+    cg.addColorStop(0,`rgba(255,190,110,${0.05+0.28*amp})`);cg.addColorStop(1,'rgba(255,120,40,0)');
     ctx.fillStyle=cg;ctx.beginPath();ctx.arc(0,0,R*0.6,0,7);ctx.fill();
     ctx.globalCompositeOperation='source-over';
   } else {
@@ -281,15 +284,15 @@ function frame(){
   // waveform — slow, smooth swell
   const wy=CY+R+90,bars=72,bw=Math.min(7,(W*0.7)/bars);ctx.save();ctx.globalAlpha=0.85;
   for(let i=0;i<bars;i++){const bx=CX-(bars*bw)/2+i*bw;
-    const env=(speaking||listening)?(0.25+0.55*Math.abs(Math.sin(i*0.25+t*1.6))*(0.5+amp)):0.05+0.03*Math.abs(Math.sin(i*0.2+t*0.5));
-    const bh=4+env*60;ctx.fillStyle=`rgba(120,200,255,${0.35+0.45*env})`;ctx.fillRect(bx,wy-bh/2,bw-2,bh);}ctx.restore();
+    const env=(speaking||listening)?(0.15+0.85*amp*Math.abs(Math.sin(i*0.5+t*9))):0.05+0.03*Math.abs(Math.sin(i*0.2+t*0.5));
+    const bh=4+env*64;ctx.fillStyle=`rgba(120,200,255,${0.35+0.5*env})`;ctx.fillRect(bx,wy-bh/2,bw-2,bh);}ctx.restore();
 
   requestAnimationFrame(frame);
 }
 frame();
 
 // ── speech (ORB's voice) ──
-let convoMode=false, wakeMode=false, armedUntil=0, recog=null, recogActive=false;
+let convoMode=false, wakeMode=false, armedUntil=0, recog=null, recogActive=false, voiceKick=0;
 // "Hey EBE" (eebee) and the ways speech engines tend to hear it
 const WAKE=/\b(?:hey|ok|okay|yo)?\s*(e+\s*b+\s*e+|ee?bee?|ebay|eevee|ebbie|ibi|abby|e\.?\s*b\.?\s*e\.?)\b/i;
 function afterWake(text){const m=WAKE.exec(text);return m?text.slice(m.index+m[0].length).replace(/^[\s,.:!?-]+/,'').trim():'';}
@@ -304,6 +307,7 @@ function speak(text){if(!('speechSynthesis'in window))return;speechSynthesis.can
   u.rate=0.97;u.pitch=1.0;
   u.onstart=()=>{speaking=true;setState('SPEAKING');document.getElementById('speaking').classList.add('on');
     if(recogActive){try{recog.stop();}catch(e){}}};                 // don't transcribe our own voice
+  u.onboundary=()=>{voiceKick=1;};                                   // ripple on each word — voice-wave sync
   u.onend=()=>{speaking=false;document.getElementById('speaking').classList.remove('on');
     if(convoMode||wakeMode){setState('LISTENING');startRecog();}else setState('IDLE');};
   speechSynthesis.speak(u);}
@@ -332,6 +336,21 @@ const drop=document.getElementById('drop');
 addEventListener('drop',ev=>{const f=[...(ev.dataTransfer?.files||[])].find(f=>f.type.startsWith('image/'));if(f)setImageFromFile(f);});
 document.getElementById('img').addEventListener('click',()=>document.getElementById('file').click());
 document.getElementById('file').addEventListener('change',e=>{const f=e.target.files[0];if(f)setImageFromFile(f);});
+
+// ✨ Gemini generates a fresh, lightning-free orb (uses whatever you typed as the style)
+document.getElementById('gen').addEventListener('click',async()=>{
+  const box=document.getElementById('answer');box.classList.add('show');
+  if(!API){box.innerHTML='<span class="badge">GEMINI</span>Connect the backend (window.ORB_API) and set GEMINI_API_KEY first.';return;}
+  box.innerHTML='<span class="badge">GEMINI</span>Generating a fresh orb…';
+  const prompt=document.getElementById('q').value.trim();
+  try{
+    const r=await fetch(API+'/api/orb/vision/orb-image',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prompt})});
+    const d=await r.json();
+    if(d.available&&d.dataUrl){localStorage.setItem('orbImage',d.dataUrl);loadImg(d.dataUrl);
+      box.innerHTML='<span class="badge">GEMINI</span>New orb applied. ✨';speak('I refreshed the orb.');}
+    else box.innerHTML='<span class="badge">GEMINI</span>'+(d.note||'Could not generate. Check GEMINI_API_KEY.');
+  }catch(e){box.textContent='Gemini error: '+e.message;}
+});
 
 // ── voice input: speech-to-text + hands-free conversation loop ──
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;

@@ -13,6 +13,7 @@ import { remember, listMemories, recall, forget, memoryDurable } from '../servic
 import { getWeather, geocode } from '../services/weather.js';
 import { getNews } from '../services/news.js';
 import { getNotepad, saveNotepad, notepadDurable } from '../services/notepadStore.js';
+import { generateOrbImage, imageConfigured } from '../services/geminiImage.js';
 import {
   createTask, listTasks, completeTask, reopenTask, deleteTask, taskDurable, type TaskStatus
 } from '../services/taskStore.js';
@@ -277,6 +278,13 @@ orbRouter.put('/notepad', async (req, res, next) => {
     const userId = String(req.body?.userId ?? 'demo-user');
     const content = String(req.body?.content ?? '');
     res.json(await saveNotepad(userId, content));
+  } catch (error) { next(error); }
+});
+
+// Gemini refreshes the orb's imagery (clean, lightning-free core).
+orbRouter.post('/vision/orb-image', async (req, res, next) => {
+  try {
+    res.json({ configured: imageConfigured(), ...(await generateOrbImage(req.body?.prompt)) });
   } catch (error) { next(error); }
 });
 
