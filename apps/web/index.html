@@ -207,7 +207,7 @@ function sizeP(){pc.width=cv.width;pc.height=cv.height;pctx.setTransform(DPR,0,0
 
 // ── energy / voice ──
 let energy=0.15,target=0.15,amp=0,speaking=false,listening=false,analyser=null,freq=null,t=0,voiceKick=0;
-let ripples=[],lastRipple=0,phase='idle';
+let ripples=[],lastRipple=0,phase='idle',ncCol=[123,179,223];
 const setState=s=>{const e=document.getElementById('st-state');if(e)e.textContent=s;};
 function setPhase(p){phase=p;setState(p.toUpperCase());}
 
@@ -236,7 +236,11 @@ function phaseColor(){                                  // EBE Live NeuralCluste
   }
 }
 function drawNeural(pulse){
-  const [cr,cg,cb]=phaseColor();
+  // smoothly glide toward the phase color (no hard snap) + a gentle living shimmer
+  const tgt=phaseColor();
+  for(let i=0;i<3;i++) ncCol[i]+=(tgt[i]-ncCol[i])*0.03;
+  const sh=0.94+0.06*Math.sin(t*0.7);                  // constant subtle brightness drift
+  const cr=Math.min(255,ncCol[0]*sh), cg=Math.min(255,ncCol[1]*sh), cb=Math.min(255,ncCol[2]*sh);
   const ay=t*0.16, ax=-0.42+0.06*Math.sin(t*0.25);     // slow, gentle 3D rotation
   const ca=Math.cos(ay),sa=Math.sin(ay),cx2=Math.cos(ax),sx=Math.sin(ax);
   const rr=R*0.92*pulse;
@@ -360,9 +364,10 @@ function pickVoice(vs,lang){
     return vs.find(v=>v.lang&&v.lang.toLowerCase().startsWith(pre)&&/Natural|Neural/i.test(v.name))
       || vs.find(v=>v.lang&&v.lang.toLowerCase().startsWith(pre)) || vs[0];
   }
-  // English (default): prefer natural / neural human voices
-  return vs.find(v=>/Natural|Neural|Samantha|Aria|Jenny|Ava|Sonia|Libby|Google US English|Google UK English Female/i.test(v.name))
-    || vs.find(v=>/en[-_]US|en[-_]GB/i.test(v.lang)) || vs.find(v=>/English/i.test(v.name)) || vs[0];
+  // English (default): only pick an English voice, prefer natural/neural ones
+  const en=vs.filter(v=>v.lang&&v.lang.toLowerCase().startsWith('en'));
+  return en.find(v=>/Natural|Neural|Samantha|Aria|Jenny|Ava|Sonia|Libby|Google/i.test(v.name))
+    || en.find(v=>/en[-_]US/i.test(v.lang)) || en[0] || vs.find(v=>/English/i.test(v.name)) || vs[0];
 }
 function speak(text,lang){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(String(text).replace(/\s+/g,' ').slice(0,800));
