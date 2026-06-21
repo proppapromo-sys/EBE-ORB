@@ -232,13 +232,28 @@ function frame(){
   const pulse=1+0.025*energy+0.012*Math.sin(t*0.8);   // gentle molten breathing
   ctx.save();ctx.beginPath();ctx.arc(CX,CY,R*0.99,0,7);ctx.clip();
   if(IMG){
-    const s=Math.max(2*R/IMG.width,2*R/IMG.height)*1.08, w=IMG.width*s,h=IMG.height*s;
+    const s=Math.max(2*R/IMG.width,2*R/IMG.height)*1.12, w=IMG.width*s,h=IMG.height*s;
     ctx.translate(CX,CY);ctx.scale(pulse,pulse);
-    // slow primary rotation
-    ctx.save();ctx.rotate(t*(0.010+0.045*energy));ctx.globalAlpha=1;ctx.drawImage(IMG,-w/2,-h/2,w,h);ctx.restore();
-    // slow counter-rotating molten layer → liquid-lava churn
-    ctx.save();ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.16+0.20*energy;
-    ctx.rotate(-t*0.006);ctx.drawImage(IMG,-w/2,-h/2,w,h);ctx.restore();
+    // Liquid state: draw the texture in concentric bands, each sheared by radius + time so the
+    // core swirls faster than the rim and the whole thing slowly sloshes — molten, not solid.
+    const RINGS=16, base=t*(0.045+0.11*energy);
+    for(let k=RINGS;k>=1;k--){
+      const f=k/RINGS;                                   // 1 = rim … →0 = core
+      const r1=R*0.995*f+2, r0=R*0.995*((k-1)/RINGS);
+      const ang=base*(1.7-f)                              // differential rotation (core faster)
+        +0.5*Math.sin(t*0.55+(1-f)*4.2)                  // slow churn wave
+        +0.2*Math.sin(t*0.23-f*5.5);                     // secondary slosh
+      ctx.save();
+      ctx.beginPath();ctx.arc(0,0,r1,0,7,false);ctx.arc(0,0,Math.max(0,r0),0,7,true);ctx.clip();
+      ctx.rotate(ang);ctx.drawImage(IMG,-w/2,-h/2,w,h);
+      ctx.restore();
+    }
+    // molten core glow (breathes with energy)
+    ctx.globalCompositeOperation='lighter';
+    const cg=ctx.createRadialGradient(0,0,0,0,0,R*0.55);
+    cg.addColorStop(0,`rgba(255,185,95,${0.10+0.18*energy})`);cg.addColorStop(1,'rgba(255,120,40,0)');
+    ctx.fillStyle=cg;ctx.beginPath();ctx.arc(0,0,R*0.55,0,7);ctx.fill();
+    ctx.globalCompositeOperation='source-over';
   } else {
     // procedural plasma
     pctx.setTransform(DPR,0,0,DPR,0,0);pctx.clearRect(0,0,W,H);pctx.globalCompositeOperation='lighter';
