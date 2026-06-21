@@ -803,23 +803,28 @@ async function renderSettings(){
     });
   });
 }
-// WALLET — ORB's money. Balance, add funds, confirm pending bills, see history.
+// WALLET — ORB never holds money; Stripe does. We show the REAL Stripe balance, confirm bills, history.
 const money=(c,cur)=>new Intl.NumberFormat('en-US',{style:'currency',currency:(cur||'usd').toUpperCase()}).format((c||0)/100);
 async function renderWallet(){
   const uid=ORB_USER||'demo-user';
   const d=await (await fetch(API+'/api/orb/wallet?userId='+encodeURIComponent(uid))).json();
-  const w=d.wallet||{balanceCents:0,currency:'usd'};
+  const w=d.wallet||{connected:false,availableCents:null,currency:'usd'};
   const pending=(d.pending||[]);
   const hist=(d.txns||[]).filter(t=>t.status!=='pending').slice(0,12);
+  const balanceCard = w.connected && w.availableCents!==null
+    ? `<div class="card" style="text-align:center">
+        <div class="m">Available in Stripe</div>
+        <div style="font-size:30px;font-weight:600;color:#bdf3ff;margin:4px 0">${money(w.availableCents,w.currency)}</div>
+        ${w.pendingCents?`<div class="m">${money(w.pendingCents,w.currency)} pending</div>`:''}
+        <div class="m" style="opacity:.7">Your money stays with Stripe — ORB never holds it.</div>
+      </div>`
+    : `<div class="card" style="text-align:center">
+        <div class="t">Wallet powered by Stripe</div>
+        <div class="m" style="margin:6px 0">${esc(w.note||'Connect Stripe in Settings to pay bills.')}</div>
+        <div class="m" style="opacity:.7">ORB never holds your money — Stripe (a licensed company) does.</div>
+      </div>`;
   pbody.innerHTML=`
-    <div class="card" style="text-align:center">
-      <div class="m">ORB Wallet balance</div>
-      <div style="font-size:30px;font-weight:600;color:#bdf3ff;margin:4px 0">${money(w.balanceCents,w.currency)}</div>
-      <div class="btns" style="justify-content:center">
-        <input id="topup-amt" type="number" min="1" step="1" placeholder="Amount" style="width:90px;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);border-radius:8px;color:#cfeefb;font:inherit;padding:8px;outline:0" />
-        <button class="go" id="topup-btn">ADD FUNDS</button>
-      </div>
-    </div>
+    ${balanceCard}
     ${pending.length?'<div class="m" style="margin:10px 0 4px">⏳ Needs your confirm</div>':''}
     ${pending.map(t=>`<div class="card" data-id="${t.id}">
       <div class="t">${money(t.amountCents,t.currency)} → ${esc(t.payee||'')}</div>
@@ -838,14 +843,9 @@ async function renderWallet(){
       <div class="btns"><button class="go" id="pay-btn">SET UP PAYMENT</button></div>
     </div>
     ${hist.length?'<div class="m" style="margin:12px 0 4px">History</div>':''}
-    ${hist.map(t=>`<div class="card"><div class="t">${t.type==='topup'?'+ ':'− '}${money(t.amountCents,t.currency)} ${t.payee?'→ '+esc(t.payee):''}</div>
+    ${hist.map(t=>`<div class="card"><div class="t">${money(t.amountCents,t.currency)} ${t.payee?'→ '+esc(t.payee):''}</div>
       <div class="m"><span class="pill ${t.status==='paid'?'ok':''}">${esc(t.status)}</span> ${esc(t.note||'')}</div></div>`).join('')}`;
 
-  document.getElementById('topup-btn').addEventListener('click',async()=>{
-    const amt=parseFloat(document.getElementById('topup-amt').value);if(!amt||amt<=0)return;
-    await fetch(API+'/api/orb/wallet/topup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:uid,amount:amt})});
-    refreshPanel();
-  });
   document.getElementById('pay-btn').addEventListener('click',async()=>{
     const payee=document.getElementById('pay-payee').value.trim();
     const amount=parseFloat(document.getElementById('pay-amt').value);

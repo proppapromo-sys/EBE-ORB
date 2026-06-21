@@ -23,8 +23,8 @@ import { deleteAccount } from '../services/account.js';
 import { transcribe, sttConfigured } from '../services/stt.js';
 import { INTEGRATIONS, getIntegration, testConnection } from '../services/integrations.js';
 import { saveCredential, getCredential, deleteCredential, maskValue } from '../services/credentialStore.js';
-import { getWallet, listTxns, topUp, walletDurable } from '../services/walletStore.js';
-import { RAILS, payBill, confirmPayment, cancelPayment, dollarsToCents } from '../services/wallet.js';
+import { listTxns, walletDurable } from '../services/walletStore.js';
+import { RAILS, getWalletView, payBill, confirmPayment, cancelPayment, dollarsToCents } from '../services/wallet.js';
 import {
   createTask, listTasks, completeTask, reopenTask, deleteTask, taskDurable, type TaskStatus
 } from '../services/taskStore.js';
@@ -203,27 +203,15 @@ orbRouter.delete('/integrations/:provider', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// ── Wallet: ORB pays bills for you (always confirm-first) ─────────────────────
-// Snapshot: balance, the rails available, and recent payments.
+// ── Wallet: ORB pays bills for you (always confirm-first; the money lives with Stripe) ─────────
+// Snapshot: the REAL provider balance, the rails available, and recent payments.
 orbRouter.get('/wallet', async (req, res, next) => {
   try {
     const userId = String(req.query.userId ?? 'demo-user');
-    const [wallet, txns] = await Promise.all([getWallet(userId), listTxns(userId, 50)]);
+    const [wallet, txns] = await Promise.all([getWalletView(userId), listTxns(userId, 50)]);
     const pending = txns.filter((t) => t.status === 'pending');
     res.json({ wallet, rails: RAILS, pending, txns, durable: walletDurable });
   } catch (error) { next(error); }
-});
-
-const TopUpSchema = z.object({ userId: z.string().min(1).default('demo-user'), amount: z.number().positive(), memo: z.string().optional() });
-orbRouter.post('/wallet/topup', async (req, res, next) => {
-  try {
-    const { userId, amount, memo } = TopUpSchema.parse(req.body);
-    const out = await topUp(userId, dollarsToCents(amount), memo);
-    res.json({ ok: true, ...out });
-  } catch (error) {
-    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Provide a positive amount.' });
-    next(error);
-  }
 });
 
 // Create a PENDING payment. ORB reads it back; nothing is sent until /confirm.
@@ -231,7 +219,7 @@ const PaySchema = z.object({
   userId: z.string().min(1).default('demo-user'),
   payee: z.string().min(1),
   amount: z.number().positive(),
-  rail: z.enum(['balance', 'stripe', 'card', 'bank', 'manual']).optional(),
+  rail: z.enum(['stripe', 'card', 'bank', 'manual']).optional(),
   memo: z.string().optional()
 });
 orbRouter.post('/wallet/pay', async (req, res, next) => {
