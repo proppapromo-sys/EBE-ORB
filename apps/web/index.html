@@ -65,6 +65,14 @@
     padding:14px 8px;font:inherit;font-size:12px;cursor:pointer;letter-spacing:.12em;writing-mode:vertical-rl}
   .toggle:hover{background:rgba(90,220,255,.25)}
   .empty{color:#6fa6c2;font-size:12px;text-align:center;padding:30px 10px}
+  /* LIVE mode — only the orb, always listening, no chrome */
+  #live{position:fixed;top:22px;right:24px;z-index:13;background:rgba(10,28,46,.6);
+    border:1px solid rgba(90,220,255,.45);color:var(--ice);border-radius:999px;padding:8px 16px;
+    font:inherit;font-size:12px;letter-spacing:.14em;cursor:pointer}
+  #live:hover{background:rgba(90,220,255,.28)}
+  body.live .hud,body.live .cmd,body.live .hint,body.live #panel,body.live .toggle{display:none!important}
+  body.live #live{opacity:.35}
+  body.live #live:hover{opacity:1}
   /* onboarding / join modal */
   #join{position:fixed;inset:0;z-index:20;display:none;place-items:center;
     background:radial-gradient(60% 60% at 50% 40%,rgba(10,30,55,.55),rgba(3,6,12,.86))}
@@ -149,8 +157,9 @@
   <button type="submit">CONVENE</button>
 </form>
 <input type="file" id="file" accept="image/*" hidden />
-<div class="hint">👂 say "Hey EBE" · 🎤 push to talk · click the orb to hear it · CONTROL tab (right edge): approvals · notes · news · set window.ORB_API to go live</div>
+<div class="hint">● GO LIVE = just the orb, always listening — say "Hey EBE" anytime · (tap EXIT to bring controls back)</div>
 
+<button id="live">● GO LIVE</button>
 <button class="toggle" id="toggle">APPROVALS</button>
 <aside id="panel">
   <header><div class="h">◢ ORB CONTROL</div><button class="icon" id="panel-close" style="background:none;border:0;color:#8fb9d4;cursor:pointer;font-size:16px">✕</button></header>
@@ -172,7 +181,9 @@ const API=(window.ORB_API!==undefined?window.ORB_API
 const cv=document.getElementById('orb'),ctx=cv.getContext('2d');
 let W,H,DPR,CX,CY,R;
 function resize(){DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;
-  cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);CX=W/2;CY=H*0.43;R=Math.min(W,H)*0.27;}
+  cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+  const live=document.body.classList.contains('live');
+  CX=W/2;CY=live?H*0.5:H*0.43;R=Math.min(W,H)*(live?0.34:0.27);}
 addEventListener('resize',resize);resize();
 
 // ── YOUR exact image as the orb core (with procedural fallback) ──
@@ -391,15 +402,45 @@ document.getElementById('mic').addEventListener('click',async()=>{
 });
 
 // 👂 always-on wake word: say "Hey EBE"
+async function armWake(on){
+  if(!SR) return false;
+  if(on && !wakeMode){
+    wakeMode=true;listening=true;recog=recog||buildRecog();
+    document.getElementById('wake').style.color='#7fe6a1';
+    await startMicAnalyser();setState('LISTENING');startRecog();
+  } else if(!on && wakeMode){
+    wakeMode=false;armedUntil=0;document.getElementById('wake').style.color='';
+    if(!convoMode){listening=false;setState('IDLE');try{recog&&recog.stop();}catch(e){}analyser=null;}
+  }
+  return true;
+}
 document.getElementById('wake').addEventListener('click',async()=>{
   if(!SR){alert('Wake word needs Chrome or Edge (Web Speech API).');return;}
-  if(wakeMode){wakeMode=false;armedUntil=0;document.getElementById('wake').style.color='';
-    if(!convoMode){listening=false;setState('IDLE');try{recog&&recog.stop();}catch(e){}analyser=null;}return;}
-  wakeMode=true;listening=true;recog=recog||buildRecog();
-  document.getElementById('wake').style.color='#7fe6a1';
-  await startMicAnalyser();setState('LISTENING');startRecog();
-  if(!speaking)speak('Wake word armed. Say, hey E B E.');
+  const turningOn=!wakeMode; await armWake(turningOn);
+  if(turningOn && !speaking) speak('Wake word armed. Say, hey E B E.');
 });
+
+// ● the one button — go completely live: only the orb, always listening, first person
+const liveBtn=document.getElementById('live');
+async function setLive(on,greet){
+  document.body.classList.toggle('live',on);
+  liveBtn.textContent=on?'✕ EXIT':'● GO LIVE';
+  localStorage.setItem('ebeLive',on?'1':'0');
+  resize();
+  if(on){
+    document.getElementById('answer')?.classList.remove('show');
+    if(panel) panel.classList.remove('on');
+    const ok=await armWake(true);
+    if(greet){ if(ok&&!speaking) speak("I'm live. Just say my name, then tell me what you need."); }
+  } else { await armWake(false); }
+}
+liveBtn.addEventListener('click',()=>setLive(!document.body.classList.contains('live'),true));
+// restore live VIEW on reload; (re)arm the mic on the first tap (browsers need a gesture)
+if(localStorage.getItem('ebeLive')==='1'){
+  document.body.classList.add('live');liveBtn.textContent='✕ EXIT';resize();
+  const once=()=>{armWake(true);removeEventListener('pointerdown',once);};
+  addEventListener('pointerdown',once,{once:true});
+}
 
 // ── Approvals & Activity panel (the confirm-first loop, on screen) ──
 const panel=document.getElementById('panel'),pbody=document.getElementById('panel-body');
