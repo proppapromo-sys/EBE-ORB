@@ -64,16 +64,50 @@ export type CouncilResult = {
   fullyConfigured: boolean;
   /** Id of the persisted run in the council log (null if logging was unavailable). */
   runId?: string | null;
+  /** Escalation level used + which brains actually ran (cost control). */
+  level: CouncilLevel;
+  ran: BrainRole[];
 };
+
+export type CouncilLevel = 'standard' | 'important' | 'high' | 'critical';
+
+// Which brains run at each level (cost control — don't run 5 models on a simple ask).
+const ROLES_BY_LEVEL: Record<CouncilLevel, BrainRole[]> = {
+  standard:  ['finalizer'],                                              // 1 model
+  important: ['executive', 'finalizer'],                                 // GPT + Claude
+  high:      ['executive', 'risk', 'evaluator', 'visual', 'finalizer'],  // + risk + Gemini
+  critical:  ['executive', 'operations', 'risk', 'evaluator', 'visual', 'finalizer'] // full council
+};
+const LEVEL_ORDER: CouncilLevel[] = ['standard', 'important', 'high', 'critical'];
+function capLevel(want: CouncilLevel, max?: CouncilLevel): CouncilLevel {
+  if (!max) return want;
+  return LEVEL_ORDER[Math.min(LEVEL_ORDER.indexOf(want), LEVEL_ORDER.indexOf(max))];
+}
+
+/** Risk-first auto-routing: escalate the council based on what the REQUEST is asking for. */
+function detectLevel(request: string): CouncilLevel {
+  const q = request.toLowerCase();
+  const critical = /\b(pay|payroll|wire|transfer|invest|trade|sell|buy|purchase|price|refund|fire|terminate|legal|contract|delete|cancel)\b|\$\d/.test(q);
+  const high = /\b(decide|should i|recommend|strategy|negotiate|hire|approve|risk|compare|choose)\b/.test(q);
+  const important = /\b(schedule|reschedule|email|draft|send|message|reserve|book|order|reorder|invoice|post|remind)\b/.test(q);
+  if (critical) return 'critical';
+  if (high) return 'high';
+  if (important) return 'important';
+  return 'standard';
+}
 
 export async function runCouncil(
   userId: string,
   request: string,
-  opts: { images?: string[]; documents?: string } = {}
+  opts: { images?: string[]; documents?: string; level?: CouncilLevel; maxLevel?: CouncilLevel } = {}
 ): Promise<CouncilResult> {
   // 0) The Heart runs first — code-level risk gate, the only authority over actions.
   const cycle = await runOrbCycle(connectors, userId, { journal: createJournal(userId) });
   const approvals = cycle.actions.filter((a) => a.requiresApproval);
+
+  // Choose how many brains to convene (cost control), capped by the plan's max.
+  const level = capLevel(opts.level ?? detectLevel(request), opts.maxLevel);
+  const roles = new Set<BrainRole>(ROLES_BY_LEVEL[level]);
 
   // Law 4 for the assistant: recall what EBE knows about this owner before reasoning.
   const memories = [...(await recall(userId, request, 6)), ...(await listMemories(userId, 6))];
@@ -83,61 +117,23 @@ export async function runCouncil(
 
   const base = { request, memory, cycle: { actions: cycle.actions, vetoed: cycle.vetoed, passed: cycle.passed } };
   const transcript: BrainResponse[] = [];
+  const out: Record<string, string> = {};
+  const run = async (role: BrainRole, task: string, ctx: unknown, images?: string[]) => {
+    if (!roles.has(role)) return;
+    const b = await runBrain(role, task, ctx, images);
+    transcript.push(b); out[role] = b.output;
+  };
 
-  // 1) GPT-Executive — first reasoning pass
-  const executive = await runBrain('executive', request, { ...base, documents: opts.documents });
-  transcript.push(executive);
-
-  // 2) GPT-Operations — execution plan
-  const operations = await runBrain('operations', 'Turn the executive reasoning into an execution plan.', {
-    ...base,
-    executiveReasoning: executive.output
-  });
-  transcript.push(operations);
-
-  // 3) GPT-Risk — challenge the answer
-  const risk = await runBrain('risk', 'Challenge the plan. Find mistakes, conflicts, and law violations.', {
-    ...base,
-    executiveReasoning: executive.output,
-    executionPlan: operations.output
-  });
-  transcript.push(risk);
-
-  // 4) Claude-Evaluator — deep review + documents
-  const evaluator = await runBrain('evaluator', 'Deeply review the council so far and any documents.', {
-    request,
-    documents: opts.documents,
-    executiveReasoning: executive.output,
-    executionPlan: operations.output,
-    riskChallenge: risk.output
-  });
-  transcript.push(evaluator);
-
-  // 5) Gemini-VisualVerifier — multimodal confirmation / final agreement
-  const visual = await runBrain(
-    'visual',
-    'Confirm visuals/data and give a final agreement check (AGREE/DISAGREE).',
-    {
-      request,
-      executionPlan: operations.output,
-      evaluation: evaluator.output,
-      imagesProvided: (opts.images ?? []).length
-    },
-    opts.images
-  );
-  transcript.push(visual);
-
-  // 6) ORB-Finalizer — combine into one clean response
-  const finalizer = await runBrain('finalizer', 'Combine the entire council into one clean, owner-ready response.', {
-    request,
-    memory,
-    approvalRequired: approvals.map((a) => a.title),
-    gatedActions: cycle.actions,
-    executiveReasoning: executive.output,
-    executionPlan: operations.output,
-    riskChallenge: risk.output,
-    evaluation: evaluator.output,
-    visualConfirmation: visual.output
+  await run('executive', request, { ...base, documents: opts.documents });
+  await run('operations', 'Turn the executive reasoning into an execution plan.', { ...base, executiveReasoning: out.executive });
+  await run('risk', 'Challenge the plan. Find mistakes, conflicts, and law violations.', { ...base, executiveReasoning: out.executive, executionPlan: out.operations });
+  await run('evaluator', 'Deeply review the council so far and any documents.', { request, documents: opts.documents, executiveReasoning: out.executive, executionPlan: out.operations, riskChallenge: out.risk });
+  await run('visual', 'Confirm visuals/data and give a final agreement check (AGREE/DISAGREE).', { request, executionPlan: out.operations, evaluation: out.evaluator, imagesProvided: (opts.images ?? []).length }, opts.images);
+  // ORB-Finalizer (the voice) always runs — it answers from whatever brains convened.
+  const finalizer = await runBrain('finalizer', 'Combine everything into one clean, owner-ready response.', {
+    request, memory, approvalRequired: approvals.map((a) => a.title), gatedActions: cycle.actions,
+    executiveReasoning: out.executive, executionPlan: out.operations, riskChallenge: out.risk,
+    evaluation: out.evaluator, visualConfirmation: out.visual
   });
   transcript.push(finalizer);
 
@@ -148,7 +144,9 @@ export async function runCouncil(
     approvalRequired: { count: approvals.length, titles: approvals.map((a) => a.title) },
     council: transcript,
     finalAnswer: finalizer.output,
-    fullyConfigured: transcript.every((b) => b.ok)
+    fullyConfigured: transcript.every((b) => b.ok),
+    level,
+    ran: transcript.map((b) => b.role)
   };
   result.runId = await saveCouncilRun(userId, result); // ORB logs everything (best-effort)
   return result;

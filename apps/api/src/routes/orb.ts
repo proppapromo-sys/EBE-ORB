@@ -18,6 +18,7 @@ import { translate } from '../services/translate.js';
 import { opentableLink, opentableConfigured, type ReservationRequest } from '../services/reservations.js';
 import { searchRestaurants, placesConfigured } from '../services/places.js';
 import { mailerConfigured, sendMail } from '../services/mailer.js';
+import { PLANS } from '../billing/plans.js';
 import {
   createTask, listTasks, completeTask, reopenTask, deleteTask, taskDurable, type TaskStatus
 } from '../services/taskStore.js';
@@ -57,14 +58,19 @@ const OutcomeSchema = z.object({
 const AskSchema = z.object({
   userId: z.string().min(1).default('demo-user'),
   message: z.string().min(1),
-  council: z.boolean().optional(), // default true — convene the full council
+  council: z.boolean().optional(), // default true — convene the council
   documents: z.string().optional(),
-  images: z.array(z.string()).optional()
+  images: z.array(z.string()).optional(),
+  level: z.enum(['standard', 'important', 'high', 'critical']).optional(),
+  plan: z.string().optional()       // caps how many brains may convene
 });
 
 orbRouter.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'EBE ORB API', timestamp: new Date().toISOString() });
 });
+
+// Pricing tiers (charge by how much of your life/business ORB manages).
+orbRouter.get('/plans', (_req, res) => res.json({ plans: PLANS }));
 
 // What's connected (booleans only — never exposes key values).
 orbRouter.get('/status', (_req, res) => {
@@ -136,7 +142,9 @@ orbRouter.post('/ask', async (req, res, next) => {
     const result = await askOrb(parsed.userId, parsed.message, {
       council: parsed.council,
       documents: parsed.documents,
-      images: parsed.images
+      images: parsed.images,
+      level: parsed.level,
+      plan: parsed.plan
     });
     res.json(result);
   } catch (error) { next(error); }

@@ -2,7 +2,8 @@ import { completeOrbPrompt } from '../services/openai.js';
 import { connectors } from '../connectors/index.js';
 import { runOrbCycle, type OrbCycleReport } from '../genome/orbBranch.js';
 import { createJournal } from '../services/journalStore.js';
-import { runCouncil } from '../brains/council.js';
+import { runCouncil, type CouncilLevel } from '../brains/council.js';
+import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
 // ORB runs on the Universal Genome. The five laws are not advice — they are the gate.
@@ -36,7 +37,7 @@ export async function gatherContext(userId: string): Promise<ConnectorResult[]> 
 export async function askOrb(
   userId: string,
   message: string,
-  opts: { council?: boolean; documents?: string; images?: string[] } = {}
+  opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string } = {}
 ) {
   const context = await gatherContext(userId);
 
@@ -56,7 +57,10 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     return { mode: 'single' as const, answer, context, cycle };
   }
 
-  const council = await runCouncil(userId, message, { documents: opts.documents, images: opts.images });
+  const council = await runCouncil(userId, message, {
+    documents: opts.documents, images: opts.images,
+    level: opts.level, maxLevel: opts.plan ? getPlan(opts.plan).maxCouncil : undefined
+  });
   return {
     mode: 'council' as const,
     answer: council.finalAnswer,
@@ -64,7 +68,9 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     cycle: council.cycle,
     approvalRequired: council.approvalRequired,
     council: council.council,
-    fullyConfigured: council.fullyConfigured
+    fullyConfigured: council.fullyConfigured,
+    level: council.level,
+    ran: council.ran
   };
 }
 
