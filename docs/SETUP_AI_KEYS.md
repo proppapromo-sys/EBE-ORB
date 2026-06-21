@@ -18,11 +18,34 @@ cp apps/api/.env.example apps/api/.env
 `apps/api/.env` is git-ignored, so your keys are never committed.
 
 ## Step 2 — get each key
-1. **OpenAI** — https://platform.openai.com/api-keys → *Create new secret key* → copy (`sk-...`).
-   Make sure billing is enabled (Settings → Billing).
-2. **Anthropic (Claude)** — https://console.anthropic.com/settings/keys → *Create Key* → copy
-   (`sk-ant-...`). Add credit under *Billing* (Plans & Billing).
-3. **Gemini (Google)** — https://aistudio.google.com/apikey → *Create API key* → copy. Free tier available.
+
+> ⚠️ The deep links below only work **after you're signed in**. If you see a 404, you're
+> probably logged out or in a different region — open the **homepage** first, sign in, then
+> follow the in-app navigation.
+
+### OpenAI (`OPENAI_API_KEY`)
+1. Open **https://platform.openai.com** and **Log in** (or Sign up).
+2. Click the **⚙ gear / profile icon** (top-right).
+3. Left menu → **API keys** (or **Dashboard → API keys**).
+4. **+ Create new secret key** → name it `EBE ORB` → **Create**.
+5. **Copy it now** (`sk-...`) — shown only once.
+6. If prompted: **Settings → Billing → Add payment method**.
+   (Direct link once logged in: https://platform.openai.com/api-keys)
+
+### Anthropic / Claude (`ANTHROPIC_API_KEY`)
+1. Open **https://console.anthropic.com** and **Sign in** (or Sign up).
+2. Dashboard → **Get API keys**, or **⚙ Settings → API Keys**.
+3. **Create Key** → name it `EBE ORB` → **Add**.
+4. **Copy it** (`sk-ant-...`).
+5. Add a little credit: **Settings → Plans & Billing → Buy credits**.
+   (Direct link once logged in: https://console.anthropic.com/settings/keys)
+
+### Gemini / Google AI Studio (`GEMINI_API_KEY`)
+1. Open **https://aistudio.google.com** and **Sign in** with Google.
+2. Click **Get API key** (left sidebar / top button).
+3. **Create API key** → **Create API key in new project**.
+4. **Copy it.** Free tier works to start.
+   (Direct link once logged in: https://aistudio.google.com/app/apikey)
 
 ## Step 3 — paste into `apps/api/.env`
 ```bash
