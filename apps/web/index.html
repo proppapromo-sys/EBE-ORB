@@ -207,12 +207,13 @@ function sizeP(){pc.width=cv.width;pc.height=cv.height;pctx.setTransform(DPR,0,0
 
 // ── energy / voice ──
 let energy=0.15,target=0.15,amp=0,speaking=false,listening=false,analyser=null,freq=null,t=0,voiceKick=0;
-let ripples=[],lastRipple=0;
+let ripples=[],lastRipple=0,phase='idle';
 const setState=s=>{const e=document.getElementById('st-state');if(e)e.textContent=s;};
+function setPhase(p){phase=p;setState(p.toUpperCase());}
 
 // ── NeuralCluster core (EBE Live design) — Fibonacci sphere of neurons, 3-nearest-neighbor
 // synapses, particles firing along them, bright thought-core. Phase-tinted, pulses with the voice.
-const NC_N=38, nc_nodes=[], nc_edges=[], nc_fire=new Float32Array(NC_N);
+const NC_N=54, nc_nodes=[], nc_edges=[], nc_fire=new Float32Array(NC_N);
 (function buildNeural(){
   const ga=Math.PI*(3-Math.sqrt(5));
   for(let i=0;i<NC_N;i++){const y=1-(i/(NC_N-1))*2;const r=Math.sqrt(Math.max(0,1-y*y));const th=ga*i;
@@ -223,10 +224,14 @@ const NC_N=38, nc_nodes=[], nc_edges=[], nc_fire=new Float32Array(NC_N);
     for(const j of order.slice(0,3)){seen.add(Math.min(i,j)+'-'+Math.max(i,j));}}
   for(const e of seen){const[a,b]=e.split('-').map(Number);nc_edges.push([a,b]);}
 })();
-function phaseColor(){                                  // idle blue · listening teal · speaking brighter
-  if(speaking) return [140,190,255];
-  if(listening) return [111,228,200];
-  return [123,179,223];                                 // brand #7BB3DF
+function phaseColor(){                                  // EBE Live phase palette
+  switch(phase){
+    case 'listening': return [111,228,200];             // teal #6fe4c8
+    case 'thinking':  return [150,160,255];             // indigo
+    case 'speaking':  return [140,195,255];             // bright blue
+    case 'vision':    return [251,191,36];              // amber #fbbf24
+    default:          return [123,179,223];             // brand #7BB3DF
+  }
 }
 function drawNeural(pulse){
   const [cr,cg,cb]=phaseColor();
@@ -246,6 +251,12 @@ function drawNeural(pulse){
   core.addColorStop(0.4,`rgba(${cr},${cg},${cb},${0.16+0.28*amp})`);
   core.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
   ctx.fillStyle=core;ctx.beginPath();ctx.arc(CX,CY,R*0.7,0,7);ctx.fill();
+  // atmosphere shell at the sphere boundary
+  const at=ctx.createRadialGradient(CX,CY,rr*0.86,CX,CY,rr*1.14);
+  at.addColorStop(0,`rgba(${cr},${cg},${cb},0)`);
+  at.addColorStop(0.62,`rgba(${cr},${cg},${cb},${0.10+0.12*energy})`);
+  at.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+  ctx.fillStyle=at;ctx.beginPath();ctx.arc(CX,CY,rr*1.14,0,7);ctx.fill();
   ctx.globalCompositeOperation='source-over';
   // synapse edges, back-to-front, with a particle firing along each
   const eds=nc_edges.map(([a,b])=>[a,b,(P[a][2]+P[b][2])/2]).sort((u,v)=>u[2]-v[2]);
@@ -350,11 +361,11 @@ function speak(text){if(!('speechSynthesis'in window))return;speechSynthesis.can
   const u=new SpeechSynthesisUtterance(String(text).replace(/\s+/g,' ').slice(0,800));
   u.voice=pickVoice(speechSynthesis.getVoices());
   u.rate=0.97;u.pitch=1.0;
-  u.onstart=()=>{speaking=true;setState('SPEAKING');document.getElementById('speaking').classList.add('on');
+  u.onstart=()=>{speaking=true;setPhase('speaking');document.getElementById('speaking').classList.add('on');
     if(recogActive){try{recog.stop();}catch(e){}}};                 // don't transcribe our own voice
   u.onboundary=()=>{voiceKick=1;ripples.push({r:R*0.16,life:1});}; // ripple on each word — voice-wave sync
   u.onend=()=>{speaking=false;document.getElementById('speaking').classList.remove('on');
-    if(convoMode||wakeMode){setState('LISTENING');startRecog();}else setState('IDLE');};
+    if(convoMode||wakeMode){setPhase('listening');startRecog();}else setPhase('idle');};
   speechSynthesis.speak(u);}
 if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
 cv.addEventListener('click',()=>speak("Hey, I'm here. What do you need?"));
@@ -363,7 +374,7 @@ cv.addEventListener('click',()=>speak("Hey, I'm here. What do you need?"));
 async function convene(q){
   if(!q)return;
   document.getElementById('q').value='';
-  const box=document.getElementById('answer');box.classList.add('show');box.textContent='Thinking…';
+  const box=document.getElementById('answer');box.classList.add('show');box.textContent='Thinking…';setPhase('thinking');
   if(!API){const demo="I'm in demo mode right now — connect me to my system and I'll really get to work. Anything that spends money or sends something, I'll always check with you first.";
     box.innerHTML='<span class="badge">DEMO</span>'+demo;speak(demo);return;}
   try{const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user',message:q})});
@@ -386,7 +397,7 @@ document.getElementById('file').addEventListener('change',e=>{const f=e.target.f
 document.getElementById('gen').addEventListener('click',async()=>{
   const box=document.getElementById('answer');box.classList.add('show');
   if(!API){box.innerHTML='<span class="badge">GEMINI</span>Connect the backend (window.ORB_API) and set GEMINI_API_KEY first.';return;}
-  box.innerHTML='<span class="badge">GEMINI</span>Generating a fresh orb…';
+  box.innerHTML='<span class="badge">GEMINI</span>Generating a fresh orb…';setPhase('vision');
   const prompt=document.getElementById('q').value.trim();
   try{
     const r=await fetch(API+'/api/orb/vision/orb-image',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prompt})});
@@ -409,7 +420,7 @@ async function startMicAnalyser(){
 function buildRecog(){
   if(!SR)return null;
   const r=new SR();r.lang='en-US';r.interimResults=true;r.continuous=false;
-  r.onstart=()=>{recogActive=true;if(convoMode)setState('LISTENING');};
+  r.onstart=()=>{recogActive=true;if(convoMode||wakeMode)setPhase('listening');};
   r.onresult=ev=>{let txt='';for(let i=ev.resultIndex;i<ev.results.length;i++)txt+=ev.results[i][0].transcript;
     document.getElementById('q').value=txt;
     if(!ev.results[ev.results.length-1].isFinal)return;
@@ -418,7 +429,7 @@ function buildRecog(){
     if(wakeMode){
       if(WAKE.test(q)){const cmd=afterWake(q);
         if(cmd.length>2){convene(cmd);}                       // "Hey EBE, what's urgent?"
-        else{armedUntil=Date.now()+9000;setState('LISTENING');speak("Yeah? I'm listening.");}  // just "Hey EBE"
+        else{armedUntil=Date.now()+9000;setPhase('listening');speak("Yeah? I'm listening.");}  // just "Hey EBE"
       } else if(armedUntil>Date.now()){armedUntil=0;convene(q);} // command right after the wake
     }};
   r.onerror=()=>{};
@@ -427,11 +438,11 @@ function buildRecog(){
 }
 document.getElementById('mic').addEventListener('click',async()=>{
   if(!SR){alert('Voice input needs Chrome or Edge (Web Speech API).');return;}
-  if(convoMode){convoMode=false;listening=false;setState('IDLE');document.getElementById('mic').style.color='';
+  if(convoMode){convoMode=false;listening=false;setPhase('idle');document.getElementById('mic').style.color='';
     try{recog&&recog.stop();}catch(e){}if(!wakeMode)analyser=null;return;}
   convoMode=true;listening=true;recog=recog||buildRecog();
   document.getElementById('mic').style.color='#ffc878';
-  await startMicAnalyser();setState('LISTENING');startRecog();
+  await startMicAnalyser();setPhase('listening');startRecog();
   if(!speaking)speak("Okay, I'm listening.");
 });
 
@@ -441,10 +452,10 @@ async function armWake(on){
   if(on && !wakeMode){
     wakeMode=true;listening=true;recog=recog||buildRecog();
     document.getElementById('wake').style.color='#7fe6a1';
-    await startMicAnalyser();setState('LISTENING');startRecog();
+    await startMicAnalyser();setPhase('listening');startRecog();
   } else if(!on && wakeMode){
     wakeMode=false;armedUntil=0;document.getElementById('wake').style.color='';
-    if(!convoMode){listening=false;setState('IDLE');try{recog&&recog.stop();}catch(e){}analyser=null;}
+    if(!convoMode){listening=false;setPhase('idle');try{recog&&recog.stop();}catch(e){}analyser=null;}
   }
   return true;
 }
