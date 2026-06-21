@@ -9,6 +9,7 @@
  * Same shape works for Resy / Google "Reserve with Google" by adding providers.
  */
 import 'dotenv/config';
+import { sendMail, mailerConfigured } from './mailer.js';
 
 export type ReservationRequest = {
   restaurant: string;
@@ -16,7 +17,10 @@ export type ReservationRequest = {
   time: string;        // HH:mm (24h)
   partySize: number;
   city?: string;
-  restaurantId?: string; // OpenTable rid, when known
+  restaurantId?: string;   // OpenTable rid, when known
+  restaurantEmail?: string; // if known, EBE emails the request directly (true auto-book)
+  ownerName?: string;
+  ownerContact?: string;   // phone/email the restaurant can reply to
   notes?: string;
 };
 
@@ -38,30 +42,44 @@ export function opentableLink(r: ReservationRequest): string {
 }
 
 export type BookingResult = {
-  status: 'link' | 'booked' | 'error';
+  status: 'requested' | 'link' | 'booked' | 'error';
   link: string;
   confirmation?: string;
   note?: string;
 };
 
-/** Execute a reservation. Returns a confirm link today; real partner booking when approved. */
+/**
+ * Execute a reservation. Order of preference:
+ *  1) If we have the restaurant's email + a mailer → EBE sends the request directly (true auto-book).
+ *  2) Else fall back to a one-tap OpenTable link the owner confirms.
+ */
 export async function bookReservation(r: ReservationRequest): Promise<BookingResult> {
   const link = opentableLink(r);
-  if (!opentableConfigured()) {
-    return {
-      status: 'link',
-      link,
-      note:
-        'OpenTable partner API not connected — using a one-tap booking link. Apply at ' +
-        'opentable.com/restaurant-solutions/api-partners to enable in-app booking.'
-    };
+
+  // 1) Direct request to the restaurant — fully handled by EBE, no tapping.
+  if (r.restaurantEmail && mailerConfigured()) {
+    const subject = `Reservation request — party of ${r.partySize}, ${r.date} ${r.time}`;
+    const body =
+      `Hello ${r.restaurant},\n\n` +
+      `I'd like to request a table for ${r.partySize} on ${r.date} at ${r.time}.` +
+      (r.notes ? `\nNote: ${r.notes}` : '') +
+      `\n\nName: ${r.ownerName || 'EBE (on behalf of the guest)'}` +
+      (r.ownerContact ? `\nReply to: ${r.ownerContact}` : '') +
+      `\n\nCould you please confirm availability? Thank you.`;
+    const m = await sendMail(r.restaurantEmail, subject, body);
+    if (m.sent) {
+      return { status: 'requested', link,
+        confirmation: m.id, note: `Request emailed to ${r.restaurant}. I'll let you know when they confirm.` };
+    }
+    return { status: 'link', link, note: `Couldn't email the restaurant (${m.note}). Use the link to confirm.` };
   }
-  // Partner path: OpenTable issues a booking link / availability via your approved app + rid.
-  // (Full server-side completion isn't offered to most partners — the diner confirms on OpenTable.)
-  // TODO: call the OpenTable Partner availability/reservation endpoint with OPENTABLE_API_TOKEN + rid.
+
+  // 2) OpenTable link (no key needed; partner API wires in here once approved).
   return {
     status: 'link',
     link,
-    note: 'Partner token present — availability/booking calls wire in here once your OpenTable app is approved.'
+    note: opentableConfigured()
+      ? 'Partner token present — availability/booking wires in here once your OpenTable app is approved.'
+      : "Tap the link to confirm on OpenTable. (To have me book without a tap, give me the restaurant's email, or become an OpenTable partner.)"
   };
 }

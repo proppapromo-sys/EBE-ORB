@@ -292,6 +292,9 @@ const ReserveSchema = z.object({
   partySize: z.number().int().positive().optional(),
   city: z.string().optional(),
   restaurantId: z.string().optional(),
+  restaurantEmail: z.string().email().optional(), // if known, EBE emails the request directly
+  ownerName: z.string().optional(),
+  ownerContact: z.string().optional(),
   notes: z.string().optional()
 });
 orbRouter.post('/reserve', async (req, res, next) => {
@@ -299,7 +302,8 @@ orbRouter.post('/reserve', async (req, res, next) => {
     const p = ReserveSchema.parse(req.body ?? {});
     const reservation: ReservationRequest = {
       restaurant: p.restaurant, date: p.date, time: p.time ?? '19:00',
-      partySize: p.partySize ?? 2, city: p.city, restaurantId: p.restaurantId, notes: p.notes
+      partySize: p.partySize ?? 2, city: p.city, restaurantId: p.restaurantId,
+      restaurantEmail: p.restaurantEmail, ownerName: p.ownerName, ownerContact: p.ownerContact, notes: p.notes
     };
     const link = opentableLink(reservation);
     const action = createAction({

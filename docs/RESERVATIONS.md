@@ -14,9 +14,15 @@ So EBE is built provider-pluggable:
 
 | Mode | Needs | What happens |
 |---|---|---|
-| **Link (today, default)** | nothing | EBE creates a one-tap OpenTable link prefilled with the restaurant, date, time, and party size. You approve → it opens → you confirm. Works right now. |
+| **Auto-book by email (hands-off)** | restaurant's email + `RESEND_API_KEY` + `EBE_FROM_EMAIL` | After your approval, EBE **emails the reservation request straight to the restaurant** and tells you when they confirm. No tapping. The legit way to "just book it" without an OpenTable partnership. |
+| **Link (default, no key)** | nothing | EBE creates a one-tap OpenTable link prefilled with restaurant/date/time/party. You approve → it opens → you confirm. |
 | **Partner API (later)** | `OPENTABLE_API_TOKEN` (after approval) | Live availability + booking links via your approved app + a restaurant `rid`. |
 | **Other providers** | add a provider | Resy / Google "Reserve with Google" drop in the same way. |
+
+> Why not fully automatic via OpenTable with no key? OpenTable offers **no public endpoint to
+> submit a reservation**, and scripting their site violates their terms (and gets blocked). The
+> legitimate hands-off path is **EBE contacting the restaurant directly** (email above), or an
+> OpenTable partnership.
 
 ## Use it
 Say or type a natural request:
