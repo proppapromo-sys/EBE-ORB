@@ -1,0 +1,41 @@
+# Render Blueprint — one service that serves the EBE API + web face.
+# Deploy: push to GitHub → Render → New → Blueprint → pick this repo → set the secret env vars.
+services:
+  - type: web
+    name: ebe-orb
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/orb/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # ── set these in the Render dashboard (sync:false = secret, prompted on deploy) ──
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      # optional features
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EBE_FROM_EMAIL
+        sync: false
+      - key: EBE_REPLY_TO
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
