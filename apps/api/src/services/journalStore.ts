@@ -77,5 +77,10 @@ export function createJournal(userKey: string): Journal {
   return new Journal(supabase ? new SupabaseJournalSink(userKey) : new MemoryJournalSink(userKey));
 }
 
+export async function clearUserJournal(userKey: string): Promise<void> {
+  if (supabase) { await supabase.from(TABLE).delete().eq('user_key', userKey); return; }
+  memStore.delete(userKey);
+}
+
 /** True when journal writes will actually persist beyond the process. */
 export const journalIsDurable = Boolean(supabase);

@@ -85,4 +85,9 @@ export async function forget(userKey: string, id: string): Promise<boolean> {
   return false;
 }
 
+export async function clearUserMemories(userKey: string): Promise<void> {
+  if (supabase) { await supabase.from(TABLE).delete().eq('user_key', userKey); return; }
+  for (let i = mem.length - 1; i >= 0; i--) if (mem[i].userKey === userKey) mem.splice(i, 1);
+}
+
 export const memoryDurable = Boolean(supabase);

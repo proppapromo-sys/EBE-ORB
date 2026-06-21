@@ -19,6 +19,8 @@ import { opentableLink, opentableConfigured, type ReservationRequest } from '../
 import { searchRestaurants, placesConfigured } from '../services/places.js';
 import { mailerConfigured, sendMail } from '../services/mailer.js';
 import { PLANS } from '../billing/plans.js';
+import { deleteAccount } from '../services/account.js';
+import { transcribe, sttConfigured } from '../services/stt.js';
 import {
   createTask, listTasks, completeTask, reopenTask, deleteTask, taskDurable, type TaskStatus
 } from '../services/taskStore.js';
@@ -73,6 +75,41 @@ orbRouter.get('/health', (_req, res) => {
 
 // Pricing tiers (charge by how much of your life/business ORB manages).
 orbRouter.get('/plans', (_req, res) => res.json({ plans: PLANS }));
+
+// Account deletion (Apple 5.1.1(v)) — wipe all of a user's data from inside the app.
+orbRouter.delete('/account', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? req.body?.userId ?? '');
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+    res.json({ ok: true, userId, ...(await deleteAccount(userId)) });
+  } catch (error) { next(error); }
+});
+
+// Native voice input: audio (base64) → Whisper → text. Real native functionality (not a webview).
+orbRouter.post('/transcribe', async (req, res, next) => {
+  try {
+    const audio = String(req.body?.audio ?? '');
+    if (!audio) return res.status(400).json({ error: 'audio (base64) required' });
+    res.json({ configured: sttConfigured(), ...(await transcribe(audio, req.body?.mime)) });
+  } catch (error) { next(error); }
+});
+
+// Privacy policy (required for the App Store).
+orbRouter.get('/privacy', (_req, res) => {
+  res.set('content-type', 'text/html').send(`<!doctype html><meta charset=utf-8>
+<title>EBE ORB — Privacy</title><body style="background:#05080f;color:#bdf3ff;font-family:system-ui;max-width:720px;margin:40px auto;padding:0 20px;line-height:1.6">
+<h1>EBE ORB — Privacy Policy</h1>
+<p>EBE is your private digital chief of staff. We collect only what you connect or tell it, to do the job you ask.</p>
+<h3>What we store</h3><ul>
+<li>Your account email and the memories, tasks, notes you create.</li>
+<li>Data from services you connect (e.g., Gmail, Calendar) — used only to assist you, never sold.</li>
+<li>Requests you make and EBE's responses, to provide and improve the service.</li></ul>
+<h3>AI processing</h3><p>Requests may be processed by AI providers (OpenAI, Anthropic, Google) solely to generate your response. Each key is used only with its provider.</p>
+<h3>Your control</h3><ul>
+<li>High-risk actions never run without your approval (confirm-first).</li>
+<li>You can delete your account and all associated data at any time from Settings, or via DELETE /api/orb/account.</li></ul>
+<h3>Contact</h3><p>privacy@ebehq.com</p></body>`);
+});
 
 // What's connected (booleans only — never exposes key values).
 orbRouter.get('/status', (_req, res) => {

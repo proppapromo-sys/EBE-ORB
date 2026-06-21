@@ -180,3 +180,8 @@ export async function executeAction(
   });
   return { action: updated ?? action, result };
 }
+
+export async function clearUserActions(userKey: string): Promise<void> {
+  if (supabase) { await supabase.from(TABLE).delete().eq('user_key', userKey); return; }
+  for (const [id, a] of mem) if (a.userKey === userKey) mem.delete(id);
+}

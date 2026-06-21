@@ -61,4 +61,9 @@ export async function deleteToken(userKey: string, provider: string): Promise<vo
   mem.delete(k(userKey, provider));
 }
 
+export async function clearUserTokens(userKey: string): Promise<void> {
+  if (supabase) { await supabase.from(TABLE).delete().eq('user_key', userKey); return; }
+  for (const key of [...mem.keys()]) if (key.startsWith(userKey + ':')) mem.delete(key);
+}
+
 export const oauthDurable = Boolean(supabase);

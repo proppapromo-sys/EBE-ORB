@@ -26,4 +26,9 @@ export async function saveNotepad(userKey: string, content: string): Promise<{ c
   return { content, updatedAt };
 }
 
+export async function clearUserNotepad(userKey: string): Promise<void> {
+  if (supabase) { await supabase.from(TABLE).delete().eq('user_key', userKey); return; }
+  mem.delete(userKey);
+}
+
 export const notepadDurable = Boolean(supabase);

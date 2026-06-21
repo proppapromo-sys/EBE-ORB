@@ -68,4 +68,9 @@ export async function listCouncilRuns(userKey: string, limit = 20): Promise<Coun
   return mem.filter((r) => r.userKey === userKey).slice(0, limit);
 }
 
+export async function clearUserCouncilRuns(userKey: string): Promise<void> {
+  if (supabase) { await supabase.from(TABLE).delete().eq('user_key', userKey); return; }
+  for (let i = mem.length - 1; i >= 0; i--) if (mem[i].userKey === userKey) mem.splice(i, 1);
+}
+
 export const councilLogDurable = Boolean(supabase);
