@@ -195,7 +195,7 @@ const pc=document.createElement('canvas'),pctx=pc.getContext('2d');
 function sizeP(){pc.width=cv.width;pc.height=cv.height;pctx.setTransform(DPR,0,0,DPR,0,0);}sizeP();addEventListener('resize',sizeP);
 
 // ── energy / voice ──
-let energy=0.15,target=0.15,amp=0,speaking=false,listening=false,analyser=null,freq=null,t=0;
+let energy=0.15,target=0.15,amp=0,speaking=false,listening=false,analyser=null,freq=null,t=0,voiceKick=0;
 const setState=s=>document.getElementById('st-state').textContent=s;
 
 function frame(){
@@ -292,7 +292,7 @@ function frame(){
 frame();
 
 // ── speech (ORB's voice) ──
-let convoMode=false, wakeMode=false, armedUntil=0, recog=null, recogActive=false, voiceKick=0;
+let convoMode=false, wakeMode=false, armedUntil=0, recog=null, recogActive=false;
 // "Hey EBE" (eebee) and the ways speech engines tend to hear it
 const WAKE=/\b(?:hey|ok|okay|yo)?\s*(e+\s*b+\s*e+|ee?bee?|ebay|eevee|ebbie|ibi|abby|e\.?\s*b\.?\s*e\.?)\b/i;
 function afterWake(text){const m=WAKE.exec(text);return m?text.slice(m.index+m[0].length).replace(/^[\s,.:!?-]+/,'').trim():'';}
