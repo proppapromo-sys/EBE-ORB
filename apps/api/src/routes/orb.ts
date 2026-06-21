@@ -25,7 +25,6 @@ import { INTEGRATIONS, getIntegration, testConnection } from '../services/integr
 import { saveCredential, getCredential, deleteCredential, maskValue } from '../services/credentialStore.js';
 import { listTxns, walletDurable } from '../services/walletStore.js';
 import { RAILS, getWalletView, payBill, confirmPayment, cancelPayment, dollarsToCents } from '../services/wallet.js';
-import { PLATFORM_KEYS, platformKeyStatus, setPlatformKey, clearPlatformKey, type PlatformKeyName } from '../services/platformKeys.js';
 import {
   createTask, listTasks, completeTask, reopenTask, deleteTask, taskDurable, type TaskStatus
 } from '../services/taskStore.js';
@@ -142,31 +141,6 @@ orbRouter.get('/connectors', async (req, res, next) => {
       connectors.map(async (c) => ({ name: c.name, domain: c.domain, status: await c.status(userId) }))
     );
     res.json({ connectors: list });
-  } catch (error) { next(error); }
-});
-
-// ── AI brain keys (the owner pastes OpenAI / Anthropic / Gemini keys IN-APP) ──
-// Status only — never returns the secret values.
-orbRouter.get('/ai-keys', (_req, res) => {
-  res.json({ keys: platformKeyStatus() });
-});
-
-const AiKeySchema = z.object({ name: z.enum(PLATFORM_KEYS), value: z.string().min(8) });
-orbRouter.post('/ai-keys', async (req, res, next) => {
-  try {
-    const { name, value } = AiKeySchema.parse(req.body);
-    await setPlatformKey(name as PlatformKeyName, value.trim());
-    res.json({ ok: true, keys: platformKeyStatus() });
-  } catch (error) {
-    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Pick a valid key name and paste a real key.' });
-    next(error);
-  }
-});
-orbRouter.delete('/ai-keys/:name', async (req, res, next) => {
-  try {
-    if (!(PLATFORM_KEYS as readonly string[]).includes(req.params.name)) return res.status(404).json({ error: 'Unknown key.' });
-    await clearPlatformKey(req.params.name as PlatformKeyName);
-    res.json({ ok: true, keys: platformKeyStatus() });
   } catch (error) { next(error); }
 });
 

@@ -757,32 +757,13 @@ async function renderNews(){
     (d.headlines||[]).map(h=>`<div class="card"><div class="t">${h.url?`<a href="${esc(h.url)}" target="_blank" style="color:#bdf3ff;text-decoration:none">${esc(h.title)}</a>`:esc(h.title)}</div>
       <div class="m">${esc(h.source||'')}</div></div>`).join('');
 }
-// Friendly names for the AI brain keys (so non-technical owners know which is which).
-const AI_LABELS={GEMINI_API_KEY:'Google AI Studio (Gemini)',OPENAI_API_KEY:'OpenAI (ChatGPT)',ANTHROPIC_API_KEY:'Anthropic (Claude)'};
-const AI_HELP={GEMINI_API_KEY:'From aistudio.google.com → Get API key. Powers vision + images.',
-  OPENAI_API_KEY:'From platform.openai.com → API keys. Powers reasoning + voice.',
-  ANTHROPIC_API_KEY:'From console.anthropic.com → API keys. Powers deep review.'};
-
-// SETTINGS — paste your AI brain keys (top) and connect your business (below). ORB takes them live.
+// SETTINGS — users connect only what's THEIRS (their business). The AI brains are built in.
 async function renderSettings(){
   const uid=ORB_USER||'demo-user';
-  const [ai,d]=await Promise.all([
-    fetch(API+'/api/orb/ai-keys').then(r=>r.json()),
-    fetch(API+'/api/orb/integrations?userId='+encodeURIComponent(uid)).then(r=>r.json())
-  ]);
+  const r=await fetch(API+'/api/orb/integrations?userId='+encodeURIComponent(uid));
+  const d=await r.json();
   const items=d.integrations||[];
-  const aiCards=(ai.keys||[]).map(k=>`<div class="card" data-ai="${esc(k.name)}">
-      <div class="t">${esc(AI_LABELS[k.name]||k.name)} ${k.set?'<span class="pill ok">ON'+(k.source==='env'?' (file)':'')+'</span>':''}</div>
-      <input class="ai-in" type="password" placeholder="${k.set?'Saved '+esc(k.hint)+' — paste to replace':'Paste your key here'}" autocomplete="off" spellcheck="false"
-        style="width:100%;margin:5px 0;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);border-radius:8px;color:#cfeefb;font:inherit;font-size:13px;padding:9px;outline:0" />
-      <div class="m" style="opacity:.7;margin-bottom:6px">${esc(AI_HELP[k.name]||'')}</div>
-      <div class="set-note m" style="min-height:14px"></div>
-      <div class="btns"><button class="go" data-act="save-ai">${k.set?'UPDATE KEY':'SAVE KEY'}</button></div>
-    </div>`).join('');
-
-  pbody.innerHTML=`<div class="m" style="margin-bottom:6px">🧠 ORB's brain keys — paste them here once and ORB switches on instantly. Stored privately; you'll never see the full key again.</div>`+
-    aiCards+
-    `<div class="m" style="margin:14px 0 6px">🔗 Connect your business — ORB checks each key and links it automatically.</div>`+
+  pbody.innerHTML=`<div class="m" style="margin-bottom:10px">Connect your business — ORB checks each key and links it automatically. Your keys are stored privately and never shown again.</div>`+
     items.map(it=>{
       const fields=it.fields.map(f=>{
         const ph=it.connected&&it.preview&&it.preview[f.key]?it.preview[f.key]:(f.placeholder||'');
@@ -819,20 +800,6 @@ async function renderSettings(){
       note.style.color='#9fd0ea';note.textContent='Disconnecting…';
       try{await fetch(API+'/api/orb/integrations/'+encodeURIComponent(prov)+'?userId='+encodeURIComponent(uid),{method:'DELETE'});
         refreshPanel();}catch(e){note.style.color='#ff9b9b';note.textContent=e.message;}
-    });
-  });
-  // AI brain keys — save straight into the running ORB.
-  pbody.querySelectorAll('.card[data-ai]').forEach(card=>{
-    const name=card.dataset.ai, note=card.querySelector('.set-note'), input=card.querySelector('.ai-in');
-    card.querySelector('button[data-act="save-ai"]')?.addEventListener('click',async()=>{
-      const value=input.value.trim();
-      if(value.length<8){note.style.color='#ff9b9b';note.textContent='Paste the full key first.';return;}
-      note.style.color='#9fd0ea';note.textContent='Saving…';
-      try{const res=await fetch(API+'/api/orb/ai-keys',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name,value})});
-        const dd=await res.json();
-        if(dd.ok){note.style.color='#7fe6a1';note.textContent='✓ Saved — ORB is on.';speak("Got it — I'm switched on.");setTimeout(refreshPanel,900);}
-        else{note.style.color='#ff9b9b';note.textContent=dd.error||'Could not save.';}
-      }catch(e){note.style.color='#ff9b9b';note.textContent=e.message;}
     });
   });
 }
