@@ -5,6 +5,8 @@ import { connectors, getConnector } from '../connectors/index.js';
 import { runOrbCycle } from '../genome/orbBranch.js';
 import { createJournal, journalIsDurable } from '../services/journalStore.js';
 import { runCouncil } from '../brains/council.js';
+import { runBuild, BLUEPRINTS, buildCapability } from '../build/genome.js';
+import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from '../build/genome.js';
 import { BRAINS, COUNCIL_ORDER } from '../brains/brains.js';
 import { getProviderClient } from '../brains/providers.js';
 import { listCouncilRuns, councilLogDurable } from '../services/councilStore.js';
@@ -388,6 +390,40 @@ orbRouter.post('/council', async (req, res, next) => {
     const result = await runCouncil(parsed.userId, parsed.request, {
       images: parsed.images,
       documents: parsed.documents
+    });
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+// ── Build mode: the Universal Construction Genome ──────────────────────────────
+const BuildSchema = z.object({
+  userId: z.string().min(1).default('demo-user'),
+  request: z.string().min(1),
+  category: z.enum(['marketing', 'webapp', 'ecommerce', 'mobile']).optional(),
+  brand: z.object({
+    name: z.string().optional(),
+    palette: z.string().optional(),
+    vibe: z.string().optional(),
+    logoNote: z.string().optional()
+  }).optional(),
+  plan: z.string().optional()   // caps depth, file count, and deploy ability
+});
+
+// What ORB can construct + the genome it runs on (for the Build UI).
+orbRouter.get('/build/blueprints', (req, res) => {
+  const cap = buildCapability(req.query.plan ? String(req.query.plan) : undefined);
+  res.json({ laws: CONSTRUCTION_LAWS, organs: CONSTRUCTION_ORGANS, capability: cap, blueprints: BLUEPRINTS });
+});
+
+// Construct a client's site/app from a short brief. Effort/depth scale with the tier.
+orbRouter.post('/build', async (req, res, next) => {
+  try {
+    const parsed = BuildSchema.parse(req.body ?? {});
+    const result = await runBuild({
+      request: parsed.request,
+      category: parsed.category,
+      brand: parsed.brand,
+      plan: parsed.plan
     });
     res.json(result);
   } catch (error) { next(error); }
