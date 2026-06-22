@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { orbRouter } from './routes/orb.js';
 import { loadPlatformKeys } from './services/platformKeys.js';
+import { handleWebhook } from './services/billing.js';
 
 // Keep the server alive: a single unexpected async error must never crash-loop the whole app.
 // Log it loudly and keep serving (so one bad request or integration can't take ORB down).
@@ -16,6 +17,18 @@ void loadPlatformKeys();
 
 const app = express();
 app.use(cors());
+
+// Stripe webhook needs the RAW body for signature verification — mount it before express.json().
+app.post('/api/orb/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const out = await handleWebhook(req.body as Buffer, req.header('stripe-signature'));
+    res.json(out);
+  } catch (err) {
+    console.error('[billing] webhook error:', err instanceof Error ? err.message : err);
+    res.status(400).json({ error: err instanceof Error ? err.message : 'webhook error' });
+  }
+});
+
 app.use(express.json({ limit: '2mb' }));
 app.use('/api/orb', orbRouter);
 

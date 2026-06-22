@@ -166,6 +166,8 @@
     <div class="tab" data-tab="news">NEWS</div>
     <div class="tab" data-tab="activity">ACTIVITY</div>
     <div class="tab" data-tab="wallet">WALLET</div>
+    <div class="tab" data-tab="build">BUILD</div>
+    <div class="tab" data-tab="plans">PLANS</div>
     <div class="tab" data-tab="settings">SETTINGS</div>
   </div>
   <div class="body" id="panel-body"><div class="empty">Loading…</div></div>
@@ -604,7 +606,9 @@ async function convene(q){
   if(!API){const demo="I'm in demo mode right now — connect me to my system and I'll really get to work. Anything that spends money or sends something, I'll always check with you first.";
     box.innerHTML='<span class="badge">DEMO</span>'+demo;speak(demo,voiceLang.code);return;}
   try{const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:ORB_USER||'demo-user',message:q,personality:persona})});
-    const d=await r.json();const need=d.approvalRequired?.count?`<span class="badge">${d.approvalRequired.count} NEED APPROVAL</span>`:'';
+    const d=await r.json();
+    if(d.mode==='build'&&d.build){lastBuild=d.build;tab='build';document.querySelectorAll('#panel .tab').forEach(t=>t.classList.toggle('sel',t.dataset.tab==='build'));openPanel(true);}
+    const need=d.approvalRequired?.count?`<span class="badge">${d.approvalRequired.count} NEED APPROVAL</span>`:'';
     let answer=d.answer||'Okay.', sayLang='en-US';
     if(voiceLang.code!=='en-US'){                          // answer in the chosen language
       try{const t2=await fetch(API+'/api/orb/translate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:answer,to:voiceLang.name})});
@@ -734,8 +738,57 @@ async function refreshPanel(){
     else if(tab==='news') await renderNews();
     else if(tab==='settings') await renderSettings();
     else if(tab==='wallet') await renderWallet();
+    else if(tab==='build') await renderBuild();
+    else if(tab==='plans') await renderPlans();
     else await renderActivity();
   } catch(e){pbody.innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
+}
+
+// ── BUILD tab: shows what ORB constructed, with downloads ──
+let lastBuild=null;
+const _BTN='padding:6px 11px;border:1px solid rgba(90,220,255,.35);border-radius:8px;background:rgba(90,220,255,.12);color:#cfeefb;cursor:pointer;font:inherit;font-size:12px';
+function downloadFile(path,contents){const blob=new Blob([contents],{type:'text/plain'});const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);a.download=(path||'file.txt').split('/').pop();document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);}
+async function renderBuild(){
+  if(!lastBuild){pbody.innerHTML='<div class="empty">No build yet.<br><br>In the command bar, type something like:<br><br><b>“build me a landing page for a coffee shop”</b><br><br>ORB designs it, writes the code, and the files appear here to download.</div>';return;}
+  const b=lastBuild, files=b.files||[];
+  const rows=files.map((f,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 10px;border:1px solid rgba(90,220,255,.18);border-radius:8px;margin-bottom:6px">
+    <span style="font-size:12px;color:#cfeefb;word-break:break-all">${esc(f.path)}</span>
+    <button class="dlbtn" data-i="${i}" style="${_BTN}">↓</button></div>`).join('');
+  pbody.innerHTML=`<div class="m" style="margin-bottom:6px">🛠️ <b>${esc(b.blueprint.name)}</b> · ${esc(b.category)}</div>
+    <div style="font-size:12px;color:#8fb9d4;margin-bottom:4px">${esc(b.capability.label)}</div>
+    <div style="font-size:11px;color:#8fb9d4;margin-bottom:10px">Stack: ${esc((b.blueprint.stack||[]).join(', '))}</div>
+    <button id="dl-all" style="${_BTN};width:100%;margin-bottom:10px">⬇ Download all ${files.length} file${files.length===1?'':'s'}</button>
+    <div style="color:#8fb9d4;font-size:11px;margin-bottom:6px">FILES</div>${rows}
+    <details style="margin-top:10px"><summary style="cursor:pointer;color:#8fb9d4;font-size:12px">Design notes</summary>
+      <pre style="white-space:pre-wrap;font-size:11px;color:#bcd;max-height:30vh;overflow:auto">${esc(b.design||'')}</pre></details>
+    <div style="margin-top:10px;color:#8fb9d4;font-size:11px">${esc(b.deliver||'')}</div>`;
+  pbody.querySelectorAll('.dlbtn').forEach(btn=>btn.addEventListener('click',()=>{const f=files[+btn.dataset.i];downloadFile(f.path,f.contents);}));
+  const all=document.getElementById('dl-all'); if(all) all.addEventListener('click',()=>files.forEach(f=>downloadFile(f.path,f.contents)));
+}
+
+// ── PLANS tab: current tier + upgrade via Stripe Checkout ──
+async function renderPlans(){
+  const uid=encodeURIComponent(ORB_USER||'demo-user');
+  const d=await (await fetch(API+'/api/orb/billing/status?userId='+uid)).json();
+  const cur=d.plan||'free';
+  const rows=(d.plans||[]).map(p=>{
+    const isCur=p.id===cur;
+    const btn=isCur?'<span style="color:#7fe6a1;font-size:11px">CURRENT</span>'
+      :p.id==='free'?'<span style="color:#8fb9d4;font-size:11px">free</span>'
+      :p.ready?`<button class="upbtn" data-plan="${p.id}" style="${_BTN}">Upgrade</button>`
+      :'<span style="color:#d9a066;font-size:11px">not set up</span>';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 11px;border:1px solid rgba(90,220,255,.18);border-radius:9px;margin-bottom:7px;${isCur?'background:rgba(90,220,255,.10)':''}">
+      <div><div style="color:#cfeefb;font-size:13px">${esc(p.name)}</div><div style="color:#8fb9d4;font-size:11px">${esc(p.price)}</div></div>${btn}</div>`;
+  }).join('');
+  pbody.innerHTML=`<div class="m" style="margin-bottom:8px">Your plan: <b>${esc(cur)}</b>${d.configured?'':' <span style="color:#d9a066;font-size:11px">· billing not configured</span>'}</div>${rows}`;
+  pbody.querySelectorAll('.upbtn').forEach(btn=>btn.addEventListener('click',async()=>{
+    const label=btn.textContent;btn.textContent='…';
+    try{const r=await fetch(API+'/api/orb/billing/checkout',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({userId:ORB_USER||'demo-user',plan:btn.dataset.plan})});
+      const j=await r.json(); if(j.url) location.href=j.url; else {btn.textContent=label;alert(j.error||'Could not start checkout');}
+    }catch(e){btn.textContent=label;alert(e.message);}}));
 }
 let noteTimer=null;
 async function renderNotes(){

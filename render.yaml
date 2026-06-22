@@ -4,7 +4,7 @@ services:
   - type: web
     name: ebe-orb
     runtime: node
-    plan: free
+    plan: starter          # always-on ($7/mo) — no cold-start sleep for paying customers
     branch: main
     buildCommand: npm install && npm run build
     startCommand: npm run start
@@ -38,4 +38,21 @@ services:
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # ── Billing (Stripe) — charge customers per tier ──
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: PUBLIC_BASE_URL          # e.g. https://ebe-orb.onrender.com (for checkout redirects)
+        sync: false
+      - key: STRIPE_PRICE_PERSONAL
+        sync: false
+      - key: STRIPE_PRICE_PRO
+        sync: false
+      - key: STRIPE_PRICE_ENTREPRENEUR
+        sync: false
+      - key: STRIPE_PRICE_EXECUTIVE
+        sync: false
+      - key: STRIPE_PRICE_ENTERPRISE
         sync: false

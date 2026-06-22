@@ -21,6 +21,8 @@ import { opentableLink, opentableConfigured, type ReservationRequest } from '../
 import { searchRestaurants, placesConfigured } from '../services/places.js';
 import { mailerConfigured, sendMail } from '../services/mailer.js';
 import { PLANS } from '../billing/plans.js';
+import { createCheckoutSession, purchasablePlans, billingConfigured } from '../services/billing.js';
+import { getUserPlan, setUserPlan } from '../services/planStore.js';
 import { deleteAccount } from '../services/account.js';
 import { transcribe, sttConfigured } from '../services/stt.js';
 import { INTEGRATIONS, getIntegration, testConnection } from '../services/integrations.js';
@@ -81,6 +83,27 @@ orbRouter.get('/health', (_req, res) => {
 
 // Pricing tiers (charge by how much of your life/business ORB manages).
 orbRouter.get('/plans', (_req, res) => res.json({ plans: PLANS }));
+
+// ── Billing (Stripe) ──────────────────────────────────────────────────────────
+// Current subscription + which tiers can be purchased right now.
+orbRouter.get('/billing/status', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? 'demo-user');
+    res.json({ configured: billingConfigured, plan: await getUserPlan(userId), plans: purchasablePlans() });
+  } catch (error) { next(error); }
+});
+
+// Start a hosted Stripe Checkout for a tier; the client redirects to the returned URL.
+const CheckoutSchema = z.object({
+  userId: z.string().min(1).default('demo-user'),
+  plan: z.enum(['personal', 'pro', 'entrepreneur', 'executive', 'enterprise'])
+});
+orbRouter.post('/billing/checkout', async (req, res, next) => {
+  try {
+    const { userId, plan } = CheckoutSchema.parse(req.body ?? {});
+    res.json(await createCheckoutSession(userId, plan));
+  } catch (error) { next(error); }
+});
 
 // Account deletion (Apple 5.1.1(v)) — wipe all of a user's data from inside the app.
 orbRouter.delete('/account', async (req, res, next) => {
@@ -289,12 +312,14 @@ orbRouter.post('/context', async (req, res, next) => {
 orbRouter.post('/ask', async (req, res, next) => {
   try {
     const parsed = AskSchema.parse(req.body);
+    // Use the user's subscribed tier (caps council depth + Build power) unless one is passed.
+    const plan = parsed.plan ?? await getUserPlan(parsed.userId);
     const result = await askOrb(parsed.userId, parsed.message, {
       council: parsed.council,
       documents: parsed.documents,
       images: parsed.images,
       level: parsed.level,
-      plan: parsed.plan,
+      plan,
       personality: parsed.personality,
       customPersona: parsed.customPersona
     });
@@ -423,7 +448,7 @@ orbRouter.post('/build', async (req, res, next) => {
       request: parsed.request,
       category: parsed.category,
       brand: parsed.brand,
-      plan: parsed.plan
+      plan: parsed.plan ?? await getUserPlan(parsed.userId)
     });
     res.json(result);
   } catch (error) { next(error); }
