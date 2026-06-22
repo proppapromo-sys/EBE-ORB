@@ -1,0 +1,21 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# build / cache
+.tsbuildinfo
+coverage/
+
+# python (seed/reference)
+__pycache__/
+*.pyc
+.venv/
+
+# local recovery artifacts (do not version git bundles of this repo)
+EBE-ORB-charming-franklin.bundle

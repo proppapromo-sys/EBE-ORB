@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ORB — Digital Chief of Staff</title>
+<style>
+  :root{ --cyan:#5adcff; --ice:#bdf3ff; --gold:#ffc878; --hud:#9fd0e6; }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:#05080f;overflow:hidden;
+    font-family:"DejaVu Sans Mono",ui-monospace,Menlo,Consolas,monospace;color:var(--ice);letter-spacing:.04em}
+  canvas#orb{position:fixed;inset:0;width:100%;height:100%;display:block}
+  .hud{position:fixed;font-size:13px;color:var(--hud);text-shadow:0 0 8px rgba(40,150,200,.45);pointer-events:none}
+  .hud .h{color:var(--cyan);letter-spacing:.12em;margin-bottom:8px}
+  .tl{top:28px;left:32px}.tr{top:28px;right:32px;text-align:right}.bl{bottom:110px;left:32px}
+  .hud .row{opacity:.85;line-height:1.7}.laws .h{color:var(--gold)}
+  #speaking{position:fixed;top:28px;left:50%;transform:translateX(-50%);text-align:center;
+    color:var(--gold);font-size:14px;letter-spacing:.18em;opacity:0;transition:opacity .3s}
+  #speaking.on{opacity:1}
+  .cmd{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);width:min(680px,92vw);
+    display:flex;gap:8px;align-items:center;background:rgba(10,28,46,.55);
+    border:1px solid rgba(90,220,255,.30);border-radius:999px;padding:10px 14px;backdrop-filter:blur(8px);
+    box-shadow:0 0 34px rgba(20,60,90,.55)}
+  .cmd input{flex:1;background:transparent;border:0;outline:0;color:var(--ice);font:inherit;letter-spacing:.05em}
+  .cmd input::placeholder{color:#6fa6c2}
+  .cmd button{background:rgba(90,220,255,.16);border:1px solid rgba(90,220,255,.42);color:var(--ice);
+    border-radius:999px;padding:8px 16px;font:inherit;cursor:pointer;letter-spacing:.08em}
+  .cmd button:hover{background:rgba(90,220,255,.30)}.cmd .icon{padding:8px 12px}
+  .answer{position:fixed;bottom:92px;left:50%;transform:translateX(-50%);width:min(740px,92vw);
+    max-height:30vh;overflow:auto;background:rgba(8,20,34,.72);border:1px solid rgba(90,220,255,.22);
+    border-radius:14px;padding:14px 18px;backdrop-filter:blur(8px);font-size:13px;line-height:1.6;
+    color:#cfeefb;display:none;white-space:pre-wrap}
+  .answer.show{display:block}
+  .badge{display:inline-block;border:1px solid rgba(255,200,120,.55);color:var(--gold);
+    border-radius:6px;padding:1px 7px;font-size:11px;margin-right:6px}
+  .hint{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);font-size:10px;color:#4d7894;opacity:.7}
+  #drop{position:fixed;inset:0;border:2px dashed rgba(90,220,255,.6);background:rgba(5,15,28,.6);
+    display:none;place-items:center;font-size:22px;color:var(--cyan);z-index:9}
+  #drop.on{display:grid}
+  /* approvals / activity panel */
+  #panel{position:fixed;top:0;right:0;height:100%;width:min(420px,92vw);z-index:8;
+    background:rgba(7,16,28,.92);border-left:1px solid rgba(90,220,255,.25);backdrop-filter:blur(10px);
+    transform:translateX(100%);transition:transform .3s;display:flex;flex-direction:column}
+  #panel.on{transform:translateX(0)}
+  #panel header{padding:16px 18px;border-bottom:1px solid rgba(90,220,255,.18);display:flex;gap:10px;align-items:center}
+  #panel header .h{color:var(--cyan);letter-spacing:.12em;font-size:14px;flex:1}
+  #panel .tabs{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px}
+  #panel .tab{flex:1 1 28%;text-align:center;padding:7px;border:1px solid rgba(90,220,255,.25);border-radius:8px;
+    cursor:pointer;font-size:11px;color:var(--hud)}
+  #panel .tab.sel{background:rgba(90,220,255,.18);color:var(--ice)}
+  #panel .body{flex:1;overflow:auto;padding:8px 14px}
+  .card{border:1px solid rgba(90,220,255,.18);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:rgba(10,24,40,.5)}
+  .card .t{font-size:13px;color:var(--ice);margin-bottom:4px}
+  .card .m{font-size:11px;color:#8fb9d4;line-height:1.5}
+  .pill{display:inline-block;font-size:10px;border-radius:5px;padding:1px 6px;margin-right:5px;border:1px solid}
+  .pill.high{color:#ff9a9a;border-color:#ff9a9a55}.pill.medium{color:var(--gold);border-color:#ffc87855}
+  .pill.low{color:var(--cyan);border-color:#5adcff55}.pill.ok{color:#7fe6a1;border-color:#7fe6a155}
+  .card .btns{margin-top:8px;display:flex;gap:6px}
+  .card button{flex:1;font:inherit;font-size:11px;border-radius:7px;padding:6px;cursor:pointer;
+    background:rgba(90,220,255,.14);border:1px solid rgba(90,220,255,.4);color:var(--ice)}
+  .card button.go{background:rgba(127,230,161,.16);border-color:#7fe6a166}
+  .card button.no{background:rgba(255,120,120,.12);border-color:#ff787866;color:#ffb0b0}
+  .toggle{position:fixed;top:50%;right:0;transform:translateY(-50%);z-index:7;background:rgba(10,28,46,.7);
+    border:1px solid rgba(90,220,255,.35);border-right:0;color:var(--ice);border-radius:10px 0 0 10px;
+    padding:14px 8px;font:inherit;font-size:12px;cursor:pointer;letter-spacing:.12em;writing-mode:vertical-rl}
+  .toggle:hover{background:rgba(90,220,255,.25)}
+  .empty{color:#6fa6c2;font-size:12px;text-align:center;padding:30px 10px}
+  /* LIVE mode — only the orb, always listening, no chrome */
+  #live{position:fixed;top:22px;right:24px;z-index:13;background:rgba(10,28,46,.6);
+    border:1px solid rgba(90,220,255,.45);color:var(--ice);border-radius:999px;padding:8px 16px;
+    font:inherit;font-size:12px;letter-spacing:.14em;cursor:pointer}
+  #live:hover{background:rgba(90,220,255,.28)}
+  body.live .hud,body.live .cmd,body.live .hint,body.live #panel,body.live .toggle{display:none!important}
+  body.live #live{opacity:1;background:rgba(255,90,90,.18);border-color:rgba(255,140,140,.6)}
+  body.live #live:hover{background:rgba(255,90,90,.32)}
+  /* onboarding / join modal */
+  #join{position:fixed;inset:0;z-index:20;display:none;place-items:center;
+    background:radial-gradient(60% 60% at 50% 40%,rgba(10,30,55,.55),rgba(3,6,12,.86))}
+  #join.on{display:grid}
+  .join-card{width:min(430px,92vw);background:rgba(8,18,32,.96);border:1px solid rgba(90,220,255,.3);
+    border-radius:18px;padding:30px 26px;text-align:center;box-shadow:0 0 60px rgba(30,90,140,.5)}
+  .join-card .logo{width:84px;height:84px;border-radius:50%;margin:0 auto 14px;
+    background:radial-gradient(circle at 38% 32%,#fff 0 5%,#bdf3ff 16%,#3a7fd0 48%,#16243c 100%);
+    box-shadow:0 0 34px rgba(90,220,255,.6),inset -6px -8px 24px rgba(0,16,32,.6);animation:breathe 5s ease-in-out infinite}
+  .join-card h2{margin:.2em 0 .1em;font-family:"DejaVu Sans",system-ui,sans-serif;font-weight:300;
+    font-size:26px;letter-spacing:.12em;color:var(--ice)}
+  .join-card p{margin:.2em 0 18px;font-size:13px;color:#9fd0e6;line-height:1.6}
+  .join-card .gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;
+    background:#fff;color:#202124;border:0;border-radius:999px;padding:12px;font:inherit;font-weight:600;
+    font-size:14px;cursor:pointer;margin-bottom:12px}
+  .join-card .gbtn:hover{background:#f1f3f4}
+  .join-card .or{font-size:11px;color:#5f88a3;margin:8px 0}
+  .join-card input{width:100%;background:rgba(10,24,40,.8);border:1px solid rgba(90,220,255,.3);
+    color:var(--ice);border-radius:10px;padding:11px 14px;font:inherit;font-size:14px;outline:0;margin-bottom:10px}
+  .join-card .join-go{width:100%;background:rgba(90,220,255,.18);border:1px solid rgba(90,220,255,.5);
+    color:var(--ice);border-radius:999px;padding:11px;font:inherit;font-size:14px;cursor:pointer;letter-spacing:.06em}
+  .join-card .join-go:hover{background:rgba(90,220,255,.3)}
+  .join-card .skip{display:block;margin-top:14px;color:#6fa6c2;font-size:12px;cursor:pointer;background:none;border:0}
+  .join-card .laws{margin-top:16px;font-size:10px;color:#5f88a3;letter-spacing:.06em}
+  .join-card .note{font-size:11px;color:var(--gold);margin-top:8px;min-height:14px}
+</style>
+</head>
+<body>
+<canvas id="orb"></canvas>
+
+<!-- onboarding: greet every new visitor (base44-style join) -->
+<div id="join">
+  <div class="join-card">
+    <div class="logo"></div>
+    <h2>MEET ORB</h2>
+    <p>Your AI Chief of Staff that <b>remembers</b>. Connect your world — Gmail, Calendar, and more — and ORB watches, prioritizes, and asks before it acts.</p>
+    <button class="gbtn" id="join-google">
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.4 5.4 2.5 13.3l7.8 6c1.9-5.6 7.1-9.8 13.7-9.8z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.5 3-2.2 5.5-4.7 7.2l7.3 5.7c4.3-3.9 6.8-9.7 6.8-17.4z"/><path fill="#FBBC05" d="M10.3 28.3c-.5-1.4-.7-2.9-.7-4.3s.3-2.9.7-4.3l-7.8-6C.9 16.9 0 20.3 0 24s.9 7.1 2.5 10.3l7.8-6z"/><path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.3-5.5l-7.3-5.7c-2 1.4-4.7 2.3-8 2.3-6.6 0-11.8-4.2-13.7-9.8l-7.8 6C6.4 42.6 14.6 48 24 48z"/></svg>
+      Continue with Google
+    </button>
+    <div class="or">— or —</div>
+    <input id="join-email" type="email" placeholder="you@email.com" autocomplete="email" />
+    <button class="join-go" id="join-submit">JOIN ORB</button>
+    <div class="note" id="join-note"></div>
+    <button class="skip" id="join-skip">explore first →</button>
+    <div class="laws">RISK-FIRST · CONFIRM-FIRST · IT NEVER ACTS WITHOUT YOUR OK</div>
+  </div>
+</div>
+
+<div class="hud tl">
+  <div class="h">◢ ORB MASTER SYSTEM</div>
+  <div class="row">STATE......... <span id="st-state">IDLE</span></div>
+  <div class="row">RISK GATE..... ARMED (code)</div>
+  <div class="row">CONFIRM-FIRST. ENABLED</div>
+  <div class="row">CORE PULSE.... <span id="st-pulse">NOMINAL</span></div>
+  <div class="row">TIME.......... <span id="st-time">—</span></div>
+  <div class="row">WEATHER....... <span id="st-weather">—</span></div>
+  <div class="row">NET........... <span id="st-net">—</span></div>
+</div>
+<div class="hud tr">
+  <div class="h">COUNCIL</div>
+  <div class="row">› GPT-EXECUTIVE</div><div class="row">› GPT-OPERATIONS</div>
+  <div class="row">› GPT-RISK</div><div class="row">› CLAUDE-EVALUATOR</div>
+  <div class="row">› GEMINI-VISUAL</div><div class="row">› ORB-FINALIZER</div>
+</div>
+<div class="hud bl laws">
+  <div class="h">THE FIVE LAWS</div>
+  <div class="row">1 risk-first</div><div class="row">2 edge vs the world</div>
+  <div class="row">3 forward-validate</div><div class="row">4 recognise + remember</div>
+  <div class="row">5 confirm-first, never chase</div>
+</div>
+<div id="speaking">▮ AUDIBLE OUTPUT ACTIVE · CORE PULSE SYNC: PEAK ▮</div>
+
+<div class="answer" id="answer"></div>
+<form class="cmd" id="cmd">
+  <input id="q" placeholder="Ask ORB —  what needs my attention today?" autocomplete="off" />
+  <button type="button" class="icon" id="wake" title="hands-free: say &quot;Hey ORB&quot; anytime">📡</button>
+  <button type="button" class="icon" id="mic" title="push to talk">🎤</button>
+  <button type="submit">ASK</button>
+</form>
+<div class="hint">● GO LIVE = just the orb, always listening — say "Hey ORB" anytime · (tap EXIT to bring controls back)</div>
+
+<button id="live">● GO LIVE</button>
+<button class="toggle" id="toggle">APPROVALS</button>
+<aside id="panel">
+  <header><div class="h">◢ ORB CONTROL</div><button class="icon" id="panel-close" style="background:none;border:0;color:#8fb9d4;cursor:pointer;font-size:16px">✕</button></header>
+  <div class="tabs">
+    <div class="tab sel" data-tab="approvals">APPROVALS</div>
+    <div class="tab" data-tab="briefing">BRIEFING</div>
+    <div class="tab" data-tab="notes">NOTES</div>
+    <div class="tab" data-tab="news">NEWS</div>
+    <div class="tab" data-tab="activity">ACTIVITY</div>
+    <div class="tab" data-tab="wallet">WALLET</div>
+    <div class="tab" data-tab="settings">SETTINGS</div>
+  </div>
+  <div class="body" id="panel-body"><div class="empty">Loading…</div></div>
+</aside>
+
+<script>
+// When served by the API (http/https) default to same-origin; file:// opens in demo mode.
+// Set window.ORB_API to override.
+const API=(window.ORB_API!==undefined?window.ORB_API
+  :(location.protocol.indexOf('http')===0?location.origin:"")).replace(/\/$/,"");
+const cv=document.getElementById('orb'),ctx=cv.getContext('2d');
+let W,H,DPR,CX,CY,R;
+function resize(){DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;
+  cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+  const live=document.body.classList.contains('live');
+  CX=W/2;CY=live?H*0.5:H*0.43;R=Math.min(W,H)*(live?0.34:0.27);}
+addEventListener('resize',resize);resize();
+
+// ── YOUR exact image as the orb core (with procedural fallback) ──
+let IMG=null;
+function loadImg(src){const i=new Image();i.crossOrigin='anonymous';
+  i.onload=()=>{IMG=i;};i.onerror=()=>{};i.src=src;}
+const saved=localStorage.getItem('orbImage');
+if(saved) loadImg(saved);  // the orb image is locked; we just load whatever was set
+
+// procedural plasma fallback
+const ARMS=3,N=520,twist=5.2;
+const parts=Array.from({length:N},(_,i)=>{const arm=i%ARMS,rad=Math.pow(Math.random(),0.6);
+  return{rad,a0:arm*(2*Math.PI/ARMS)+(Math.random()-.5)*0.5,spd:0.4+Math.random()*0.7,size:0.6+Math.random()*2.2};});
+function ramp(t){const s=[[0,[255,235,180]],[0.12,[255,150,45]],[0.36,[150,70,220]],[0.64,[70,90,255]],[1,[60,160,255]]];
+  for(let i=0;i<s.length-1;i++){const[a,c0]=s[i],[b,c1]=s[i+1];if(t>=a&&t<b){const u=(t-a)/(b-a);
+    return[c0[0]+(c1[0]-c0[0])*u,c0[1]+(c1[1]-c0[1])*u,c0[2]+(c1[2]-c0[2])*u];}}return s[s.length-1][1];}
+const pc=document.createElement('canvas'),pctx=pc.getContext('2d');
+function sizeP(){pc.width=cv.width;pc.height=cv.height;pctx.setTransform(DPR,0,0,DPR,0,0);}sizeP();addEventListener('resize',sizeP);
+
+// ── energy / voice ──
+let energy=0.15,target=0.15,amp=0,speaking=false,listening=false,analyser=null,freq=null,t=0,voiceKick=0;
+let ripples=[],lastRipple=0,phase='idle',ncCol=[123,179,223];
+let bargeFrames=0; // barge-in: how many recent frames the user has been talking OVER ORB
+const setState=s=>{const e=document.getElementById('st-state');if(e)e.textContent=s;};
+function setPhase(p){phase=p;setState(p.toUpperCase());}
+
+// ── NeuralCluster core (EBE Live design) — Fibonacci sphere of neurons, 3-nearest-neighbor
+// synapses, particles firing along them, bright thought-core. Phase-tinted, pulses with the voice.
+const NC_N=54, nc_nodes=[], nc_edges=[], nc_fire=new Float32Array(NC_N);
+(function buildNeural(){
+  const ga=Math.PI*(3-Math.sqrt(5));
+  for(let i=0;i<NC_N;i++){const y=1-(i/(NC_N-1))*2;const r=Math.sqrt(Math.max(0,1-y*y));const th=ga*i;
+    nc_nodes.push([Math.cos(th)*r,y,Math.sin(th)*r]);}
+  const d2=(a,b)=>{let s=0;for(let k=0;k<3;k++){const d=nc_nodes[a][k]-nc_nodes[b][k];s+=d*d;}return s;};
+  const seen=new Set();
+  for(let i=0;i<NC_N;i++){const order=[...Array(NC_N).keys()].filter(j=>j!==i).sort((p,q)=>d2(i,p)-d2(i,q));
+    for(const j of order.slice(0,3)){seen.add(Math.min(i,j)+'-'+Math.max(i,j));}}
+  for(const e of seen){const[a,b]=e.split('-').map(Number);nc_edges.push([a,b]);}
+})();
+function phaseColor(){                                  // EBE Live NeuralCluster phase palette
+  switch(phase){
+    case 'listening':   return [111,228,200];           // teal  #6fe4c8
+    case 'identifying': return [167,139,250];           // violet #a78bfa
+    case 'thinking':    return [150,205,255];           // bright blue
+    case 'vision':      return [251,191,36];            // amber #fbbf24
+    case 'speaking':    return [94,234,212];            // teal-green #5eead4
+    case 'confirming':  return [245,176,66];            // gold
+    default:            return [123,179,223];           // idle, brand #7BB3DF
+  }
+}
+function drawNeural(pulse){
+  // smoothly glide toward the phase color (no hard snap) + a gentle living shimmer
+  const tgt=phaseColor();
+  for(let i=0;i<3;i++) ncCol[i]+=(tgt[i]-ncCol[i])*0.03;
+  const sh=0.94+0.06*Math.sin(t*0.7);                  // constant subtle brightness drift
+  const cr=Math.min(255,ncCol[0]*sh), cg=Math.min(255,ncCol[1]*sh), cb=Math.min(255,ncCol[2]*sh);
+  const ay=t*0.16, ax=-0.42+0.06*Math.sin(t*0.25);     // slow, gentle 3D rotation
+  const ca=Math.cos(ay),sa=Math.sin(ay),cx2=Math.cos(ax),sx=Math.sin(ax);
+  const rr=R*0.92*pulse;
+  const P=nc_nodes.map(([x,y,z])=>{
+    let x1=x*ca-z*sa, z1=x*sa+z*ca;                     // rotate Y
+    let y2=y*cx2-z1*sx, z2=y*sx+z1*cx2;                 // rotate X
+    return [CX+x1*rr, CY-y2*rr, z2];
+  });
+  const dep=z=>(z+1)/2;
+  // thought-core glow (pulses with voice)
+  ctx.globalCompositeOperation='lighter';
+  const core=ctx.createRadialGradient(CX,CY,0,CX,CY,R*0.7);
+  core.addColorStop(0,`rgba(210,240,255,${0.30+0.5*amp})`);
+  core.addColorStop(0.4,`rgba(${cr},${cg},${cb},${0.16+0.28*amp})`);
+  core.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+  ctx.fillStyle=core;ctx.beginPath();ctx.arc(CX,CY,R*0.7,0,7);ctx.fill();
+  // atmosphere shell at the sphere boundary
+  const at=ctx.createRadialGradient(CX,CY,rr*0.86,CX,CY,rr*1.14);
+  at.addColorStop(0,`rgba(${cr},${cg},${cb},0)`);
+  at.addColorStop(0.62,`rgba(${cr},${cg},${cb},${0.10+0.12*energy})`);
+  at.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+  ctx.fillStyle=at;ctx.beginPath();ctx.arc(CX,CY,rr*1.14,0,7);ctx.fill();
+  ctx.globalCompositeOperation='source-over';
+  // synapse edges, back-to-front, with a particle firing along each
+  const eds=nc_edges.map(([a,b])=>[a,b,(P[a][2]+P[b][2])/2]).sort((u,v)=>u[2]-v[2]);
+  for(const [a,b] of eds){
+    const A=P[a],B=P[b],d=dep((A[2]+B[2])/2);
+    ctx.strokeStyle=`rgba(${cr},${cg},${cb},${0.05+0.26*d})`;ctx.lineWidth=0.5+1.1*d;
+    ctx.beginPath();ctx.moveTo(A[0],A[1]);ctx.lineTo(B[0],B[1]);ctx.stroke();
+    const tt=Math.sin(t*1.6+a*1.3+b*0.7)*0.5+0.5;
+    const px=A[0]+(B[0]-A[0])*tt, py=A[1]+(B[1]-A[1])*tt;
+    ctx.globalCompositeOperation='lighter';
+    ctx.fillStyle=`rgba(216,240,255,${(0.18+0.5*d)*(0.45+0.55*amp)})`;
+    ctx.beginPath();ctx.arc(px,py,1+1.4*d,0,7);ctx.fill();
+    ctx.globalCompositeOperation='source-over';
+  }
+  // neurons fire (more when speaking/listening or loud)
+  const fr=0.012+(speaking||listening?0.05:0.015)+amp*0.10;
+  for(let i=0;i<NC_N;i++){if(Math.random()<fr)nc_fire[i]=1;nc_fire[i]*=0.92;}
+  // nodes, back-to-front
+  const order=[...Array(NC_N).keys()].sort((i,j)=>P[i][2]-P[j][2]);
+  for(const i of order){const[x,y,z]=P[i],d=dep(z),rad=2.4+4.6*d,f=nc_fire[i];
+    if(f>0.05){
+      ctx.globalCompositeOperation='lighter';
+      ctx.fillStyle=`rgba(${cr},${cg},${cb},${0.22*f})`;ctx.beginPath();ctx.arc(x,y,rad*2.6,0,7);ctx.fill();
+      ctx.globalCompositeOperation='source-over';
+      ctx.fillStyle=`rgba(234,246,255,${0.6+0.4*f})`;ctx.beginPath();ctx.arc(x,y,rad,0,7);ctx.fill();
+    } else {
+      ctx.fillStyle=`rgba(${cr},${cg},${cb},${0.4+0.5*d})`;ctx.beginPath();ctx.arc(x,y,rad,0,7);ctx.fill();
+      ctx.fillStyle=`rgba(223,240,255,${0.4*d})`;ctx.beginPath();ctx.arc(x,y,rad*0.45,0,7);ctx.fill();
+    }
+  }
+}
+
+function frame(){
+  t+=0.016;
+  voiceKick*=0.80;                                              // per-word kick decays fast
+  if(analyser){analyser.getByteFrequencyData(freq);let s=0;for(let i=0;i<freq.length;i++)s+=freq[i];
+    amp=amp*0.6+Math.min(1,(s/freq.length)/100)*0.4;                // real audio (fast, voice-rate)
+    // BARGE-IN: if you start talking while ORB is speaking, it stops and listens to you.
+    if(speaking&&(convoMode||wakeMode)){
+      if(amp>0.55)bargeFrames++;else bargeFrames=Math.max(0,bargeFrames-1);
+      if(bargeFrames>7){bargeFrames=0;try{speechSynthesis.cancel();}catch(e){}} // onend restarts listening
+    } else bargeFrames=0;
+  }
+  else if(speaking){                                            // simulate a voice waveform envelope
+    amp=Math.min(1, 0.16 + 0.55*voiceKick + 0.16*Math.abs(Math.sin(t*12)) + 0.10*Math.abs(Math.sin(t*23)));
+  } else amp*=0.86;
+  target=(speaking||listening)?(0.45+0.3*amp):(0.12+0.04*Math.sin(t*0.5));
+  energy+=(target-energy)*0.10;                                 // overall glow level (smooth)
+  document.getElementById('st-pulse').textContent=energy>0.55?'PEAK':energy>0.32?'ELEVATED':'NOMINAL';
+
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  let bg=ctx.createRadialGradient(CX,CY,R*0.2,CX,CY,Math.max(W,H)*0.85);
+  bg.addColorStop(0,'#0a1830');bg.addColorStop(.5,'#070f1d');bg.addColorStop(1,'#03060c');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+
+  // advance voice-wave ripples (the rings that emanate as it speaks/listens)
+  for(const rp of ripples){rp.r+=R*0.013;rp.life-=0.018;}
+  ripples=ripples.filter(rp=>rp.life>0);
+  if((speaking||listening)&&amp>0.5&&t-lastRipple>0.18){ripples.push({r:R*0.16,life:1});lastRipple=t;}
+
+  // PULSATES at voice-wave speed
+  const pulse = 1 + 0.012*Math.sin(t*0.9) + 0.10*amp + 0.05*amp*Math.sin(t*18);
+
+  // soft outer bloom that ripples with the voice
+  ctx.save();ctx.globalCompositeOperation='lighter';
+  const bl=ctx.createRadialGradient(CX,CY,R*0.35,CX,CY,R*1.7*(1+0.06*amp));
+  bl.addColorStop(0,`rgba(90,180,255,${0.05+0.14*energy+0.26*amp})`);bl.addColorStop(1,'rgba(90,180,255,0)');
+  ctx.fillStyle=bl;ctx.beginPath();ctx.arc(CX,CY,R*1.8,0,7);ctx.fill();ctx.restore();
+
+  if(IMG){
+    // optional custom / Gemini image core (pulsates, no spin)
+    ctx.save();ctx.beginPath();ctx.arc(CX,CY,R*0.99,0,7);ctx.clip();
+    const s=Math.max(2*R/IMG.width,2*R/IMG.height)*1.05, w=IMG.width*s,h=IMG.height*s;
+    ctx.translate(CX,CY);ctx.scale(pulse,pulse);ctx.drawImage(IMG,-w/2,-h/2,w,h);
+    ctx.globalCompositeOperation='lighter';ctx.globalAlpha=0.06+0.4*amp;
+    const z=1.04+0.06*amp;ctx.drawImage(IMG,-w*z/2,-h*z/2,w*z,h*z);
+    ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';ctx.restore();
+    ctx.strokeStyle='rgba(200,240,255,'+(0.35+0.4*energy)+')';ctx.lineWidth=2;ctx.beginPath();ctx.arc(CX,CY,R,0,7);ctx.stroke();
+  } else {
+    drawNeural(pulse);                                     // default: NeuralCluster (EBE Live)
+  }
+
+  // ORB wordmark under the orb (hidden in immersive live mode)
+  if(!document.body.classList.contains('live')){
+    ctx.save();ctx.textAlign='center';
+    ctx.fillStyle='rgba(200,240,255,0.9)';ctx.font='300 '+Math.round(R*0.16)+'px "DejaVu Sans",system-ui,sans-serif';
+    ctx.fillText('O R B', CX, CY+R*1.30);
+    ctx.fillStyle='rgba(120,200,255,0.6)';ctx.font='600 '+Math.round(R*0.05)+'px "DejaVu Sans Mono",monospace';
+    ctx.fillText('D I G I T A L   C H I E F   O F   S T A F F', CX, CY+R*1.46);
+    ctx.restore();
+  }
+
+  requestAnimationFrame(frame);
+}
+frame();
+
+// ── speech (ORB's voice) ──
+let convoMode=false, wakeMode=false, armedUntil=0, recog=null, recogActive=false;
+// "Hey ORB" and the ways speech engines tend to mishear "orb"
+const WAKE=/\b(?:hey|ok|okay|yo)?\s*(orb|orbs?|orbe|ourb|aurb|orp|or\s*b)\b/i;
+function afterWake(text){const m=WAKE.exec(text);return m?text.slice(m.index+m[0].length).replace(/^[\s,.:!?-]+/,'').trim():'';}
+function pickVoice(vs,lang){
+  const pre=(lang||'en-US').slice(0,2).toLowerCase();
+  if(pre!=='en'){ // a specific non-English language: match it, prefer natural
+    return vs.find(v=>v.lang&&v.lang.toLowerCase().startsWith(pre)&&/Natural|Neural/i.test(v.name))
+      || vs.find(v=>v.lang&&v.lang.toLowerCase().startsWith(pre)) || vs[0];
+  }
+  // English (default): only pick an English voice, prefer natural/neural ones
+  const en=vs.filter(v=>v.lang&&v.lang.toLowerCase().startsWith('en'));
+  return en.find(v=>/Natural|Neural|Samantha|Aria|Jenny|Ava|Sonia|Libby|Google/i.test(v.name))
+    || en.find(v=>/en[-_]US/i.test(v.lang)) || en[0] || vs.find(v=>/English/i.test(v.name)) || vs[0];
+}
+// Strip anything a person wouldn't say out loud: markdown symbols, bullets, emoji, code ticks.
+function speakable(text){return String(text||'')
+  .replace(/```[\s\S]*?```/g,' ')            // code blocks
+  .replace(/`([^`]*)`/g,'$1')                 // inline code
+  .replace(/!\[[^\]]*\]\([^)]*\)/g,' ')       // images
+  .replace(/\[([^\]]*)\]\([^)]*\)/g,'$1')     // links -> text
+  .replace(/[*_~]+/g,'')                       // * _ ~ bold/italic marks
+  .replace(/^#{1,6}\s+/gm,'')                  // # headers
+  .replace(/^\s*[-•▪‣]\s+/gm,'')               // bullet points
+  .replace(/^\s*\d+[.)]\s+/gm,'')              // numbered lists
+  .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/gu,'') // emoji/symbols
+  .replace(/\s+/g,' ').trim();}
+// Render the answer for the SCREEN: turn **bold** into real bold, drop stray markdown symbols.
+function mdToHtml(text){return String(text||'')
+  .replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))  // escape first (safe)
+  .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>')                         // **bold** -> <b>
+  .replace(/\*([^*]+)\*/g,'$1').replace(/[_~`#]/g,'')              // strip leftover * _ ~ ` #
+  .replace(/^\s*[-•]\s+/gm,'• ')                                   // tidy bullets
+  .replace(/\n/g,'<br>');}
+function speak(text,lang){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(speakable(text).slice(0,800));
+  u.lang=lang||'en-US';
+  u.voice=pickVoice(speechSynthesis.getVoices(),u.lang);
+  u.rate=0.97;u.pitch=1.0;
+  u.onstart=()=>{speaking=true;setPhase('speaking');document.getElementById('speaking').classList.add('on');
+    if(recogActive){try{recog.stop();}catch(e){}}};                 // don't transcribe our own voice
+  u.onboundary=()=>{voiceKick=1;ripples.push({r:R*0.16,life:1});}; // ripple on each word — voice-wave sync
+  u.onend=()=>{speaking=false;document.getElementById('speaking').classList.remove('on');
+    if(convoMode||wakeMode){setPhase('listening');startRecog();}else setPhase('idle');};
+  speechSynthesis.speak(u);}
+if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
+// Tapping the orb: if it's talking, cut it off and listen; otherwise start a conversation.
+cv.addEventListener('click',()=>{
+  if(speaking){ try{speechSynthesis.cancel();}catch(e){}                 // stop talking immediately
+    if(!convoMode&&!wakeMode) startConversation(""); return; }            // and start listening
+  if(!convoMode) startConversation();
+});
+
+// EBE speaks English by default, but translates on request.
+const LANG_CODES={english:'en-US',spanish:'es-ES',french:'fr-FR',german:'de-DE',italian:'it-IT',
+  portuguese:'pt-PT',dutch:'nl-NL',russian:'ru-RU',polish:'pl-PL',turkish:'tr-TR',arabic:'ar-SA',
+  hebrew:'he-IL',hindi:'hi-IN',mandarin:'zh-CN',chinese:'zh-CN',cantonese:'zh-HK',japanese:'ja-JP',
+  korean:'ko-KR',vietnamese:'vi-VN',thai:'th-TH',greek:'el-GR',swedish:'sv-SE',polishh:'pl-PL',
+  filipino:'fil-PH',tagalog:'fil-PH',ukrainian:'uk-UA',indonesian:'id-ID',swahili:'sw-KE'};
+function parseTranslate(q){
+  // "translate <text> to/into <lang>" · "say <text> in <lang>" · "how do you say <text> in <lang>"
+  let m=q.match(/^(?:can you |please )?(?:translate|say|how (?:do|would) (?:you|i) say)\s+(.*?)\s+(?:in|to|into)\s+([a-z]+)\s*\??$/i);
+  if(m && LANG_CODES[m[2].toLowerCase()]) return {text:m[1].replace(/^["']|["']$/g,''),lang:m[2].toLowerCase()};
+  return null;
+}
+async function doTranslate(text,langName){
+  const box=document.getElementById('answer');box.classList.add('show');box.textContent='Translating…';setPhase('thinking');
+  if(!API){box.innerHTML='<span class="badge">DEMO</span>Connect me to my system and I can translate for you.';speak("Connect me to my system and I can translate for you.");return;}
+  try{
+    const r=await fetch(API+'/api/orb/translate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text,to:langName})});
+    const d=await r.json();
+    box.innerHTML=`<span class="badge">${langName.toUpperCase()}</span>${d.translated||''}`;
+    speak(d.translated||'', d.langCode||LANG_CODES[langName]||'en-US');   // speak it IN that language
+  }catch(e){box.textContent='Translation failed: '+e.message;speak("Sorry, I couldn't translate that.");}
+}
+
+// EBE's persistent speaking language (default English; user can switch it any time).
+let voiceLang=(()=>{try{return JSON.parse(localStorage.getItem('ebeVoiceLang'))||{name:'english',code:'en-US'};}catch(e){return {name:'english',code:'en-US'};}})();
+// EBE's personality mode (executive · friendly · advisor · custom), persisted.
+let persona=localStorage.getItem('ebePersona')||'friendly';
+function parsePersona(q){
+  if(!/\b(be|mode|talk|sound|switch|go|act|become|more)\b/i.test(q)) return null;
+  if(/\b(executive|formal|professional|business|direct)\b/i.test(q)) return 'executive';
+  if(/\b(advisor|adviser|coach|strategist|thoughtful|analytical)\b/i.test(q)) return 'advisor';
+  if(/\b(explorer|research|curious|exploratory)\b/i.test(q)) return 'explorer';
+  if(/\b(friendly|casual|chill|relaxed|warm)\b/i.test(q)) return 'friendly';
+  return null;
+}
+function setPersona(p){persona=p;localStorage.setItem('ebePersona',p);setPhase('confirming');
+  const box=document.getElementById('answer');box.classList.add('show');
+  box.innerHTML='<span class="badge">ORB · '+p.toUpperCase()+'</span>Okay — '+p+' mode.';
+  speak(({executive:"Done. Brief and direct from here.",advisor:"Got it — I'll give you my recommendation each time.",explorer:"On it — I'll dig in and connect the dots.",friendly:"You got it — keeping it easygoing."})[p]||"Okay.",voiceLang.code);}
+function parseSetLang(q){
+  // "speak/switch back to english", "english only" → reset
+  if(/\benglish\b/i.test(q) && /\b(speak|talk|respond|reply|switch|back|go|change|only)\b/i.test(q)) return {name:'english',code:'en-US'};
+  // "speak/talk/respond/switch (to me) in/to <lang>", "from now on speak <lang>"
+  const m=q.match(/\b(?:speak|talk|respond|reply|switch|change|converse)\b(?:\s+to me)?\s+(?:in|to|into)\s+([a-z]+)\b/i)
+        || q.match(/\bfrom now on\b[^a-z]*(?:speak|talk|use)?\s*([a-z]+)\b/i);
+  if(m){const name=m[1].toLowerCase(); if(LANG_CODES[name]&&name!=='english') return {name,code:LANG_CODES[name]};}
+  return null;
+}
+async function setVoiceLang(sl){
+  voiceLang=sl; localStorage.setItem('ebeVoiceLang',JSON.stringify(sl));
+  const box=document.getElementById('answer');box.classList.add('show');setPhase('confirming');
+  if(sl.code==='en-US'){box.innerHTML='<span class="badge">EN</span>Sure — back to English.';speak("Sure, back to English.");return;}
+  const phrase=`Okay — I'll talk with you in ${sl.name} from now on.`;
+  if(API){try{const r=await fetch(API+'/api/orb/translate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:phrase,to:sl.name})});
+    const d=await r.json();box.innerHTML='<span class="badge">'+sl.name.toUpperCase()+'</span>'+(d.translated||phrase);speak(d.translated||phrase,sl.code);return;}catch(e){}}
+  box.innerHTML='<span class="badge">'+sl.name.toUpperCase()+'</span>'+phrase;speak(phrase,sl.code);
+}
+
+// extract party size, time, and date from a natural request (default: party 2, 7pm, tomorrow)
+function extractWhen(q){
+  const ps=q.match(/\b(?:for|party of)\s+(\d{1,2})\b/i)||q.match(/\b(\d{1,2})\s+(?:people|guests|pax)\b/i);
+  const partySize=ps?parseInt(ps[1]):2;
+  let time='19:00'; const tm=q.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  if(tm){let h=parseInt(tm[1])%12; if(/pm/i.test(tm[3]))h+=12; time=String(h).padStart(2,'0')+':'+(tm[2]||'00');}
+  else{const t24=q.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/); if(t24)time=t24[0].padStart(5,'0');}
+  const d=new Date(),lc=q.toLowerCase();
+  if(/\btomorrow\b/.test(lc))d.setDate(d.getDate()+1);
+  else if(/\b(today|tonight)\b/.test(lc)){}
+  else{const days=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+    const wd=days.findIndex(n=>lc.includes(n));
+    if(wd>=0){let add=(wd-d.getDay()+7)%7; if(add===0)add=7; d.setDate(d.getDate()+add);} else d.setDate(d.getDate()+1);}
+  return {partySize,time,date:d.toISOString().slice(0,10)};
+}
+function getGeo(){return new Promise(res=>{if(!navigator.geolocation)return res(null);
+  navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lon:p.coords.longitude}),()=>res(null),{timeout:4000});});}
+// the signed-in user's email (from the join popup) → reservation replies route to them
+function ownerEmail(){return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ORB_USER||'')?ORB_USER:'';}
+
+// "book/reserve a table at <name> for <n> [tomorrow|fri] [at 7pm]"
+function parseReserve(q){
+  if(!/\b(book|reserve|reservation|table)\b/i.test(q)) return null;
+  const at=q.match(/\b(?:at|@)\s+([A-Za-z0-9'&.\- ]+?)(?=\s+(?:for|on|at|tomorrow|today|tonight|this|next|\d)|$)/i);
+  const restaurant=(at?at[1]:'').trim(); if(!restaurant) return null;
+  return {restaurant,...extractWhen(q)};
+}
+// "good/best restaurants in <area>", "find me italian food near me", "book me a restaurant ..."
+function parseFindRestaurants(q){
+  const isFind=/\b(good|best|recommend|suggest|find|show|where|what)\b[\s\S]*\b(restaurant|restaurants|place to eat|places to eat|food|dinner|lunch|brunch|eat)\b/i.test(q);
+  const isBook=/\b(book|reserve|reservation)\b[\s\S]*\brestaurant\b/i.test(q)||/\b(book|reserve|find)\s+me\b/i.test(q);
+  if(!isFind && !isBook) return null;
+  const area=(q.match(/\b(?:in|near|around)\s+([a-z0-9 ,.'-]+?)(?=\s+(?:for|on|at|tomorrow|tonight|today|this|next|\d)|[?.!]|$)/i)||[])[1];
+  const cm=q.match(/\b([a-z]+)\s+(?:restaurant|food|place|cuisine|spot|spots)\b/i);
+  const cuisine=cm?cm[1]:'';
+  return {area:area?area.trim():'', cuisine, book:isBook, when:isBook?extractWhen(q):null};
+}
+async function doRestaurants(fr){
+  const box=document.getElementById('answer');box.classList.add('show');box.textContent='Looking for good spots…';setPhase('identifying');
+  if(!API){box.innerHTML='<span class="badge">DEMO</span>Connect me + add a Google Places key and I\'ll find great spots nearby.';speak("Connect me and I'll find great spots nearby.",voiceLang.code);return;}
+  let geo=null; if(!fr.area) geo=await getGeo();
+  const qs=new URLSearchParams(); if(fr.cuisine)qs.set('q',fr.cuisine+' restaurants'); if(fr.area)qs.set('area',fr.area); if(geo){qs.set('lat',geo.lat);qs.set('lon',geo.lon);}
+  try{
+    const d=await (await fetch(API+'/api/orb/restaurants?'+qs.toString())).json();
+    if(!d.available||!d.results.length){setPhase('idle');
+      box.innerHTML='<span class="badge">RESTAURANTS</span>'+(d.note||'No spots found.');
+      speak(d.note||"I couldn't find places — I need a Google Places key to search the area.",voiceLang.code);return;}
+    const top=d.results.slice(0,5);
+    box.innerHTML='<span class="badge">NEARBY</span>'+top.map((p,i)=>`<div class="card"><div class="t">${i+1}. ${esc(p.name)} ${p.rating?'· ⭐'+p.rating:''} ${p.priceLevel?'· '+esc(p.priceLevel):''}</div><div class="m">${esc(p.address||'')}${p.phone?' · '+esc(p.phone):''}</div></div>`).join('');
+    setPhase('speaking');
+    speak(`Here are a few good spots${fr.area?' in '+fr.area:' nearby'}: ${top.slice(0,3).map(p=>p.name).join(', ')}.`,voiceLang.code);
+    if(fr.book){
+      const w=fr.when||extractWhen(''); const pick=top[0];
+      const rd=await (await fetch(API+'/api/orb/reserve',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({userId:ORB_USER||'demo-user',ownerContact:ownerEmail(),restaurant:pick.name,date:w.date,time:w.time,partySize:w.partySize,city:fr.area})})).json();
+      setPhase('confirming');
+      box.innerHTML+=`<div class="card"><div class="t">Booking ${esc(pick.name)} · ${w.date} ${w.time} · party of ${w.partySize}</div><div class="m"><a href="${rd.link}" target="_blank" style="color:#bdf3ff">Confirm →</a> · queued for your approval</div></div>`;
+      speak(`I'd go with ${pick.name} — top rated. I've lined up a table for ${w.partySize} on ${w.date} at ${w.time}, waiting for your okay.`,voiceLang.code);
+    }
+  }catch(e){box.textContent='Search failed: '+e.message;speak("Sorry, I couldn't search right now.",voiceLang.code);}
+}
+async function doReserve(r){
+  const box=document.getElementById('answer');box.classList.add('show');box.textContent='Setting up the reservation…';setPhase('thinking');
+  if(!API){box.innerHTML='<span class="badge">DEMO</span>Connect me and I\'ll line up the table for your approval.';speak("Connect me and I'll line up the table for your approval.");return;}
+  try{
+    const res=await fetch(API+'/api/orb/reserve',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({userId:ORB_USER||'demo-user',ownerContact:ownerEmail(),...r})});
+    const d=await res.json();
+    setPhase('confirming');
+    box.innerHTML=`<span class="badge">RESERVATION</span>${esc(r.restaurant)} · ${r.date} ${r.time} · party of ${r.partySize}<br>`+
+      `<a href="${d.link}" target="_blank" style="color:#bdf3ff">Open to confirm on OpenTable →</a><br>`+
+      `<span class="m">Queued for your approval (check the Approvals tab).</span>`;
+    speak(`Okay — I've lined up a table at ${r.restaurant} for ${r.partySize} on ${r.date} at ${r.time}. It's waiting for your okay.`,voiceLang.code);
+  }catch(e){box.textContent='Reservation failed: '+e.message;speak("Sorry, I couldn't set up that reservation.");}
+}
+
+// ── pay a bill by voice (confirm-first): "pay <who> $<amount>" / "take care of this bill" ──
+let pendingPay=null;  // a payment ORB has set up and is waiting for you to confirm out loud
+function parsePayBill(q){
+  const t=q.toLowerCase();
+  if(!/\b(pay|send|wire|settle|take care of|handle)\b/.test(t)) return null;
+  // require real money context so "pay attention to…" never triggers a payment
+  if(!(/\b(bill|invoice|owe|payment)\b/.test(t) || /\$\s*[0-9]/.test(t) || /\bdollars?\b/.test(t))) return null;
+  const amt=q.match(/\$?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:dollars|usd)?/i);
+  const amount=amt?parseFloat(amt[1].replace(/,/g,'')):null;
+  // payee: "to X" or "pay X" (strip amount/filler)
+  let payee=null;
+  let m=q.match(/\bto\s+([A-Za-z0-9'&.\- ]{2,40})/i)||q.match(/\b(?:pay|for)\s+([A-Za-z0-9'&.\- ]{2,40})/i);
+  if(m){payee=m[1].replace(/\$?\s*[0-9][0-9,]*(?:\.[0-9]{1,2})?\s*(?:dollars|usd)?/i,'').replace(/\b(the|my|this|that|bill|invoice|please)\b/gi,'').trim();}
+  return { payee:payee||null, amount };
+}
+async function doPayBill(p){
+  const box=document.getElementById('answer');box.classList.add('show');
+  if(!API){const m="Connect me first and I can pay bills for you — always after your okay.";box.innerHTML='<span class="badge">WALLET</span>'+m;speak(m);return;}
+  if(!p.amount||!p.payee){const m="Sure — who am I paying, and how much? You can also add it in the Wallet tab.";box.innerHTML='<span class="badge">WALLET</span>'+m;speak(m);return;}
+  try{
+    const res=await (await fetch(API+'/api/orb/wallet/pay',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({userId:ORB_USER||'demo-user',payee:p.payee,amount:p.amount})})).json();
+    if(res.ok){pendingPay=res.txn?.id||null;box.innerHTML='<span class="badge">CONFIRM</span>'+esc(res.say);speak(res.say);}
+    else{box.innerHTML='<span class="badge">WALLET</span>'+esc(res.error||'Could not set that up.');speak(res.error||"I couldn't set that up.");}
+  }catch(e){box.textContent='Payment setup failed: '+e.message;speak("Sorry, I couldn't set up that payment.");}
+}
+async function resolvePendingPay(confirm){
+  const box=document.getElementById('answer');box.classList.add('show');
+  const url=confirm?`/api/orb/wallet/payments/${pendingPay}/confirm`:`/api/orb/wallet/payments/${pendingPay}/cancel`;
+  try{const res=await (await fetch(API+url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:ORB_USER||'demo-user'})})).json();
+    const say=res.say||(confirm?'Done.':'Okay, I dropped it.');box.innerHTML='<span class="badge">WALLET</span>'+esc(say);speak(say);
+  }catch(e){speak("Sorry, that didn't go through.");}
+  pendingPay=null;
+}
+
+// ── convene the council (shared by the command bar + voice) ──
+async function convene(q){
+  if(!q)return;
+  document.getElementById('q').value='';
+  // If a payment is waiting on your word, "confirm/yes/send it" pays; "cancel/no/stop" drops it.
+  if(pendingPay){
+    if(/\b(confirm|yes|yep|do it|send it|pay it|go ahead|approved?)\b/i.test(q)){ await resolvePendingPay(true); return; }
+    if(/\b(cancel|no|nope|stop|don'?t|drop it)\b/i.test(q)){ await resolvePendingPay(false); return; }
+  }
+  const pb=parsePayBill(q);
+  if(pb){ await doPayBill(pb); return; }                    // "pay the charcoal supplier $1,240"
+  const pp=parsePersona(q);
+  if(pp){ setPersona(pp); return; }                        // "executive mode" / "be friendly" / "advisor mode"
+  const rv=parseReserve(q);
+  if(rv){ await doReserve(rv); return; }                   // explicit "book ... at <name>"
+  const fr=parseFindRestaurants(q);
+  if(fr){ await doRestaurants(fr); return; }               // "good restaurants nearby" / "book me a restaurant"
+  const sl=parseSetLang(q);
+  if(sl){ await setVoiceLang(sl); return; }                // persistent language switch
+  const tr=parseTranslate(q);
+  if(tr){ await doTranslate(tr.text,tr.lang); return; }    // one-off translation → speak in that language
+  const box=document.getElementById('answer');box.classList.add('show');box.textContent='Thinking…';setPhase('thinking');
+  if(!API){const demo="I'm in demo mode right now — connect me to my system and I'll really get to work. Anything that spends money or sends something, I'll always check with you first.";
+    box.innerHTML='<span class="badge">DEMO</span>'+demo;speak(demo,voiceLang.code);return;}
+  try{const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:ORB_USER||'demo-user',message:q,personality:persona})});
+    const d=await r.json();const need=d.approvalRequired?.count?`<span class="badge">${d.approvalRequired.count} NEED APPROVAL</span>`:'';
+    let answer=d.answer||'Okay.', sayLang='en-US';
+    if(voiceLang.code!=='en-US'){                          // answer in the chosen language
+      try{const t2=await fetch(API+'/api/orb/translate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:answer,to:voiceLang.name})});
+        const td=await t2.json(); if(td.translated){answer=td.translated;sayLang=voiceLang.code;}}catch(e){}
+    }
+    box.innerHTML=need+mdToHtml(answer);
+    speak(answer,sayLang);
+  }catch(e){box.textContent='Could not reach ORB API: '+e.message;speak("Sorry, I can't reach my system right now.");}}
+
+document.getElementById('cmd').addEventListener('submit',ev=>{ev.preventDefault();convene(document.getElementById('q').value.trim());});
+
+// The ORB image is locked for now — image picker, drag-drop, and ✨ generate are intentionally
+// removed so the orb stays exactly as set. (We'll re-enable adjustments later.)
+
+// ── voice input: speech-to-text + hands-free conversation loop ──
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+function startRecog(){if(!recog||recogActive||speaking)return;try{recog.start();}catch(e){}}
+async function startMicAnalyser(){
+  try{const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+    const ac=new(window.AudioContext||window.webkitAudioContext)();const src=ac.createMediaStreamSource(stream);
+    analyser=ac.createAnalyser();analyser.fftSize=128;freq=new Uint8Array(analyser.frequencyBinCount);src.connect(analyser);
+  }catch(e){/* visuals only; recognition can still run */}
+}
+function buildRecog(){
+  if(!SR)return null;
+  const r=new SR();r.lang='en-US';r.interimResults=true;r.continuous=false;
+  r.onstart=()=>{recogActive=true;if(convoMode||wakeMode)setPhase('listening');};
+  r.onresult=ev=>{let txt='';for(let i=ev.resultIndex;i<ev.results.length;i++)txt+=ev.results[i][0].transcript;
+    document.getElementById('q').value=txt;
+    if(!ev.results[ev.results.length-1].isFinal)return;
+    const q=txt.trim();if(!q)return;
+    if(convoMode){convene(q);return;}
+    if(wakeMode){
+      if(WAKE.test(q)){const cmd=afterWake(q);
+        if(cmd.length>2){convene(cmd);}                       // "Hey ORB, what's urgent?"
+        else{armedUntil=Date.now()+9000;setPhase('listening');speak("Yeah? I'm listening.");}  // just "Hey ORB"
+      } else if(armedUntil>Date.now()){armedUntil=0;convene(q);} // command right after the wake
+    }};
+  r.onerror=()=>{};
+  r.onend=()=>{recogActive=false;if((convoMode||wakeMode)&&!speaking)setTimeout(startRecog,400);}; // keep listening
+  return r;
+}
+// Turn ON the hands-free conversation loop: greet, then actually listen for your reply.
+async function startConversation(greeting){
+  if(!SR){alert('Voice input needs Chrome or Edge (Web Speech API).');return;}
+  convoMode=true;listening=true;recog=recog||buildRecog();
+  document.getElementById('mic').style.color='#ffc878';
+  await startMicAnalyser();setPhase('listening');startRecog();
+  const g = greeting===undefined ? "Hey, I'm here. What do you need?" : greeting;  // "" = listen silently
+  if(g && !speaking)speak(g);
+}
+function stopConversation(){
+  convoMode=false;listening=false;setPhase('idle');document.getElementById('mic').style.color='';
+  try{recog&&recog.stop();}catch(e){}if(!wakeMode)analyser=null;
+}
+document.getElementById('mic').addEventListener('click',async()=>{
+  if(!SR){alert('Voice input needs Chrome or Edge (Web Speech API).');return;}
+  if(convoMode){stopConversation();return;}
+  await startConversation("Okay, I'm listening.");
+});
+
+// 👂 always-on wake word: say "Hey EBE"
+async function armWake(on){
+  if(!SR) return false;
+  if(on && !wakeMode){
+    wakeMode=true;listening=true;recog=recog||buildRecog();
+    document.getElementById('wake').style.color='#7fe6a1';
+    await startMicAnalyser();setPhase('listening');startRecog();
+  } else if(!on && wakeMode){
+    wakeMode=false;armedUntil=0;document.getElementById('wake').style.color='';
+    if(!convoMode){listening=false;setPhase('idle');try{recog&&recog.stop();}catch(e){}analyser=null;}
+  }
+  return true;
+}
+document.getElementById('wake').addEventListener('click',async()=>{
+  if(!SR){alert('Wake word needs Chrome or Edge (Web Speech API).');return;}
+  const turningOn=!wakeMode; await armWake(turningOn);
+  if(turningOn && !speaking) speak("I'm listening — just say my name whenever.");
+});
+
+// Proactive ORB — speak first with the top priorities (EBE greets you).
+async function greetProactive(){
+  if(!API){ speak("I'm here. What's up?",voiceLang.code); return; }
+  try{
+    const d=await (await fetch(API+'/api/orb/proactive',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({userId:ORB_USER||'demo-user'})})).json();
+    const box=document.getElementById('answer'); if(box){box.classList.add('show');box.innerHTML='<span class="badge">ORB</span>'+(d.alert||'');}
+    speak(d.alert||"I'm here. What's up?",voiceLang.code);
+  }catch(e){ speak("I'm here. What's up?",voiceLang.code); }
+}
+
+// ● the one button — go completely live: only the orb, always listening, first person
+const liveBtn=document.getElementById('live');
+async function setLive(on,greet){
+  document.body.classList.toggle('live',on);
+  liveBtn.textContent=on?'✕ EXIT':'● GO LIVE';
+  resize();
+  if(on){
+    document.getElementById('answer')?.classList.remove('show');
+    if(panel) panel.classList.remove('on');
+    await armWake(true);
+    if(greet && !speaking) greetProactive();
+  } else { await armWake(false); try{speechSynthesis.cancel();}catch(e){} }
+}
+liveBtn.addEventListener('click',()=>setLive(!document.body.classList.contains('live'),true));
+// Esc always exits live mode and stops listening (safety hatch).
+addEventListener('keydown',e=>{ if(e.key==='Escape' && document.body.classList.contains('live')) setLive(false); });
+// NOTE: live mode is never auto-restored on reload — a refresh always shows the controls.
+
+// ── Approvals & Activity panel (the confirm-first loop, on screen) ──
+const panel=document.getElementById('panel'),pbody=document.getElementById('panel-body');
+let tab='approvals';
+function openPanel(o){panel.classList.toggle('on',o);if(o)refreshPanel();}
+document.getElementById('toggle').addEventListener('click',()=>openPanel(!panel.classList.contains('on')));
+document.getElementById('panel-close').addEventListener('click',()=>openPanel(false));
+document.querySelectorAll('#panel .tab').forEach(el=>el.addEventListener('click',()=>{
+  tab=el.dataset.tab;document.querySelectorAll('#panel .tab').forEach(t=>t.classList.toggle('sel',t===el));refreshPanel();}));
+
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+async function refreshPanel(){
+  if(!API){pbody.innerHTML='<div class="empty">Set <b>window.ORB_API</b> to manage live approvals and view the council log.</div>';return;}
+  pbody.innerHTML='<div class="empty">Loading…</div>';
+  try{
+    if(tab==='approvals') await renderApprovals();
+    else if(tab==='briefing') await renderBriefing();
+    else if(tab==='notes') await renderNotes();
+    else if(tab==='news') await renderNews();
+    else if(tab==='settings') await renderSettings();
+    else if(tab==='wallet') await renderWallet();
+    else await renderActivity();
+  } catch(e){pbody.innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
+}
+let noteTimer=null;
+async function renderNotes(){
+  const r=await fetch(API+'/api/orb/notepad?userId='+encodeURIComponent(ORB_USER||'demo-user'));
+  const d=await r.json();
+  pbody.innerHTML=`<div class="m" style="margin-bottom:6px">Notepad ${d.updatedAt?'· saved '+new Date(d.updatedAt).toLocaleTimeString():''} <span id="note-state" style="color:#7fe6a1"></span></div>
+    <textarea id="note-area" style="width:100%;height:54vh;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);
+      border-radius:10px;color:#cfeefb;font:inherit;font-size:13px;padding:12px;outline:0;resize:none">${esc(d.content||'')}</textarea>`;
+  const ta=document.getElementById('note-area');
+  ta.addEventListener('input',()=>{document.getElementById('note-state').textContent='…';
+    clearTimeout(noteTimer);noteTimer=setTimeout(async()=>{
+      await fetch(API+'/api/orb/notepad',{method:'PUT',headers:{'content-type':'application/json'},
+        body:JSON.stringify({userId:ORB_USER||'demo-user',content:ta.value})});
+      document.getElementById('note-state').textContent='✓ saved';},700);});
+}
+async function renderNews(){
+  const r=await fetch(API+'/api/orb/news');const d=await r.json();
+  pbody.innerHTML=`<div class="m" style="margin-bottom:8px">Source: ${esc(d.source)}${d.available?'':' (sample)'}</div>`+
+    (d.headlines||[]).map(h=>`<div class="card"><div class="t">${h.url?`<a href="${esc(h.url)}" target="_blank" style="color:#bdf3ff;text-decoration:none">${esc(h.title)}</a>`:esc(h.title)}</div>
+      <div class="m">${esc(h.source||'')}</div></div>`).join('');
+}
+// SETTINGS — users connect only what's THEIRS (their business). The AI brains are built in.
+async function renderSettings(){
+  const uid=ORB_USER||'demo-user';
+  const r=await fetch(API+'/api/orb/integrations?userId='+encodeURIComponent(uid));
+  const d=await r.json();
+  const items=d.integrations||[];
+  pbody.innerHTML=`<div class="m" style="margin-bottom:10px">Connect your business — ORB checks each key and links it automatically. Your keys are stored privately and never shown again.</div>`+
+    items.map(it=>{
+      const fields=it.fields.map(f=>{
+        const ph=it.connected&&it.preview&&it.preview[f.key]?it.preview[f.key]:(f.placeholder||'');
+        return `<input class="set-in" data-k="${esc(f.key)}" placeholder="${esc(ph)}" autocomplete="off" spellcheck="false"
+          style="width:100%;margin:4px 0;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);border-radius:8px;color:#cfeefb;font:inherit;font-size:13px;padding:9px;outline:0" />
+          <div class="m" style="margin:-2px 0 6px">${esc(f.label)}</div>`;
+      }).join('');
+      return `<div class="card" data-prov="${esc(it.provider)}">
+        <div class="t">${esc(it.label)} ${it.connected?'<span class="pill ok">CONNECTED</span>':''}</div>
+        <div class="m" style="margin-bottom:6px">${esc(it.blurb)}</div>
+        ${fields}
+        ${it.docs?`<div class="m" style="opacity:.7;margin-bottom:6px">Where to find this: ${esc(it.docs)}</div>`:''}
+        <div class="set-note m" style="min-height:14px"></div>
+        <div class="btns">
+          <button class="go" data-act="save">${it.connected?'UPDATE KEYS':'CONNECT'}</button>
+          ${it.connected?'<button class="no" data-act="disconnect">DISCONNECT</button>':''}
+        </div></div>`;
+    }).join('')||'<div class="empty">No integrations available.</div>';
+
+  pbody.querySelectorAll('.card[data-prov]').forEach(card=>{
+    const prov=card.dataset.prov, note=card.querySelector('.set-note');
+    card.querySelector('button[data-act="save"]')?.addEventListener('click',async()=>{
+      const fields={};card.querySelectorAll('.set-in').forEach(i=>{if(i.value.trim())fields[i.dataset.k]=i.value.trim();});
+      note.style.color='#9fd0ea';note.textContent='Checking your keys…';
+      try{
+        const res=await fetch(API+'/api/orb/integrations/'+encodeURIComponent(prov),{method:'POST',
+          headers:{'content-type':'application/json'},body:JSON.stringify({userId:uid,fields})});
+        const dd=await res.json();
+        if(dd.ok){note.style.color='#7fe6a1';note.textContent='✓ '+(dd.note||'Connected.');speak(prov+' is connected.');setTimeout(refreshPanel,900);}
+        else{note.style.color='#ff9b9b';note.textContent=dd.error||'Could not connect.';}
+      }catch(e){note.style.color='#ff9b9b';note.textContent=e.message;}
+    });
+    card.querySelector('button[data-act="disconnect"]')?.addEventListener('click',async()=>{
+      note.style.color='#9fd0ea';note.textContent='Disconnecting…';
+      try{await fetch(API+'/api/orb/integrations/'+encodeURIComponent(prov)+'?userId='+encodeURIComponent(uid),{method:'DELETE'});
+        refreshPanel();}catch(e){note.style.color='#ff9b9b';note.textContent=e.message;}
+    });
+  });
+}
+// WALLET — ORB never holds money; Stripe does. We show the REAL Stripe balance, confirm bills, history.
+const money=(c,cur)=>new Intl.NumberFormat('en-US',{style:'currency',currency:(cur||'usd').toUpperCase()}).format((c||0)/100);
+async function renderWallet(){
+  const uid=ORB_USER||'demo-user';
+  const d=await (await fetch(API+'/api/orb/wallet?userId='+encodeURIComponent(uid))).json();
+  const w=d.wallet||{connected:false,availableCents:null,currency:'usd'};
+  const pending=(d.pending||[]);
+  const hist=(d.txns||[]).filter(t=>t.status!=='pending').slice(0,12);
+  const balanceCard = w.connected && w.availableCents!==null
+    ? `<div class="card" style="text-align:center">
+        <div class="m">Available in Stripe</div>
+        <div style="font-size:30px;font-weight:600;color:#bdf3ff;margin:4px 0">${money(w.availableCents,w.currency)}</div>
+        ${w.pendingCents?`<div class="m">${money(w.pendingCents,w.currency)} pending</div>`:''}
+        <div class="m" style="opacity:.7">Your money stays with Stripe — ORB never holds it.</div>
+      </div>`
+    : `<div class="card" style="text-align:center">
+        <div class="t">Wallet powered by Stripe</div>
+        <div class="m" style="margin:6px 0">${esc(w.note||'Connect Stripe in Settings to pay bills.')}</div>
+        <div class="m" style="opacity:.7">ORB never holds your money — Stripe (a licensed company) does.</div>
+      </div>`;
+  pbody.innerHTML=`
+    ${balanceCard}
+    ${pending.length?'<div class="m" style="margin:10px 0 4px">⏳ Needs your confirm</div>':''}
+    ${pending.map(t=>`<div class="card" data-id="${t.id}">
+      <div class="t">${money(t.amountCents,t.currency)} → ${esc(t.payee||'')}</div>
+      <div class="m"><span class="pill medium">${esc(t.rail)}</span>${t.memo?' '+esc(t.memo):''}</div>
+      <div class="set-note m" style="min-height:14px"></div>
+      <div class="btns"><button class="go" data-act="confirm">CONFIRM &amp; PAY</button><button class="no" data-act="cancel">CANCEL</button></div>
+    </div>`).join('')}
+    <div class="m" style="margin:12px 0 4px">Add a bill</div>
+    <div class="card">
+      <input id="pay-payee" placeholder="Who to pay" style="width:100%;margin:3px 0;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);border-radius:8px;color:#cfeefb;font:inherit;padding:9px;outline:0" />
+      <input id="pay-amt" type="number" min="1" step="0.01" placeholder="Amount" style="width:100%;margin:3px 0;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);border-radius:8px;color:#cfeefb;font:inherit;padding:9px;outline:0" />
+      <select id="pay-rail" style="width:100%;margin:3px 0;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);border-radius:8px;color:#cfeefb;font:inherit;padding:9px;outline:0">
+        ${(d.rails||[]).map(r=>`<option value="${r.rail}"${r.ready?'':' disabled'}>${esc(r.label)}${r.ready?'':' (connect first)'}</option>`).join('')}
+      </select>
+      <div class="set-note m" id="pay-note" style="min-height:14px"></div>
+      <div class="btns"><button class="go" id="pay-btn">SET UP PAYMENT</button></div>
+    </div>
+    ${hist.length?'<div class="m" style="margin:12px 0 4px">History</div>':''}
+    ${hist.map(t=>`<div class="card"><div class="t">${money(t.amountCents,t.currency)} ${t.payee?'→ '+esc(t.payee):''}</div>
+      <div class="m"><span class="pill ${t.status==='paid'?'ok':''}">${esc(t.status)}</span> ${esc(t.note||'')}</div></div>`).join('')}`;
+
+  document.getElementById('pay-btn').addEventListener('click',async()=>{
+    const payee=document.getElementById('pay-payee').value.trim();
+    const amount=parseFloat(document.getElementById('pay-amt').value);
+    const rail=document.getElementById('pay-rail').value;
+    const note=document.getElementById('pay-note');
+    if(!payee||!amount){note.style.color='#ff9b9b';note.textContent='Need a payee and amount.';return;}
+    const res=await (await fetch(API+'/api/orb/wallet/pay',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:uid,payee,amount,rail})})).json();
+    if(res.ok){note.style.color='#7fe6a1';note.textContent=res.say;speak(res.say);setTimeout(refreshPanel,1200);}
+    else{note.style.color='#ff9b9b';note.textContent=res.error||'Could not set up.';}
+  });
+  pbody.querySelectorAll('.card[data-id] button[data-act]').forEach(b=>b.addEventListener('click',async()=>{
+    const card=b.closest('.card'),id2=card.dataset.id,act=b.dataset.act,note=card.querySelector('.set-note');
+    b.textContent='…';
+    const url=act==='confirm'?`/api/orb/wallet/payments/${id2}/confirm`:`/api/orb/wallet/payments/${id2}/cancel`;
+    const res=await (await fetch(API+url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:uid})})).json();
+    if(res.say){note.textContent=res.say;speak(res.say);}
+    setTimeout(refreshPanel,1000);
+  }));
+}
+async function renderBriefing(){
+  const r=await fetch(API+'/api/orb/briefing',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user'})});
+  const d=await r.json();const rep=d.report||{};const acts=rep.actions||[];
+  pbody.innerHTML=`<div class="card"><div class="t">Morning briefing</div>
+    <div class="m">${esc(d.summary||'').replace(/\n/g,'<br>')}</div>
+    <div class="btns"><button class="go" id="read-brief">🔊 READ IT</button></div></div>`+
+    acts.map(a=>`<div class="card"><div class="t">${esc(a.title)}</div>
+      <div class="m"><span class="pill ${a.riskLevel}">${a.riskLevel.toUpperCase()}</span>
+      ${a.requiresApproval?'<span class="pill medium">approve</span>':'<span class="pill ok">auto</span>'}
+      ${esc(a.domain)}</div></div>`).join('');
+  const rb=document.getElementById('read-brief');if(rb)rb.addEventListener('click',()=>speak(d.summary||'No briefing.'));
+}
+async function renderApprovals(){
+  // surface fresh actions onto the queue, then list everything still pending/approved
+  await fetch(API+'/api/orb/cycle',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user',enqueue:true})});
+  const r=await fetch(API+'/api/orb/actions?userId=demo-user');const d=await r.json();
+  const live=(d.actions||[]).filter(a=>a.status==='pending'||a.status==='approved');
+  if(!live.length){pbody.innerHTML='<div class="empty">No actions awaiting you. ORB is clear. ✓</div>';return;}
+  pbody.innerHTML=live.map(a=>`<div class="card" data-id="${a.id}">
+    <div class="t">${esc(a.title)}</div>
+    <div class="m"><span class="pill ${a.riskLevel}">${a.riskLevel.toUpperCase()}</span>
+      <span class="pill ${a.status==='approved'?'ok':''}">${a.status}</span>
+      ${a.connector?esc(a.connector):''}</div>
+    <div class="m">${esc(a.description||'')}</div>
+    <div class="btns">${a.status==='pending'
+      ?`<button class="go" data-act="approve">APPROVE</button><button class="no" data-act="reject">REJECT</button>`
+      :`<button class="go" data-act="execute">EXECUTE (dry-run)</button>`}</div></div>`).join('');
+  pbody.querySelectorAll('button[data-act]').forEach(b=>b.addEventListener('click',async()=>{
+    const id=b.closest('.card').dataset.id, act=b.dataset.act;
+    b.textContent='…';
+    await fetch(`${API}/api/orb/actions/${id}/${act}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:'demo-user'})});
+    if(act==='approve'){setPhase('confirming');speak('Got it, approved.');}if(act==='execute')speak("Okay, I'm on it.");
+    renderApprovals();
+  }));
+}
+async function renderActivity(){
+  const r=await fetch(API+'/api/orb/council/history?userId=demo-user&limit=15');const d=await r.json();
+  const runs=d.runs||[];
+  if(!runs.length){pbody.innerHTML='<div class="empty">No council runs yet. Ask ORB something.</div>';return;}
+  pbody.innerHTML=runs.map(run=>`<div class="card">
+    <div class="t">${esc(run.request)}</div>
+    <div class="m"><span class="pill medium">${run.approvalCount} need approval</span>
+      <span class="pill ${run.fullyConfigured?'ok':''}">${run.fullyConfigured?'live council':'degraded'}</span>
+      ${new Date(run.createdAt).toLocaleString()}</div>
+    <div class="m">${esc((run.finalAnswer||'').slice(0,180))}</div></div>`).join('');
+}
+// refresh approvals after every convene so the panel stays live
+const _convene=convene; convene=async q=>{await _convene(q);if(panel.classList.contains('on'))refreshPanel();};
+
+// ── EBE's senses: time, weather, connection speed ──
+function tickClock(){
+  const d=new Date(), h=d.getHours();
+  const part=h<12?'morning':h<17?'afternoon':h<21?'evening':'night';
+  const el=document.getElementById('st-time'); if(el) el.textContent=d.toLocaleTimeString()+' · '+part;
+}
+setInterval(tickClock,1000); tickClock();
+
+async function senseWeather(){
+  if(!API) return;
+  const set=t=>{const e=document.getElementById('st-weather'); if(e) e.textContent=t;};
+  const go=async(qs)=>{ const r=await fetch(API+'/api/orb/weather'+qs); return r.json(); };
+  try{
+    let w;
+    if(navigator.geolocation){
+      w=await new Promise(res=>navigator.geolocation.getCurrentPosition(
+        p=>res(go(`?lat=${p.coords.latitude}&lon=${p.coords.longitude}`)),
+        ()=>res(go('')), {timeout:4000}));
+    } else { w=await go(''); }
+    if(w && (w.tempF!=null)) set(`${w.tempF}°F · ${w.description||''}${w.available?'':' (sample)'}`);
+    else set('—');
+  }catch(e){ set('—'); }
+}
+
+async function senseNet(){
+  if(!API){const e=document.getElementById('st-net'); if(e) e.textContent='local';return;}
+  const set=t=>{const e=document.getElementById('st-net'); if(e) e.textContent=t;};
+  try{
+    const t0=performance.now(); await fetch(API+'/api/orb/ping',{cache:'no-store'}); const ms=Math.round(performance.now()-t0);
+    const bytes=2_000_000, s0=performance.now();
+    const buf=await (await fetch(API+'/api/orb/speedtest?bytes='+bytes,{cache:'no-store'})).arrayBuffer();
+    const secs=(performance.now()-s0)/1000; const mbps=((buf.byteLength*8)/1e6/secs);
+    set(`${ms}ms · ${mbps.toFixed(0)} Mbps`);
+  }catch(e){ set('offline'); }
+}
+senseWeather(); senseNet(); setInterval(senseNet,45000); setInterval(senseWeather,600000);
+
+// ── onboarding: greet every new visitor and ask them to join ──
+const join=document.getElementById('join'), jnote=document.getElementById('join-note');
+let ORB_USER=localStorage.getItem('ebeUser')||'';
+function showJoin(){ if(!localStorage.getItem('ebeJoined')) setTimeout(()=>join.classList.add('on'),700); }
+function closeJoin(){ join.classList.remove('on'); }
+showJoin();
+document.getElementById('join-skip').addEventListener('click',closeJoin);
+join.addEventListener('click',e=>{ if(e.target===join) closeJoin(); });
+
+document.getElementById('join-google').addEventListener('click',async()=>{
+  if(!API){jnote.textContent='Set window.ORB_API to enable Google sign-in.';return;}
+  jnote.textContent='Opening Google…';
+  try{
+    const r=await fetch(API+'/api/orb/connectors/google/auth?userId='+encodeURIComponent(ORB_USER||'demo-user'));
+    const d=await r.json();
+    if(d.url){localStorage.setItem('ebeJoined','1');window.location.href=d.url;}
+    else jnote.textContent=d.error||'Google sign-in is not configured yet.';
+  }catch(e){jnote.textContent='Could not start Google sign-in.';}
+});
+document.getElementById('join-submit').addEventListener('click',async()=>{
+  const email=document.getElementById('join-email').value.trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){jnote.textContent='Enter a valid email.';return;}
+  ORB_USER=email; localStorage.setItem('ebeUser',email); localStorage.setItem('ebeJoined','1');
+  if(API){ try{ await fetch(API+'/api/orb/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email})}); }catch(e){} }
+  closeJoin(); speak("Hey, good to meet you. I'll remember you from here on.");
+});
+</script>
+</body>
+</html>
