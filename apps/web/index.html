@@ -608,7 +608,8 @@ async function convene(q){
   try{const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:ORB_USER||'demo-user',message:q,personality:persona})});
     const d=await r.json();
     if(d.mode==='video'){box.classList.add('show');
-      if(d.video&&d.video.available&&d.video.dataUrl){box.innerHTML='<video controls autoplay loop playsinline style="width:100%;border-radius:10px" src="'+d.video.dataUrl+'"></video>';}
+      const vsrc=d.video&&d.video.available&&(d.video.url||d.video.dataUrl);
+      if(vsrc){box.innerHTML='<video controls autoplay loop playsinline style="width:100%;border-radius:10px" src="'+vsrc+'"></video>'+(d.video.provider?'<div style="color:#8fb9d4;font-size:11px;margin-top:4px">via '+d.video.provider+'</div>':'');}
       else{box.innerHTML=mdToHtml(d.answer||'Video unavailable.');}
       setPhase('idle');return;}
     if(d.mode==='build'&&d.build){lastBuild=d.build;tab='build';document.querySelectorAll('#panel .tab').forEach(t=>t.classList.toggle('sel',t.dataset.tab==='build'));openPanel(true);}

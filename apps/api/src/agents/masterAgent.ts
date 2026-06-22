@@ -4,7 +4,7 @@ import { runOrbCycle, type OrbCycleReport } from '../genome/orbBranch.js';
 import { createJournal } from '../services/journalStore.js';
 import { runCouncil, type CouncilLevel } from '../brains/council.js';
 import { runBuild } from '../build/genome.js';
-import { generateVideo, videoAllowedFor } from '../services/veo.js';
+import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -83,8 +83,10 @@ export async function askOrb(
     if (!videoAllowedFor(opts.plan)) {
       return { mode: 'video' as const, answer: '🎬 AI video is an Executive/Enterprise feature — upgrade in the Plans tab to generate videos.', video: { available: false, locked: true } };
     }
-    const video = await generateVideo(videoPrompt(message));
-    return { mode: 'video' as const, answer: video.available ? '🎬 Here’s your video.' : `🎬 ${video.note || 'Video unavailable.'}`, video };
+    const provider = /\brunway\b/i.test(message) ? 'runway' : /\bveo\b/i.test(message) ? 'veo' : undefined;
+    const video = await generateVideo(videoPrompt(message), { provider });
+    const tag = video.provider ? ` (${video.provider})` : '';
+    return { mode: 'video' as const, answer: video.available ? `🎬 Here’s your video${tag}.` : `🎬 ${video.note || 'Video unavailable.'}`, video };
   }
 
   // Build mode: if the user is asking ORB to construct a site/app, run the Construction Genome

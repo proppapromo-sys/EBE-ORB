@@ -6,7 +6,7 @@
  */
 import 'dotenv/config';
 import { getPlatformKey } from './platformKeys.js';
-import { getPlan } from '../billing/plans.js';
+import type { VideoResult } from './video.js';
 
 const MODEL = process.env.ORB_VIDEO_MODEL || 'veo-3.0-generate-preview';
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';
@@ -14,15 +14,8 @@ const MAX_WAIT_MS = Number(process.env.ORB_VIDEO_MAX_WAIT_MS || 150000);
 const POLL_MS = Number(process.env.ORB_VIDEO_POLL_MS || 10000);
 const MAX_INLINE_BYTES = 40 * 1024 * 1024; // don't inline videos larger than ~40MB
 
-export type VideoResult = { available: boolean; dataUrl?: string; mimeType?: string; locked?: boolean; note?: string };
-
-export function videoConfigured(): boolean {
+export function veoConfigured(): boolean {
   return Boolean(getPlatformKey('GEMINI_API_KEY') || getPlatformKey('GOOGLE_API_KEY'));
-}
-
-/** Video is the priciest call — reserve it for the top tiers. */
-export function videoAllowedFor(planId?: string): boolean {
-  return ['executive', 'enterprise'].includes(getPlan(planId).id);
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -48,7 +41,7 @@ function findVideo(root: unknown): { uri?: string; b64?: string; mime?: string }
   return found;
 }
 
-export async function generateVideo(prompt: string, opts?: { aspectRatio?: string }): Promise<VideoResult> {
+export async function generateVeoVideo(prompt: string, opts?: { aspectRatio?: string }): Promise<VideoResult> {
   const key = getPlatformKey('GEMINI_API_KEY') || getPlatformKey('GOOGLE_API_KEY');
   if (!key) return { available: false, note: 'GEMINI_API_KEY not set' };
   if (!prompt || !prompt.trim()) return { available: false, note: 'no prompt' };

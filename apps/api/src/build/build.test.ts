@@ -8,7 +8,7 @@ import { inferCategory, getBlueprint } from './blueprints.js';
 import { buildCapability } from './tiers.js';
 import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
 import { looksLikeBuildRequest, looksLikeVideoRequest } from '../agents/masterAgent.js';
-import { videoAllowedFor } from '../services/veo.js';
+import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
 
 test('inferCategory: reads build family from a plain brief', () => {
@@ -53,6 +53,8 @@ test('looksLikeVideoRequest + tier gate', () => {
   assert.equal(videoAllowedFor('enterprise'), true);
   assert.equal(videoAllowedFor('pro'), false);   // video reserved for top tiers
   assert.equal(videoAllowedFor('free'), false);
+  // No keys set in test env → no engine available.
+  assert.equal(chooseProvider(), null);
 });
 
 test('owner gets full top-tier access (unlocks video, full council, big builds)', async () => {

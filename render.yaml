@@ -21,6 +21,11 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       # optional features
+      # ── AI video ──
+      - key: RUNWAY_API_KEY           # RunwayML Gen-4 video (preferred engine when set)
+        sync: false
+      - key: ORB_VIDEO_PROVIDER       # optional: force "runway" or "veo"
+        sync: false
       - key: GOOGLE_PLACES_API_KEY
         sync: false
       - key: RESEND_API_KEY

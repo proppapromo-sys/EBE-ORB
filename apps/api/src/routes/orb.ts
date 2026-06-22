@@ -23,7 +23,7 @@ import { mailerConfigured, sendMail } from '../services/mailer.js';
 import { PLANS } from '../billing/plans.js';
 import { createCheckoutSession, purchasablePlans, billingConfigured } from '../services/billing.js';
 import { getUserPlan, setUserPlan } from '../services/planStore.js';
-import { generateVideo, videoAllowedFor, videoConfigured } from '../services/veo.js';
+import { generateVideo, videoAllowedFor, videoConfigured } from '../services/video.js';
 import { deleteAccount } from '../services/account.js';
 import { transcribe, sttConfigured } from '../services/stt.js';
 import { INTEGRATIONS, getIntegration, testConnection } from '../services/integrations.js';
@@ -460,6 +460,7 @@ const VideoSchema = z.object({
   userId: z.string().min(1).default('demo-user'),
   prompt: z.string().min(1),
   aspectRatio: z.string().optional(),
+  provider: z.enum(['runway', 'veo']).optional(),
   plan: z.string().optional()
 });
 orbRouter.post('/video', async (req, res, next) => {
@@ -469,7 +470,7 @@ orbRouter.post('/video', async (req, res, next) => {
     if (!videoAllowedFor(plan)) {
       return res.json({ available: false, locked: true, note: 'AI video is an Executive/Enterprise feature.' });
     }
-    res.json({ configured: videoConfigured(), ...(await generateVideo(parsed.prompt, { aspectRatio: parsed.aspectRatio })) });
+    res.json({ configured: videoConfigured(), ...(await generateVideo(parsed.prompt, { aspectRatio: parsed.aspectRatio, provider: parsed.provider })) });
   } catch (error) { next(error); }
 });
 
