@@ -10,6 +10,7 @@ import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
 import { looksLikeBuildRequest, looksLikeVideoRequest } from '../agents/masterAgent.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
+import { classifyTask, ROUTES } from '../brains/router.js';
 
 test('inferCategory: reads build family from a plain brief', () => {
   assert.equal(inferCategory('a booking app for a barbershop'), 'mobile');
@@ -63,6 +64,18 @@ test('owner gets full top-tier access (unlocks video, full council, big builds)'
   assert.equal(isOwner('someone-else@example.com'), false);
   assert.equal(await getUserPlan('proppapromo@gmail.com'), 'enterprise');
   assert.equal(videoAllowedFor(await getUserPlan('proppapromo@gmail.com')), true);
+});
+
+test('classifyTask: routes for speed', () => {
+  assert.equal(classifyTask("what's on my calendar today?"), 'fast');
+  assert.equal(classifyTask('remind me to call mom at 5'), 'fast');
+  assert.equal(classifyTask('help me plan my business operations for Q3'), 'medium');
+  assert.equal(classifyTask('analyze this contract and flag legal risks'), 'heavy');
+  assert.equal(classifyTask('describe this', true), 'visual'); // has images
+  // Speed map points each tier at the intended engine.
+  assert.equal(ROUTES.fast.provider, 'gemini');
+  assert.equal(ROUTES.medium.provider, 'openai');
+  assert.equal(ROUTES.heavy.provider, 'anthropic');
 });
 
 test('genome soul: five laws and seven organs are present', () => {

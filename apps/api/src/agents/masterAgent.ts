@@ -4,6 +4,7 @@ import { runOrbCycle, type OrbCycleReport } from '../genome/orbBranch.js';
 import { createJournal } from '../services/journalStore.js';
 import { runCouncil, type CouncilLevel } from '../brains/council.js';
 import { runBuild } from '../build/genome.js';
+import { classifyTask, routedAnswer } from '../brains/router.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -112,6 +113,17 @@ Respond as ORB with priorities, recommended actions, and approval notes where ne
 Flag every action whose requiresApproval is true — never imply it can run on its own.`;
     const answer = await completeOrbPrompt(SYSTEM_PROMPT, prompt);
     return { mode: 'single' as const, answer, context, cycle };
+  }
+
+  // Speed routing: classify the task in code (instant — no model call) and send fast/medium/visual
+  // work to a single quick model. Only heavy tasks (or explicit council / attached documents) pay
+  // the full six-brain council. This is what keeps everyday responses snappy.
+  const taskClass = classifyTask(message, Boolean(opts.images && opts.images.length));
+  const forceCouncil = opts.council === true || taskClass === 'heavy' || Boolean(opts.documents);
+  if (!forceCouncil) {
+    const context = await gatherContext(userId);
+    const routed = await routedAnswer(message, { images: opts.images, context: JSON.stringify(context).slice(0, 4000) });
+    return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label, context };
   }
 
   const council = await runCouncil(userId, message, {
