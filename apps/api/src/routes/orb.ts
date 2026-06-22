@@ -24,6 +24,7 @@ import { PLANS } from '../billing/plans.js';
 import { createCheckoutSession, purchasablePlans, billingConfigured } from '../services/billing.js';
 import { getUserPlan, setUserPlan } from '../services/planStore.js';
 import { generateVideo, videoAllowedFor, videoConfigured } from '../services/video.js';
+import { synthesizeSpeech, ttsConfigured } from '../services/tts.js';
 import { deleteAccount } from '../services/account.js';
 import { transcribe, sttConfigured } from '../services/stt.js';
 import { INTEGRATIONS, getIntegration, testConnection } from '../services/integrations.js';
@@ -471,6 +472,16 @@ orbRouter.post('/video', async (req, res, next) => {
       return res.json({ available: false, locked: true, note: 'AI video is an Executive/Enterprise feature.' });
     }
     res.json({ configured: videoConfigured(), ...(await generateVideo(parsed.prompt, { aspectRatio: parsed.aspectRatio, provider: parsed.provider })) });
+  } catch (error) { next(error); }
+});
+
+// Cloned voice (ElevenLabs): is one configured, and turn text into ORB's spoken voice.
+orbRouter.get('/voice/status', (_req, res) => res.json({ configured: ttsConfigured() }));
+const SpeakSchema = z.object({ text: z.string().min(1), voiceId: z.string().optional() });
+orbRouter.post('/speak', async (req, res, next) => {
+  try {
+    const { text, voiceId } = SpeakSchema.parse(req.body ?? {});
+    res.json(await synthesizeSpeech(text, { voiceId }));
   } catch (error) { next(error); }
 });
 

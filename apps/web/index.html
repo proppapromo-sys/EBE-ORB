@@ -302,7 +302,7 @@ function frame(){
     // BARGE-IN: if you start talking while ORB is speaking, it stops and listens to you.
     if(speaking&&(convoMode||wakeMode)){
       if(amp>0.55)bargeFrames++;else bargeFrames=Math.max(0,bargeFrames-1);
-      if(bargeFrames>7){bargeFrames=0;try{speechSynthesis.cancel();}catch(e){}} // onend restarts listening
+      if(bargeFrames>7){bargeFrames=0;try{speechSynthesis.cancel();}catch(e){} stopCloned();} // onend restarts listening
     } else bargeFrames=0;
   }
   else if(speaking){                                            // simulate a voice waveform envelope
@@ -393,21 +393,47 @@ function mdToHtml(text){return String(text||'')
   .replace(/\*([^*]+)\*/g,'$1').replace(/[_~`#]/g,'')              // strip leftover * _ ~ ` #
   .replace(/^\s*[-•]\s+/gm,'• ')                                   // tidy bullets
   .replace(/\n/g,'<br>');}
-function speak(text,lang){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
+// ORB's voice. If a cloned voice (ElevenLabs) is configured, speak in it; else the browser voice.
+let CLONED=false, clonedAudio=null;
+function stopCloned(){ if(clonedAudio){try{clonedAudio.pause();}catch(e){}} clonedAudio=null; }
+function onSpeakStart(){speaking=true;setPhase('speaking');document.getElementById('speaking').classList.add('on');
+  if(recogActive){try{recog.stop();}catch(e){}}}                    // don't transcribe our own voice
+function onSpeakEnd(){speaking=false;document.getElementById('speaking').classList.remove('on');
+  if(convoMode||wakeMode){setPhase('listening');startRecog();}else setPhase('idle');}
+function speakBrowser(text,lang){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(speakable(text).slice(0,800));
   u.lang=lang||'en-US';
   u.voice=pickVoice(speechSynthesis.getVoices(),u.lang);
   u.rate=0.97;u.pitch=1.0;
-  u.onstart=()=>{speaking=true;setPhase('speaking');document.getElementById('speaking').classList.add('on');
-    if(recogActive){try{recog.stop();}catch(e){}}};                 // don't transcribe our own voice
+  u.onstart=onSpeakStart;
   u.onboundary=()=>{voiceKick=1;ripples.push({r:R*0.16,life:1});}; // ripple on each word — voice-wave sync
-  u.onend=()=>{speaking=false;document.getElementById('speaking').classList.remove('on');
-    if(convoMode||wakeMode){setPhase('listening');startRecog();}else setPhase('idle');};
+  u.onend=onSpeakEnd;
   speechSynthesis.speak(u);}
+async function speakCloned(text){
+  try{
+    const r=await fetch(API+'/api/orb/speak',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({text:speakable(text).slice(0,1200)})});
+    const d=await r.json();
+    if(!d||!d.available||!d.audioUrl) return false;
+    try{speechSynthesis.cancel();}catch(e){} stopCloned();
+    const a=new Audio(d.audioUrl); clonedAudio=a;
+    const rip=setInterval(()=>{if(clonedAudio!==a){clearInterval(rip);return;}voiceKick=1;ripples.push({r:R*0.16,life:1});},200);
+    a.onplay=onSpeakStart;
+    a.onended=()=>{clearInterval(rip);if(clonedAudio===a)clonedAudio=null;onSpeakEnd();};
+    a.onerror=()=>{clearInterval(rip);if(clonedAudio===a)clonedAudio=null;onSpeakEnd();};
+    await a.play();
+    return true;
+  }catch(e){return false;}
+}
+function speak(text,lang){
+  if(CLONED&&API){ speakCloned(text).then(ok=>{ if(!ok) speakBrowser(text,lang); }); return; }
+  speakBrowser(text,lang);
+}
+if(API){fetch(API+'/api/orb/voice/status').then(r=>r.json()).then(d=>{CLONED=!!(d&&d.configured);}).catch(()=>{});}
 if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
 // Tapping the orb: if it's talking, cut it off and listen; otherwise start a conversation.
 cv.addEventListener('click',()=>{
-  if(speaking){ try{speechSynthesis.cancel();}catch(e){}                 // stop talking immediately
+  if(speaking){ try{speechSynthesis.cancel();}catch(e){} stopCloned();    // stop talking immediately
     if(!convoMode&&!wakeMode) startConversation(""); return; }            // and start listening
   if(!convoMode) startConversation();
 });
@@ -716,7 +742,7 @@ async function setLive(on,greet){
     if(panel) panel.classList.remove('on');
     await armWake(true);
     if(greet && !speaking) greetProactive();
-  } else { await armWake(false); try{speechSynthesis.cancel();}catch(e){} }
+  } else { await armWake(false); try{speechSynthesis.cancel();}catch(e){} stopCloned(); }
 }
 liveBtn.addEventListener('click',()=>setLive(!document.body.classList.contains('live'),true));
 // Esc always exits live mode and stops listening (safety hatch).

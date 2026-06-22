@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { orbRouter } from './routes/orb.js';
 import { loadPlatformKeys } from './services/platformKeys.js';
 import { handleWebhook } from './services/billing.js';
+import { cloneVoice } from './services/tts.js';
 
 // Keep the server alive: a single unexpected async error must never crash-loop the whole app.
 // Log it loudly and keep serving (so one bad request or integration can't take ORB down).
@@ -26,6 +27,18 @@ app.post('/api/orb/billing/webhook', express.raw({ type: 'application/json' }), 
   } catch (err) {
     console.error('[billing] webhook error:', err instanceof Error ? err.message : err);
     res.status(400).json({ error: err instanceof Error ? err.message : 'webhook error' });
+  }
+});
+
+// Voice cloning: upload a raw audio sample (POST the file body, ?name=My Voice) → new voice id.
+// Mounted before express.json so the audio bytes arrive raw (and large samples aren't capped at 2mb).
+app.post('/api/orb/voice/clone', express.raw({ type: () => true, limit: '30mb' }), async (req, res) => {
+  try {
+    const name = String(req.query.name || 'ORB Voice');
+    const mime = req.header('content-type') || 'audio/mpeg';
+    res.json(await cloneVoice(name, req.body as Buffer, mime));
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'clone error' });
   }
 });
 
