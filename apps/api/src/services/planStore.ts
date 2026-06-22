@@ -10,8 +10,16 @@ import { getPlan, type PlanId } from '../billing/plans.js';
 const TABLE = 'orb_user_plans';
 const cache = new Map<string, PlanId>(); // userId -> plan
 
-/** Read a user's current plan (cache → Supabase → 'free'). */
+// The owner(s) get full top-tier access — they run ORB, they aren't paying customers.
+const OWNER_EMAILS = (process.env.ORB_OWNER_EMAILS || 'proppapromo@gmail.com')
+  .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+export function isOwner(userId: string): boolean {
+  return OWNER_EMAILS.includes(String(userId).trim().toLowerCase());
+}
+
+/** Read a user's current plan (owner → enterprise; else cache → Supabase → 'free'). */
 export async function getUserPlan(userId: string): Promise<PlanId> {
+  if (isOwner(userId)) return 'enterprise';
   if (cache.has(userId)) return cache.get(userId)!;
   if (supabase) {
     try {
@@ -28,6 +36,7 @@ export async function getUserPlan(userId: string): Promise<PlanId> {
 
 /** Synchronous best-effort read (cache only) — for hot paths that already warmed the cache. */
 export function getUserPlanCached(userId: string): PlanId {
+  if (isOwner(userId)) return 'enterprise';
   return cache.get(userId) ?? 'free';
 }
 

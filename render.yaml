@@ -46,6 +46,8 @@ services:
         sync: false
       - key: PUBLIC_BASE_URL          # e.g. https://ebe-orb.onrender.com (for checkout redirects)
         sync: false
+      - key: ORB_OWNER_EMAILS         # comma-separated owner emails → always full top-tier access
+        sync: false
       - key: STRIPE_PRICE_PERSONAL
         sync: false
       - key: STRIPE_PRICE_PRO

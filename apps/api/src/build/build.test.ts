@@ -9,6 +9,7 @@ import { buildCapability } from './tiers.js';
 import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
 import { looksLikeBuildRequest, looksLikeVideoRequest } from '../agents/masterAgent.js';
 import { videoAllowedFor } from '../services/veo.js';
+import { isOwner, getUserPlan } from '../services/planStore.js';
 
 test('inferCategory: reads build family from a plain brief', () => {
   assert.equal(inferCategory('a booking app for a barbershop'), 'mobile');
@@ -52,6 +53,14 @@ test('looksLikeVideoRequest + tier gate', () => {
   assert.equal(videoAllowedFor('enterprise'), true);
   assert.equal(videoAllowedFor('pro'), false);   // video reserved for top tiers
   assert.equal(videoAllowedFor('free'), false);
+});
+
+test('owner gets full top-tier access (unlocks video, full council, big builds)', async () => {
+  assert.equal(isOwner('proppapromo@gmail.com'), true);
+  assert.equal(isOwner('PROPPAPROMO@Gmail.com'), true); // case-insensitive
+  assert.equal(isOwner('someone-else@example.com'), false);
+  assert.equal(await getUserPlan('proppapromo@gmail.com'), 'enterprise');
+  assert.equal(videoAllowedFor(await getUserPlan('proppapromo@gmail.com')), true);
 });
 
 test('genome soul: five laws and seven organs are present', () => {
