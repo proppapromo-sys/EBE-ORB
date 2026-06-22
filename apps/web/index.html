@@ -430,6 +430,32 @@ function speak(text,lang){
   speakBrowser(text,lang);
 }
 if(API){fetch(API+'/api/orb/voice/status').then(r=>r.json()).then(d=>{CLONED=!!(d&&d.configured);}).catch(()=>{});}
+// Record your voice in-app → ORB clones it (sends to /voice/clone, which uses your own engine or ElevenLabs).
+let mediaRec=null, recChunks=[], recTimer=null;
+async function startVoiceRecord(btn,statusEl){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    recChunks=[]; mediaRec=new MediaRecorder(stream);
+    mediaRec.ondataavailable=e=>{if(e.data&&e.data.size)recChunks.push(e.data);};
+    mediaRec.onstop=async()=>{
+      stream.getTracks().forEach(t=>t.stop());
+      const blob=new Blob(recChunks,{type:(mediaRec&&mediaRec.mimeType)||'audio/webm'});
+      statusEl.style.color='#9fd0ea';statusEl.textContent='Cloning your voice…';
+      try{
+        const r=await fetch(API+'/api/orb/voice/clone?name='+encodeURIComponent('My ORB Voice'),
+          {method:'POST',headers:{'content-type':blob.type},body:blob});
+        const d=await r.json();
+        if(d&&d.available){CLONED=true;statusEl.style.color='#7fe6a1';statusEl.textContent='✓ Cloned! ORB now speaks in your voice.';speak("Got it. This is my new voice.");}
+        else{statusEl.style.color='#ff9b9b';statusEl.textContent=(d&&d.note)||'Cloning not set up yet — add a voice engine or ElevenLabs key.';}
+      }catch(e){statusEl.style.color='#ff9b9b';statusEl.textContent=e.message;}
+    };
+    mediaRec.start(); btn.dataset.rec='1'; btn.textContent='⏹ Stop & Clone';
+    let secs=0; statusEl.style.color='#9fd0ea'; statusEl.textContent='Recording… speak naturally (15–30s), then Stop.';
+    recTimer=setInterval(()=>{secs++; statusEl.textContent='Recording… '+secs+'s — speak 15–30s, then Stop.'; if(secs>=45)stopVoiceRecord(btn,statusEl);},1000);
+  }catch(e){statusEl.style.color='#ff9b9b';statusEl.textContent='Mic blocked: '+e.message;}
+}
+function stopVoiceRecord(btn,statusEl){ if(recTimer){clearInterval(recTimer);recTimer=null;}
+  if(mediaRec&&mediaRec.state!=='inactive'){try{mediaRec.stop();}catch(e){}} btn.dataset.rec=''; btn.textContent='🎤 Record & Clone'; }
 if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
 // Tapping the orb: if it's talking, cut it off and listen; otherwise start a conversation.
 cv.addEventListener('click',()=>{
@@ -851,7 +877,11 @@ async function renderSettings(){
   const r=await fetch(API+'/api/orb/integrations?userId='+encodeURIComponent(uid));
   const d=await r.json();
   const items=d.integrations||[];
-  pbody.innerHTML=`<div class="m" style="margin-bottom:10px">Connect your business — ORB checks each key and links it automatically. Your keys are stored privately and never shown again.</div>`+
+  const voiceCard=`<div class="card"><div class="t">🎤 ORB's Voice</div>
+    <div class="m" style="margin-bottom:6px">Record ~15–30 seconds and ORB clones your voice to speak in. Uses your own voice engine if set, otherwise ElevenLabs.</div>
+    <div class="btns"><button class="go" id="voice-rec">🎤 Record &amp; Clone</button></div>
+    <div class="set-note m" id="voice-status" style="min-height:14px"></div></div>`;
+  pbody.innerHTML=voiceCard+`<div class="m" style="margin-bottom:10px">Connect your business — ORB checks each key and links it automatically. Your keys are stored privately and never shown again.</div>`+
     items.map(it=>{
       const fields=it.fields.map(f=>{
         const ph=it.connected&&it.preview&&it.preview[f.key]?it.preview[f.key]:(f.placeholder||'');
@@ -870,6 +900,9 @@ async function renderSettings(){
           ${it.connected?'<button class="no" data-act="disconnect">DISCONNECT</button>':''}
         </div></div>`;
     }).join('')||'<div class="empty">No integrations available.</div>';
+
+  const recBtn=document.getElementById('voice-rec'), recStatus=document.getElementById('voice-status');
+  if(recBtn) recBtn.addEventListener('click',()=>{ recBtn.dataset.rec?stopVoiceRecord(recBtn,recStatus):startVoiceRecord(recBtn,recStatus); });
 
   pbody.querySelectorAll('.card[data-prov]').forEach(card=>{
     const prov=card.dataset.prov, note=card.querySelector('.set-note');

@@ -6,6 +6,7 @@
  */
 import 'dotenv/config';
 import { getPlatformKey } from './platformKeys.js';
+import { engineConfigured, engineClone, engineSpeak } from './voiceEngine.js';
 
 const DEFAULT_VOICE = process.env.ELEVENLABS_VOICE_ID;
 const MODEL = process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2';
@@ -19,15 +20,20 @@ function key(): string | undefined {
   return process.env.ELEVENLABS_API_KEY || getPlatformKey('ELEVENLABS_API_KEY');
 }
 
-/** A cloned voice is ready only when we have both a key and a voice id. */
+/** A cloned voice is ready when ORB's own engine is up, or ElevenLabs has a key + voice id. */
 export function ttsConfigured(): boolean {
-  return Boolean(key() && activeVoice());
+  return engineConfigured() || Boolean(key() && activeVoice());
 }
 
-/** Create a cloned voice from audio (ElevenLabs Instant Voice Clone). Returns the new voice id. */
+/** Create a cloned voice from audio. Prefers ORB's own engine; falls back to ElevenLabs. */
 export async function cloneVoice(
   name: string, audio: Buffer, mimeType?: string
 ): Promise<{ available: boolean; voiceId?: string; note?: string }> {
+  if (engineConfigured()) {
+    const out = await engineClone(name, audio, mimeType);
+    if (out.available) setRuntimeVoice(out.voiceId);  // speak in it immediately
+    return out;
+  }
   const k = key();
   if (!k) return { available: false, note: 'ELEVENLABS_API_KEY not set' };
   if (!audio || !audio.length) return { available: false, note: 'no audio provided' };
@@ -53,6 +59,7 @@ export async function synthesizeSpeech(
   text: string,
   opts?: { voiceId?: string }
 ): Promise<{ available: boolean; audioUrl?: string; note?: string }> {
+  if (engineConfigured()) return engineSpeak(text, opts?.voiceId || activeVoice());
   const k = key();
   if (!k) return { available: false, note: 'ELEVENLABS_API_KEY not set' };
   const voice = opts?.voiceId || activeVoice();
