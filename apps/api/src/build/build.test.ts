@@ -15,6 +15,7 @@ import { matchSkill, listSkills } from '../brains/skills.js';
 import { monetizationMetrics } from '../services/admin.js';
 import { OWNER_KEYS, setPlatformKey } from '../services/platformKeys.js';
 import { appleConfigured, phoneConfigured, startPhone, verifyPhone } from '../services/auth.js';
+import { parseInbound, whatsappConfigured } from '../services/whatsapp.js';
 
 test('inferCategory: reads build family from a plain brief', () => {
   assert.equal(inferCategory('a booking app for a barbershop'), 'mobile');
@@ -106,6 +107,15 @@ test('auth: degrades gracefully without provider keys', async () => {
   const s = await startPhone('+15551234567');
   assert.equal(s.sent, false);                       // no Twilio → not sent, no throw
   assert.equal(verifyPhone('+15551234567', '000000').ok, false);
+});
+
+test('whatsapp: parses inbound from Twilio and Meta', () => {
+  assert.equal(whatsappConfigured(), false); // no keys in test
+  const tw = parseInbound({ From: 'whatsapp:+15551234567', Body: 'hi orb' });
+  assert.deepEqual(tw, { from: '+15551234567', text: 'hi orb' });
+  const meta = parseInbound({ entry: [{ changes: [{ value: { messages: [{ from: '15551234567', text: { body: 'hello' } }] } }] }] });
+  assert.deepEqual(meta, { from: '15551234567', text: 'hello' });
+  assert.equal(parseInbound({ status: 'delivered' }), null); // non-message events ignored
 });
 
 test('genome soul: five laws and seven organs are present', () => {

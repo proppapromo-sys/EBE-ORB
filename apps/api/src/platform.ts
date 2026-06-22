@@ -19,6 +19,7 @@ import { orbRouter } from './routes/orb.js';
 import { handleWebhook } from './services/billing.js';
 import { cloneVoice, verifySpeaker } from './services/tts.js';
 import { isOwner } from './services/planStore.js';
+import { handleInbound, whatsappVerifyToken } from './services/whatsapp.js';
 
 export function mountOrb(app: Express, opts: { jsonLimit?: string } = {}): Express {
   // Baseline safety headers on every ORB API response (cheap, no deps).
@@ -45,6 +46,18 @@ export function mountOrb(app: Express, opts: { jsonLimit?: string } = {}): Expre
   app.post('/api/orb/voice/verify', express.raw({ type: () => true, limit: '15mb' }), async (req, res) => {
     try { res.json(await verifySpeaker(req.body as Buffer, req.header('content-type') || 'audio/webm')); }
     catch { res.json({ match: true }); }
+  });
+
+  // WhatsApp: Meta sends GET to verify the webhook; both providers POST inbound messages.
+  app.get('/api/orb/whatsapp/webhook', (req, res) => {
+    if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === whatsappVerifyToken()) {
+      return res.status(200).send(String(req.query['hub.challenge'] ?? ''));
+    }
+    res.sendStatus(403);
+  });
+  app.post('/api/orb/whatsapp/webhook', express.urlencoded({ extended: false }), express.json(), (req, res) => {
+    res.sendStatus(200);                 // ack fast; reply is sent asynchronously
+    void handleInbound(req.body);
   });
 
   // Everything else is JSON, scoped to /api/orb so it never fights the host app's own parsers.
