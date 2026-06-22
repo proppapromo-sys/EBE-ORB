@@ -4,6 +4,7 @@ import { runOrbCycle, type OrbCycleReport } from '../genome/orbBranch.js';
 import { createJournal } from '../services/journalStore.js';
 import { runCouncil, type CouncilLevel } from '../brains/council.js';
 import { runBuild } from '../build/genome.js';
+import { generateVideo, videoAllowedFor } from '../services/veo.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -31,6 +32,19 @@ const BUILD_INTENT = /\b(build|create|make|design|develop|generate|spin up|set u
 const BUILD_TARGET = /\b(web ?site|web ?app|landing page|home ?page|portfolio|dashboard|portal|online store|store|shop|e-?commerce|booking (site|app)|reservation|mobile app|app|site|web ?page|page)\b/i;
 export function looksLikeBuildRequest(message: string): boolean {
   return BUILD_INTENT.test(message) && BUILD_TARGET.test(message);
+}
+
+// Does the user want an AI VIDEO (Veo)? Needs an intent verb AND a video word.
+const VIDEO_INTENT = /\b(make|create|generate|produce|render|do)\b/i;
+const VIDEO_TARGET = /\b(video|clip|animation|short film|movie|reel)\b/i;
+export function looksLikeVideoRequest(message: string): boolean {
+  return VIDEO_INTENT.test(message) && VIDEO_TARGET.test(message);
+}
+
+/** Strip "make me a video of …" down to just the subject for the Veo prompt. */
+function videoPrompt(message: string): string {
+  const m = message.replace(/^.*?\b(video|clip|animation|short film|movie|reel)\b\s*(of|showing|about|with|featuring|:)?\s*/i, '').trim();
+  return m || message.trim();
 }
 
 /** Turn a build result into a clear, human chat reply (the files ride along in `build`). */
@@ -64,6 +78,15 @@ export async function askOrb(
   message: string,
   opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string; personality?: string; customPersona?: string } = {}
 ) {
+  // Video mode (Veo): generate an AI video. Top tiers only — it's the priciest call.
+  if (looksLikeVideoRequest(message)) {
+    if (!videoAllowedFor(opts.plan)) {
+      return { mode: 'video' as const, answer: '🎬 AI video is an Executive/Enterprise feature — upgrade in the Plans tab to generate videos.', video: { available: false, locked: true } };
+    }
+    const video = await generateVideo(videoPrompt(message));
+    return { mode: 'video' as const, answer: video.available ? '🎬 Here’s your video.' : `🎬 ${video.note || 'Video unavailable.'}`, video };
+  }
+
   // Build mode: if the user is asking ORB to construct a site/app, run the Construction Genome
   // (Gemini designs, GPT architects, Claude codes) instead of a chat answer. Tier caps the depth.
   if (looksLikeBuildRequest(message)) {

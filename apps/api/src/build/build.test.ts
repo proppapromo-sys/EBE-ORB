@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import { inferCategory, getBlueprint } from './blueprints.js';
 import { buildCapability } from './tiers.js';
 import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
-import { looksLikeBuildRequest } from '../agents/masterAgent.js';
+import { looksLikeBuildRequest, looksLikeVideoRequest } from '../agents/masterAgent.js';
+import { videoAllowedFor } from '../services/veo.js';
 
 test('inferCategory: reads build family from a plain brief', () => {
   assert.equal(inferCategory('a booking app for a barbershop'), 'mobile');
@@ -41,6 +42,16 @@ test('looksLikeBuildRequest: routes real build asks, ignores look-alikes', () =>
   assert.equal(looksLikeBuildRequest('make a booking app for my salon'), true);
   assert.equal(looksLikeBuildRequest('build my confidence'), false);   // intent but no target
   assert.equal(looksLikeBuildRequest('what is the weather today?'), false);
+});
+
+test('looksLikeVideoRequest + tier gate', () => {
+  assert.equal(looksLikeVideoRequest('make me a video of waves on a beach'), true);
+  assert.equal(looksLikeVideoRequest('generate a short clip of a city at night'), true);
+  assert.equal(looksLikeVideoRequest('what video should I watch'), false); // no intent verb
+  assert.equal(videoAllowedFor('executive'), true);
+  assert.equal(videoAllowedFor('enterprise'), true);
+  assert.equal(videoAllowedFor('pro'), false);   // video reserved for top tiers
+  assert.equal(videoAllowedFor('free'), false);
 });
 
 test('genome soul: five laws and seven organs are present', () => {

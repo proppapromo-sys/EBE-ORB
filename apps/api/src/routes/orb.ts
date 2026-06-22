@@ -23,6 +23,7 @@ import { mailerConfigured, sendMail } from '../services/mailer.js';
 import { PLANS } from '../billing/plans.js';
 import { createCheckoutSession, purchasablePlans, billingConfigured } from '../services/billing.js';
 import { getUserPlan, setUserPlan } from '../services/planStore.js';
+import { generateVideo, videoAllowedFor, videoConfigured } from '../services/veo.js';
 import { deleteAccount } from '../services/account.js';
 import { transcribe, sttConfigured } from '../services/stt.js';
 import { INTEGRATIONS, getIntegration, testConnection } from '../services/integrations.js';
@@ -451,6 +452,24 @@ orbRouter.post('/build', async (req, res, next) => {
       plan: parsed.plan ?? await getUserPlan(parsed.userId)
     });
     res.json(result);
+  } catch (error) { next(error); }
+});
+
+// AI video (Veo) — same Gemini key as image gen; gated to top tiers.
+const VideoSchema = z.object({
+  userId: z.string().min(1).default('demo-user'),
+  prompt: z.string().min(1),
+  aspectRatio: z.string().optional(),
+  plan: z.string().optional()
+});
+orbRouter.post('/video', async (req, res, next) => {
+  try {
+    const parsed = VideoSchema.parse(req.body ?? {});
+    const plan = parsed.plan ?? await getUserPlan(parsed.userId);
+    if (!videoAllowedFor(plan)) {
+      return res.json({ available: false, locked: true, note: 'AI video is an Executive/Enterprise feature.' });
+    }
+    res.json({ configured: videoConfigured(), ...(await generateVideo(parsed.prompt, { aspectRatio: parsed.aspectRatio })) });
   } catch (error) { next(error); }
 });
 

@@ -607,6 +607,10 @@ async function convene(q){
     box.innerHTML='<span class="badge">DEMO</span>'+demo;speak(demo,voiceLang.code);return;}
   try{const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:ORB_USER||'demo-user',message:q,personality:persona})});
     const d=await r.json();
+    if(d.mode==='video'){box.classList.add('show');
+      if(d.video&&d.video.available&&d.video.dataUrl){box.innerHTML='<video controls autoplay loop playsinline style="width:100%;border-radius:10px" src="'+d.video.dataUrl+'"></video>';}
+      else{box.innerHTML=mdToHtml(d.answer||'Video unavailable.');}
+      setPhase('idle');return;}
     if(d.mode==='build'&&d.build){lastBuild=d.build;tab='build';document.querySelectorAll('#panel .tab').forEach(t=>t.classList.toggle('sel',t.dataset.tab==='build'));openPanel(true);}
     const need=d.approvalRequired?.count?`<span class="badge">${d.approvalRequired.count} NEED APPROVAL</span>`:'';
     let answer=d.answer||'Okay.', sayLang='en-US';
