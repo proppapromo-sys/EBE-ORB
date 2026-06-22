@@ -35,6 +35,27 @@ export async function engineClone(
   }
 }
 
+/** Is this audio clip the enrolled owner? Used to ignore the TV / other people. Fails open. */
+export async function engineVerify(
+  audio: Buffer, voiceId: string, mimeType?: string
+): Promise<{ match: boolean; score?: number; enrolled?: boolean; note?: string }> {
+  if (!BASE) return { match: true, note: 'no engine' };
+  if (!audio || !audio.length) return { match: true, note: 'no audio' };
+  try {
+    const FD: any = (globalThis as any).FormData;
+    const BlobC: any = (globalThis as any).Blob;
+    const fd = new FD();
+    fd.append('voice_id', voiceId || 'default');
+    fd.append('file', new BlobC([audio], { type: mimeType || 'audio/webm' }), 'probe.webm');
+    const r = await fetch(`${BASE}/verify`, { method: 'POST', body: fd });
+    if (!r.ok) return { match: true, note: `engine verify ${r.status}` }; // fail open
+    const d = (await r.json()) as { match?: boolean; score?: number; enrolled?: boolean };
+    return { match: d.match !== false, score: d.score, enrolled: d.enrolled };
+  } catch (e) {
+    return { match: true, note: e instanceof Error ? e.message : 'verify error' }; // fail open
+  }
+}
+
 export async function engineSpeak(
   text: string, voiceId?: string
 ): Promise<{ available: boolean; audioUrl?: string; note?: string }> {

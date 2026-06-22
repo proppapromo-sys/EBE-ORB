@@ -432,7 +432,7 @@ function speak(text,lang){
 if(API){fetch(API+'/api/orb/voice/status').then(r=>r.json()).then(d=>{CLONED=!!(d&&d.configured);}).catch(()=>{});}
 // Voice cloning is a SKILL: the owner just tells ORB ("clone my voice") and ORB records ~20s here,
 // then learns it. No button. Owner-gated on the server (only the main account may change the voice).
-async function autoRecordClone(){
+async function autoRecordClone(enableLock){
   const box=document.getElementById('answer'); box.classList.add('show');
   if(!navigator.mediaDevices||!window.MediaRecorder){box.innerHTML=mdToHtml("I can't reach the microphone in this browser.");return;}
   try{
@@ -447,7 +447,11 @@ async function autoRecordClone(){
         const r=await fetch(API+'/api/orb/voice/clone?name='+encodeURIComponent('Owner Voice')+'&userId='+encodeURIComponent(ORB_USER||''),
           {method:'POST',headers:{'content-type':blob.type},body:blob});
         const d=await r.json();
-        if(d&&d.available){CLONED=true;const m="Done. I've learned your voice — this is how I'll sound from now on.";box.innerHTML=mdToHtml(m);speak(m);}
+        if(d&&d.available){CLONED=true;
+          if(enableLock){setVoiceLock(true);}
+          const m=enableLock?"Done. I've learned your voice — and from now on I'll only answer when it's you, not the TV or anyone else."
+                            :"Done. I've learned your voice — this is how I'll sound from now on.";
+          box.innerHTML=mdToHtml(m);speak(m);}
         else{const m=(d&&d.note)||"I couldn't set up the voice yet.";box.innerHTML=mdToHtml(m);speak(m);}
       }catch(e){box.innerHTML=mdToHtml('Voice setup failed: '+e.message);}
     };
@@ -456,6 +460,35 @@ async function autoRecordClone(){
     const t=setInterval(()=>{secs++;box.innerHTML='<span class="badge">🎙️ LISTENING</span> Speak naturally… '+(20-secs)+'s left';
       if(secs>=20){clearInterval(t);if(rec.state!=='inactive')rec.stop();}},1000);
   }catch(e){box.innerHTML=mdToHtml('Microphone blocked: '+e.message);}
+}
+
+// ── Voice lock (speaker recognition): only answer the owner's voice, ignore the TV / others ──
+let VOICELOCK=localStorage.getItem('orbVoiceLock')==='1';
+let rollRec=null, rollChunks=[], rollStream=null;
+function setVoiceLock(on){ VOICELOCK=!!on; localStorage.setItem('orbVoiceLock',on?'1':'0'); if(on)startRoll(); else stopRoll(); }
+async function startRoll(){               // keep a rolling buffer of the last few seconds we hear
+  if(rollRec||!VOICELOCK||!API||!navigator.mediaDevices||!window.MediaRecorder)return;
+  try{
+    rollStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+    rollRec=new MediaRecorder(rollStream); rollChunks=[];
+    rollRec.ondataavailable=e=>{if(e.data&&e.data.size){rollChunks.push(e.data); if(rollChunks.length>6)rollChunks.shift();}};
+    rollRec.start(1000);
+  }catch(e){ rollRec=null; }
+}
+function stopRoll(){ try{rollRec&&rollRec.state!=='inactive'&&rollRec.stop();}catch(e){}
+  if(rollStream){rollStream.getTracks().forEach(t=>t.stop());} rollRec=null; rollStream=null; rollChunks=[]; }
+async function isOwnerVoice(){            // true = it's the owner (or we can't tell → allow)
+  if(!VOICELOCK||!API||!rollChunks.length)return true;
+  try{
+    const blob=new Blob(rollChunks.slice(),{type:(rollRec&&rollRec.mimeType)||'audio/webm'});
+    const r=await fetch(API+'/api/orb/voice/verify',{method:'POST',headers:{'content-type':blob.type},body:blob});
+    const d=await r.json(); return d.match!==false;
+  }catch(e){ return true; }              // fail open — never lock the owner out
+}
+// Verify the speaker before answering (only when voice lock is on).
+function gatedConvene(q){
+  if(!VOICELOCK){convene(q);return;}
+  isOwnerVoice().then(ok=>{ if(ok)convene(q); else setPhase(convoMode||wakeMode?'listening':'idle'); }); // ignore non-owner
 }
 if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
 // Tapping the orb: if it's talking, cut it off and listen; otherwise start a conversation.
@@ -638,6 +671,10 @@ async function resolvePendingPay(confirm){
 async function convene(q){
   if(!q)return;
   document.getElementById('q').value='';
+  // Turn voice lock off by asking (only the owner enabled it).
+  if(/\b(turn off|stop|disable|cancel)\b[^.]*\bvoice (recognition|lock)\b/i.test(q)){
+    setVoiceLock(false);const m="Okay, voice lock is off — I'll respond to anyone again.";
+    const b=document.getElementById('answer');b.classList.add('show');b.innerHTML=mdToHtml(m);speak(m);return;}
   // If a payment is waiting on your word, "confirm/yes/send it" pays; "cancel/no/stop" drops it.
   if(pendingPay){
     if(/\b(confirm|yes|yep|do it|send it|pay it|go ahead|approved?)\b/i.test(q)){ await resolvePendingPay(true); return; }
@@ -661,7 +698,7 @@ async function convene(q){
   try{const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:ORB_USER||'demo-user',message:q,personality:persona})});
     const d=await r.json();
     if(d.mode==='skill'){box.classList.add('show');box.innerHTML=mdToHtml(d.answer||'');speak(d.answer||'');
-      if(d.action==='record') autoRecordClone(); return;}
+      if(d.action==='record') autoRecordClone(d.skill==='voice-recognition'); return;}
     if(d.mode==='video'){box.classList.add('show');
       const vsrc=d.video&&d.video.available&&(d.video.url||d.video.dataUrl);
       if(vsrc){box.innerHTML='<video controls autoplay loop playsinline style="width:100%;border-radius:10px" src="'+vsrc+'"></video>'+(d.video.provider?'<div style="color:#8fb9d4;font-size:11px;margin-top:4px">via '+d.video.provider+'</div>':'');}
@@ -704,12 +741,12 @@ function buildRecog(){
     document.getElementById('q').value=txt;
     if(!ev.results[ev.results.length-1].isFinal)return;
     const q=txt.trim();if(!q)return;
-    if(convoMode){convene(q);return;}
+    if(convoMode){gatedConvene(q);return;}
     if(wakeMode){
       if(WAKE.test(q)){const cmd=afterWake(q);
-        if(cmd.length>2){convene(cmd);}                       // "Hey ORB, what's urgent?"
+        if(cmd.length>2){gatedConvene(cmd);}                  // "Hey ORB, what's urgent?"
         else{armedUntil=Date.now()+9000;setPhase('listening');speak("Yeah? I'm listening.");}  // just "Hey ORB"
-      } else if(armedUntil>Date.now()){armedUntil=0;convene(q);} // command right after the wake
+      } else if(armedUntil>Date.now()){armedUntil=0;gatedConvene(q);} // command right after the wake
     }};
   r.onerror=()=>{};
   r.onend=()=>{recogActive=false;if((convoMode||wakeMode)&&!speaking)setTimeout(startRecog,400);}; // keep listening
@@ -718,7 +755,7 @@ function buildRecog(){
 // Turn ON the hands-free conversation loop: greet, then actually listen for your reply.
 async function startConversation(greeting){
   if(!SR){alert('Voice input needs Chrome or Edge (Web Speech API).');return;}
-  convoMode=true;listening=true;recog=recog||buildRecog();
+  convoMode=true;listening=true;startRoll();recog=recog||buildRecog();
   document.getElementById('mic').style.color='#ffc878';
   await startMicAnalyser();setPhase('listening');startRecog();
   const g = greeting===undefined ? "Hey, I'm here. What do you need?" : greeting;  // "" = listen silently
@@ -726,7 +763,7 @@ async function startConversation(greeting){
 }
 function stopConversation(){
   convoMode=false;listening=false;setPhase('idle');document.getElementById('mic').style.color='';
-  try{recog&&recog.stop();}catch(e){}if(!wakeMode)analyser=null;
+  try{recog&&recog.stop();}catch(e){}if(!wakeMode){analyser=null;stopRoll();}
 }
 document.getElementById('mic').addEventListener('click',async()=>{
   if(!SR){alert('Voice input needs Chrome or Edge (Web Speech API).');return;}
@@ -738,12 +775,12 @@ document.getElementById('mic').addEventListener('click',async()=>{
 async function armWake(on){
   if(!SR) return false;
   if(on && !wakeMode){
-    wakeMode=true;listening=true;recog=recog||buildRecog();
+    wakeMode=true;listening=true;startRoll();recog=recog||buildRecog();
     document.getElementById('wake').style.color='#7fe6a1';
     await startMicAnalyser();setPhase('listening');startRecog();
   } else if(!on && wakeMode){
     wakeMode=false;armedUntil=0;document.getElementById('wake').style.color='';
-    if(!convoMode){listening=false;setPhase('idle');try{recog&&recog.stop();}catch(e){}analyser=null;}
+    if(!convoMode){listening=false;setPhase('idle');try{recog&&recog.stop();}catch(e){}analyser=null;stopRoll();}
   }
   return true;
 }

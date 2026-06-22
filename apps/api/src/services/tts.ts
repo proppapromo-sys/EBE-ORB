@@ -6,7 +6,7 @@
  */
 import 'dotenv/config';
 import { getPlatformKey } from './platformKeys.js';
-import { engineConfigured, engineClone, engineSpeak } from './voiceEngine.js';
+import { engineConfigured, engineClone, engineSpeak, engineVerify } from './voiceEngine.js';
 
 const DEFAULT_VOICE = process.env.ELEVENLABS_VOICE_ID;
 const MODEL = process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2';
@@ -53,6 +53,14 @@ export async function cloneVoice(
   } catch (e) {
     return { available: false, note: e instanceof Error ? e.message : 'clone error' };
   }
+}
+
+/** Speaker recognition: does this clip match ORB's enrolled owner voice? Fails open (match:true). */
+export async function verifySpeaker(
+  audio: Buffer, mimeType?: string, voiceId?: string
+): Promise<{ match: boolean; score?: number; enrolled?: boolean; note?: string }> {
+  if (!engineConfigured()) return { match: true, note: 'no engine' };
+  return engineVerify(audio, voiceId || activeVoice() || 'default', mimeType);
 }
 
 export async function synthesizeSpeech(

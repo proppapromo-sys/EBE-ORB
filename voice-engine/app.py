@@ -34,6 +34,27 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # Loaded once at startup (downloads the open weights on first run).
 tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(DEVICE)
 
+# Speaker recognition: a voiceprint encoder so ORB can tell the owner's voice from the TV / others.
+VERIFY_THRESHOLD = float(os.environ.get("ORB_VERIFY_THRESHOLD", "0.75"))
+try:
+    from resemblyzer import VoiceEncoder, preprocess_wav
+    import numpy as np
+    spk_encoder = VoiceEncoder()
+except Exception as _e:  # noqa: BLE001
+    spk_encoder = None
+    print(f"[verify] speaker recognition unavailable: {_e}")
+
+
+def _embed(path: str):
+    """A normalized voiceprint for an audio file, or None if recognition isn't available."""
+    if spk_encoder is None:
+        return None
+    try:
+        return spk_encoder.embed_utterance(preprocess_wav(path))
+    except Exception as e:  # noqa: BLE001
+        print(f"[verify] embed failed: {e}")
+        return None
+
 app = FastAPI(title="ORB Voice Engine")
 
 
@@ -75,12 +96,43 @@ async def clone(file: UploadFile = File(...), name: str = Form("ORB Voice")):
         f.write(data)
     # Clean background noise into a .wav reference; keep the raw file only if denoise isn't available.
     clean_path = os.path.join(VOICES_DIR, f"{voice_id}.wav")
+    ref = raw_path
     if _denoise_to_wav(raw_path, clean_path) and clean_path != raw_path:
+        ref = clean_path
         try:
             os.remove(raw_path)
         except OSError:
             pass
-    return {"voice_id": voice_id, "name": name}
+    # Store the owner's voiceprint so /verify can recognize them later.
+    emb = _embed(ref)
+    if emb is not None:
+        np.save(os.path.join(VOICES_DIR, f"{voice_id}.npy"), emb)
+    return {"voice_id": voice_id, "name": name, "recognition": emb is not None}
+
+
+@app.post("/verify")
+async def verify(file: UploadFile = File(...), voice_id: str = Form("default")):
+    """Is this clip the enrolled owner? Returns match + similarity score (TV/other voices score low)."""
+    emb_path = os.path.join(VOICES_DIR, f"{voice_id}.npy")
+    if spk_encoder is None or not os.path.exists(emb_path):
+        # Recognition not set up → fail open (don't lock anyone out).
+        return {"match": True, "score": 1.0, "threshold": VERIFY_THRESHOLD, "enrolled": False}
+    data = await file.read()
+    tmp = os.path.join(OUT_DIR, f"v_{uuid.uuid4().hex[:10]}")
+    with open(tmp, "wb") as f:
+        f.write(data)
+    try:
+        probe = _embed(tmp)
+        if probe is None:
+            return {"match": True, "score": 1.0, "threshold": VERIFY_THRESHOLD, "enrolled": True}
+        owner = np.load(emb_path)
+        score = float(np.dot(owner, probe))  # embeddings are unit-norm → dot = cosine similarity
+        return {"match": score >= VERIFY_THRESHOLD, "score": score, "threshold": VERIFY_THRESHOLD, "enrolled": True}
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 class SpeakReq(BaseModel):

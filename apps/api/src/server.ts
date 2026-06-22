@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { orbRouter } from './routes/orb.js';
 import { loadPlatformKeys } from './services/platformKeys.js';
 import { handleWebhook } from './services/billing.js';
-import { cloneVoice } from './services/tts.js';
+import { cloneVoice, verifySpeaker } from './services/tts.js';
 import { isOwner } from './services/planStore.js';
 
 // Keep the server alive: a single unexpected async error must never crash-loop the whole app.
@@ -42,6 +42,16 @@ app.post('/api/orb/voice/clone', express.raw({ type: () => true, limit: '30mb' }
     res.json(await cloneVoice(name, req.body as Buffer, mime));
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : 'clone error' });
+  }
+});
+
+// Speaker recognition: does this audio clip match the owner's voice? (ignore the TV / other people)
+app.post('/api/orb/voice/verify', express.raw({ type: () => true, limit: '15mb' }), async (req, res) => {
+  try {
+    const mime = req.header('content-type') || 'audio/webm';
+    res.json(await verifySpeaker(req.body as Buffer, mime));
+  } catch {
+    res.json({ match: true }); // fail open — never lock the owner out
   }
 });
 
