@@ -23,8 +23,9 @@ import { mailerConfigured, sendMail } from '../services/mailer.js';
 import { PLANS } from '../billing/plans.js';
 import { createCheckoutSession, purchasablePlans, billingConfigured } from '../services/billing.js';
 import { getUserPlan, setUserPlan, isOwner } from '../services/planStore.js';
-import { ownerKeyStatus, setPlatformKey } from '../services/platformKeys.js';
+import { ownerKeyStatus, setPlatformKey, getPlatformKey } from '../services/platformKeys.js';
 import { monetizationMetrics } from '../services/admin.js';
+import { verifyAppleToken, appleConfigured, startPhone, verifyPhone, phoneConfigured } from '../services/auth.js';
 import { generateVideo, videoAllowedFor, videoConfigured } from '../services/video.js';
 import { synthesizeSpeech, ttsConfigured } from '../services/tts.js';
 import { listSkills } from '../brains/skills.js';
@@ -509,6 +510,28 @@ orbRouter.post('/video', async (req, res, next) => {
     }
     res.json({ configured: videoConfigured(), ...(await generateVideo(parsed.prompt, { aspectRatio: parsed.aspectRatio, provider: parsed.provider })) });
   } catch (error) { next(error); }
+});
+
+// ── Auth: Apple Sign-In + phone (SMS code) ─────────────────────────────────────
+orbRouter.get('/auth/methods', (_req, res) => res.json({
+  google: true, email: true, apple: appleConfigured(), phone: phoneConfigured(),
+  appleClientId: appleConfigured() ? getPlatformKey('APPLE_CLIENT_ID') : undefined
+}));
+
+orbRouter.post('/auth/apple', async (req, res, next) => {
+  try {
+    const token = String(req.body?.id_token ?? req.body?.idToken ?? '');
+    if (!token) return res.status(400).json({ error: 'id_token required' });
+    const { email, sub } = await verifyAppleToken(token);
+    res.json({ ok: true, userId: email || `apple:${sub}`, email });
+  } catch (error) { res.status(401).json({ ok: false, error: error instanceof Error ? error.message : 'apple verify failed' }); }
+});
+
+orbRouter.post('/auth/phone/start', async (req, res, next) => {
+  try { res.json(await startPhone(String(req.body?.phone ?? ''))); } catch (error) { next(error); }
+});
+orbRouter.post('/auth/phone/verify', (req, res) => {
+  res.json(verifyPhone(String(req.body?.phone ?? ''), String(req.body?.code ?? '')));
 });
 
 // ORB's skills (capabilities), incl. which are owner-only.

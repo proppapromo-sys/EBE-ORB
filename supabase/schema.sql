@@ -133,9 +133,16 @@ create table if not exists orb_wallet_txns (
 );
 create index if not exists orb_wallet_user on orb_wallet_txns (user_key, created_at desc);
 
--- Platform settings (developer-side; optional — env vars work without this table)
+-- Platform settings — owner keys set inside the app (Stripe/voice/video/auth). Makes in-app keys persist.
 create table if not exists orb_platform_settings (
   name       text primary key,
   value      text,
+  updated_at timestamptz default now()
+);
+
+-- Subscription tier per user — drives capability gating + the owner Admin (MRR/conversion) dashboard.
+create table if not exists orb_user_plans (
+  user_id    text primary key,
+  plan       text not null default 'free',
   updated_at timestamptz default now()
 );

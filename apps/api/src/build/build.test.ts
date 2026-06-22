@@ -14,6 +14,7 @@ import { classifyTask, ROUTES } from '../brains/router.js';
 import { matchSkill, listSkills } from '../brains/skills.js';
 import { monetizationMetrics } from '../services/admin.js';
 import { OWNER_KEYS, setPlatformKey } from '../services/platformKeys.js';
+import { appleConfigured, phoneConfigured, startPhone, verifyPhone } from '../services/auth.js';
 
 test('inferCategory: reads build family from a plain brief', () => {
   assert.equal(inferCategory('a booking app for a barbershop'), 'mobile');
@@ -97,6 +98,14 @@ test('admin metrics + owner keys', async () => {
   // Owner key whitelist gates what can be set in-app.
   assert.ok(OWNER_KEYS.includes('STRIPE_SECRET_KEY') && OWNER_KEYS.includes('RUNWAY_API_KEY'));
   await assert.rejects(() => setPlatformKey('NOT_AN_OWNER_KEY', 'x'));
+});
+
+test('auth: degrades gracefully without provider keys', async () => {
+  assert.equal(appleConfigured(), false);
+  assert.equal(phoneConfigured(), false);
+  const s = await startPhone('+15551234567');
+  assert.equal(s.sent, false);                       // no Twilio → not sent, no throw
+  assert.equal(verifyPhone('+15551234567', '000000').ok, false);
 });
 
 test('genome soul: five laws and seven organs are present', () => {

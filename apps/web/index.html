@@ -1181,11 +1181,41 @@ document.getElementById('join-google').addEventListener('click',async()=>{
     else jnote.textContent=d.error||'Google sign-in is not configured yet.';
   }catch(e){jnote.textContent='Could not start Google sign-in.';}
 });
-document.getElementById('join-apple').addEventListener('click',()=>{
-  // Sign in with Apple is wired and ready — it needs your Apple Service ID added in the Keys tab to go live.
-  if(window.AppleID&&window.AppleID.auth){ try{window.AppleID.auth.signIn();return;}catch(e){} }
-  jnote.style.color='#d9a066';jnote.textContent='Apple Sign-In is ready — add your Apple Service ID in the Keys tab to enable it. (Use Google or email for now.)';
+function finishJoin(userId,greeting){ ORB_USER=userId; localStorage.setItem('ebeUser',userId); localStorage.setItem('ebeJoined','1');
+  if(API){try{fetch(API+'/api/orb/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:userId,ref:ORB_REF})});}catch(e){}}
+  closeJoin(); speak(greeting||"Good to meet you. I'll remember you from here on."); }
+async function loadAppleSDK(clientId){
+  if(window.AppleID&&window.AppleID.auth) return true;
+  await new Promise(r=>{const s=document.createElement('script');s.src='https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';s.onload=r;s.onerror=r;document.head.appendChild(s);});
+  if(!window.AppleID||!window.AppleID.auth) return false;
+  window.AppleID.auth.init({clientId,scope:'name email',redirectURI:location.origin,usePopup:true}); return true;
+}
+document.getElementById('join-apple').addEventListener('click',async()=>{
+  if(!API){jnote.textContent='Connect ORB to enable Apple sign-in.';return;}
+  jnote.style.color='#9fd0ea';jnote.textContent='Opening Apple…';
+  try{
+    const m=await (await fetch(API+'/api/orb/auth/methods')).json();
+    if(!m.apple||!m.appleClientId){jnote.style.color='#d9a066';jnote.textContent='Apple Sign-In needs your Apple Service ID — add it in the Keys tab. (Use Google or email for now.)';return;}
+    if(!await loadAppleSDK(m.appleClientId)){jnote.textContent='Could not load Apple.';return;}
+    const res=await window.AppleID.auth.signIn();
+    const token=res&&res.authorization&&res.authorization.id_token;
+    const v=await (await fetch(API+'/api/orb/auth/apple',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id_token:token})})).json();
+    if(v.ok) finishJoin(v.userId,"Signed in with Apple. Good to meet you."); else jnote.textContent=v.error||'Apple sign-in failed.';
+  }catch(e){jnote.style.color='#d9a066';jnote.textContent='Apple sign-in canceled.';}
 });
+// Phone sign-in (SMS code) — shown only if configured.
+(async()=>{ if(!API)return; try{const m=await (await fetch(API+'/api/orb/auth/methods')).json();
+  if(m.phone){const b=document.createElement('button');b.className='skip';b.textContent='use phone number →';b.style.marginTop='4px';
+    b.onclick=phoneSignIn; document.getElementById('join-skip').insertAdjacentElement('beforebegin',b);} }catch(e){} })();
+async function phoneSignIn(){
+  const phone=prompt('Your phone number (with country code, e.g. +15551234567):'); if(!phone)return;
+  jnote.style.color='#9fd0ea';jnote.textContent='Texting you a code…';
+  const s=await (await fetch(API+'/api/orb/auth/phone/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({phone})})).json();
+  if(!s.sent){jnote.style.color='#d9a066';jnote.textContent=s.note||'Could not send a code.';return;}
+  const code=prompt('Enter the 6-digit code I just texted you:'); if(!code)return;
+  const v=await (await fetch(API+'/api/orb/auth/phone/verify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({phone,code})})).json();
+  if(v.ok) finishJoin(v.userId,"You're in. Good to meet you."); else {jnote.style.color='#ff9b9b';jnote.textContent=v.note||'Wrong code.';}
+}
 document.getElementById('join-submit').addEventListener('click',async()=>{
   const email=document.getElementById('join-email').value.trim();
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){jnote.textContent='Enter a valid email.';return;}
