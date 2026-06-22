@@ -5,6 +5,7 @@ import { createJournal } from '../services/journalStore.js';
 import { runCouncil, type CouncilLevel } from '../brains/council.js';
 import { runBuild } from '../build/genome.js';
 import { classifyTask, routedAnswer } from '../brains/router.js';
+import { matchSkill, isOwner } from '../brains/skills.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -88,6 +89,18 @@ export async function askOrb(
     const video = await generateVideo(videoPrompt(message), { provider });
     const tag = video.provider ? ` (${video.provider})` : '';
     return { mode: 'video' as const, answer: video.available ? `🎬 Here’s your video${tag}.` : `🎬 ${video.note || 'Video unavailable.'}`, video };
+  }
+
+  // Owner-only skills (voice cloning / recognition+learning): the main user just tells ORB.
+  const skill = matchSkill(message);
+  if (skill && (skill.id === 'voice-clone' || skill.id === 'voice-recognition')) {
+    if (!isOwner(userId)) {
+      return { mode: 'skill' as const, skill: skill.id, answer: 'Only the main account can change or train my voice.' };
+    }
+    const answer = skill.id === 'voice-clone'
+      ? "Sure. When you're ready, just talk to me for about twenty seconds and I'll learn your voice. Go ahead whenever."
+      : "Let's do it. Speak naturally for about twenty seconds so I can learn and recognize your voice. Start whenever you're ready.";
+    return { mode: 'skill' as const, skill: skill.id, action: 'record', answer };
   }
 
   // Build mode: if the user is asking ORB to construct a site/app, run the Construction Genome

@@ -25,6 +25,7 @@ import { createCheckoutSession, purchasablePlans, billingConfigured } from '../s
 import { getUserPlan, setUserPlan } from '../services/planStore.js';
 import { generateVideo, videoAllowedFor, videoConfigured } from '../services/video.js';
 import { synthesizeSpeech, ttsConfigured } from '../services/tts.js';
+import { listSkills } from '../brains/skills.js';
 import { deleteAccount } from '../services/account.js';
 import { transcribe, sttConfigured } from '../services/stt.js';
 import { INTEGRATIONS, getIntegration, testConnection } from '../services/integrations.js';
@@ -475,7 +476,10 @@ orbRouter.post('/video', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// Cloned voice (ElevenLabs): is one configured, and turn text into ORB's spoken voice.
+// ORB's skills (capabilities), incl. which are owner-only.
+orbRouter.get('/skills', (_req, res) => res.json({ skills: listSkills() }));
+
+// Cloned voice: is one configured, and turn text into ORB's spoken voice.
 orbRouter.get('/voice/status', (_req, res) => res.json({ configured: ttsConfigured() }));
 const SpeakSchema = z.object({ text: z.string().min(1), voiceId: z.string().optional() });
 orbRouter.post('/speak', async (req, res, next) => {

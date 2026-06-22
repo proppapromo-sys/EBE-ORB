@@ -7,6 +7,7 @@ import { orbRouter } from './routes/orb.js';
 import { loadPlatformKeys } from './services/platformKeys.js';
 import { handleWebhook } from './services/billing.js';
 import { cloneVoice } from './services/tts.js';
+import { isOwner } from './services/planStore.js';
 
 // Keep the server alive: a single unexpected async error must never crash-loop the whole app.
 // Log it loudly and keep serving (so one bad request or integration can't take ORB down).
@@ -34,6 +35,8 @@ app.post('/api/orb/billing/webhook', express.raw({ type: 'application/json' }), 
 // Mounted before express.json so the audio bytes arrive raw (and large samples aren't capped at 2mb).
 app.post('/api/orb/voice/clone', express.raw({ type: () => true, limit: '30mb' }), async (req, res) => {
   try {
+    // Owner-only: only the main account may change/train ORB's voice.
+    if (!isOwner(String(req.query.userId || ''))) return res.status(403).json({ available: false, note: 'Only the main account can change my voice.' });
     const name = String(req.query.name || 'ORB Voice');
     const mime = req.header('content-type') || 'audio/mpeg';
     res.json(await cloneVoice(name, req.body as Buffer, mime));

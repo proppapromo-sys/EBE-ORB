@@ -11,6 +11,7 @@ import { looksLikeBuildRequest, looksLikeVideoRequest } from '../agents/masterAg
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
 import { classifyTask, ROUTES } from '../brains/router.js';
+import { matchSkill, listSkills } from '../brains/skills.js';
 
 test('inferCategory: reads build family from a plain brief', () => {
   assert.equal(inferCategory('a booking app for a barbershop'), 'mobile');
@@ -76,6 +77,15 @@ test('classifyTask: routes for speed', () => {
   assert.equal(ROUTES.fast.provider, 'gemini');
   assert.equal(ROUTES.medium.provider, 'openai');
   assert.equal(ROUTES.heavy.provider, 'anthropic');
+});
+
+test('skills: voice cloning/recognition are owner-only and talk-triggered', () => {
+  assert.equal(matchSkill('clone my voice')?.id, 'voice-clone');
+  assert.equal(matchSkill('I want to record my voice')?.id, 'voice-clone');
+  assert.equal(matchSkill('turn on voice recognition')?.id, 'voice-recognition');
+  assert.equal(matchSkill('what is the weather'), null);
+  const voice = listSkills().filter((s) => s.id.startsWith('voice'));
+  assert.ok(voice.length >= 2 && voice.every((s) => s.ownerOnly));
 });
 
 test('genome soul: five laws and seven organs are present', () => {
