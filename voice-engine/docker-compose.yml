@@ -1,0 +1,14 @@
+# Run ORB's voice engine on your own NVIDIA GPU (e.g. Alienware).
+#   docker compose up -d --build
+# Then expose it with a tunnel (see LOCAL_SETUP.md) and set ORB_VOICE_ENGINE_URL in Render.
+services:
+  voice-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data        # cloned voices persist here
+    restart: unless-stopped
+    gpus: all               # use the GPU
