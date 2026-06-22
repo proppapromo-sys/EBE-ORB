@@ -42,6 +42,22 @@ def _voice_path(voice_id: str):
     return hits[0] if hits else None
 
 
+def _denoise_to_wav(in_path: str, out_path: str) -> bool:
+    """Best-effort: clean background noise from the sample so the clone copies the voice, not the TV.
+    Falls back (returns False) if the audio libs/format aren't available — never blocks a clone."""
+    try:
+        import librosa
+        import soundfile as sf
+        import noisereduce as nr
+        y, sr = librosa.load(in_path, sr=22050, mono=True)
+        y = nr.reduce_noise(y=y, sr=sr, stationary=False, prop_decrease=0.85)
+        sf.write(out_path, y, sr)
+        return True
+    except Exception as e:  # noqa: BLE001
+        print(f"[clone] denoise skipped: {e}")
+        return False
+
+
 @app.get("/health")
 def health():
     return {"ok": True, "device": DEVICE, "voices": len(glob.glob(os.path.join(VOICES_DIR, "*")))}
@@ -54,8 +70,16 @@ async def clone(file: UploadFile = File(...), name: str = Form("ORB Voice")):
         raise HTTPException(400, "empty audio")
     ext = (os.path.splitext(file.filename or "")[1] or ".wav").lstrip(".").lower() or "wav"
     voice_id = uuid.uuid4().hex[:12]
-    with open(os.path.join(VOICES_DIR, f"{voice_id}.{ext}"), "wb") as f:
+    raw_path = os.path.join(VOICES_DIR, f"{voice_id}.{ext}")
+    with open(raw_path, "wb") as f:
         f.write(data)
+    # Clean background noise into a .wav reference; keep the raw file only if denoise isn't available.
+    clean_path = os.path.join(VOICES_DIR, f"{voice_id}.wav")
+    if _denoise_to_wav(raw_path, clean_path) and clean_path != raw_path:
+        try:
+            os.remove(raw_path)
+        except OSError:
+            pass
     return {"voice_id": voice_id, "name": name}
 
 

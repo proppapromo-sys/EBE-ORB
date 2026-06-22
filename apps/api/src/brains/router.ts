@@ -38,25 +38,33 @@ export function classifyTask(message: string, hasImages = false): TaskClass {
   return 'fast';
 }
 
-/** Pick a route, falling back to whatever provider is actually configured (so an answer always returns). */
-function resolveRoute(cls: TaskClass): { provider: BrainProvider; model: string; label: string } {
-  const primary = ROUTES[cls];
-  if (getProviderClient(primary.provider).configured) return primary;
-  for (const alt of [ROUTES.medium, ROUTES.fast, ROUTES.heavy]) {
-    if (getProviderClient(alt.provider).configured) return alt;
+/** Try the best fit first, then other configured providers — so one model being down still answers. */
+function providerChain(cls: TaskClass): { provider: BrainProvider; model: string; label: string }[] {
+  const order = [ROUTES[cls], ROUTES.medium, ROUTES.fast, ROUTES.heavy];
+  const seen = new Set<BrainProvider>();
+  const chain: { provider: BrainProvider; model: string; label: string }[] = [];
+  for (const r of order) {
+    if (seen.has(r.provider)) continue;
+    seen.add(r.provider);
+    if (getProviderClient(r.provider).configured) chain.push(r);
   }
-  return primary; // nothing configured — returns the labelled stub
+  return chain;
 }
 
-/** Answer a request with one routed model, speaking as ORB. */
+/** Answer a request with one routed model, speaking as ORB. Falls back across providers on failure. */
 export async function routedAnswer(
   message: string,
   opts: { images?: string[]; context?: string } = {}
 ): Promise<{ answer: string; route: TaskClass; model: string; label: string; ok: boolean }> {
   const cls = classifyTask(message, Boolean(opts.images && opts.images.length));
-  const route = resolveRoute(cls);
-  const client = getProviderClient(route.provider);
   const user = opts.context ? `Context (use silently, never read aloud):\n${opts.context}\n\nUser: ${message}` : message;
-  const { text, ok, note } = await client.complete({ model: route.model, system: BRAINS.finalizer.system, user, images: opts.images });
-  return { answer: text || note || '…', route: cls, model: route.model, label: route.label, ok };
+  const chain = providerChain(cls);
+  for (const route of chain) {
+    try {
+      const { text, ok } = await getProviderClient(route.provider).complete({ model: route.model, system: BRAINS.finalizer.system, user, images: opts.images });
+      if (ok && text.trim()) return { answer: text, route: cls, model: route.model, label: route.label, ok: true };
+    } catch { /* try the next provider */ }
+  }
+  // Everything we have is down or unconfigured — a calm message, never a raw API error.
+  return { answer: "I'm having a brief problem reaching my models — give me a moment and try that again.", route: cls, model: ROUTES[cls].label, label: ROUTES[cls].label, ok: false };
 }
