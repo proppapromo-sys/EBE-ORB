@@ -3,6 +3,7 @@ import { connectors } from '../connectors/index.js';
 import { runOrbCycle, type OrbCycleReport } from '../genome/orbBranch.js';
 import { createJournal } from '../services/journalStore.js';
 import { runCouncil, type CouncilLevel } from '../brains/council.js';
+import { runBuild } from '../build/genome.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -24,6 +25,30 @@ function scorePriority(urgency: number, impact: number, effort: number, confiden
   return urgency + impact - effort + confidence;
 }
 
+// Does the user want ORB to BUILD something? Needs an intent verb AND a buildable target,
+// so "build me a website" routes to Build mode but "build my confidence" does not.
+const BUILD_INTENT = /\b(build|create|make|design|develop|generate|spin up|set up)\b/i;
+const BUILD_TARGET = /\b(web ?site|web ?app|landing page|home ?page|portfolio|dashboard|portal|online store|store|shop|e-?commerce|booking (site|app)|reservation|mobile app|app|site|web ?page|page)\b/i;
+export function looksLikeBuildRequest(message: string): boolean {
+  return BUILD_INTENT.test(message) && BUILD_TARGET.test(message);
+}
+
+/** Turn a build result into a clear, human chat reply (the files ride along in `build`). */
+function buildReply(b: Awaited<ReturnType<typeof runBuild>>): string {
+  const lines = [
+    `🛠️ I built you a **${b.blueprint.name}** (${b.category}).`,
+    `Tier: ${b.capability.label} — generated ${b.files.length} file${b.files.length === 1 ? '' : 's'}.`,
+    `Stack: ${b.blueprint.stack.join(', ')}.`,
+    '',
+    'Files:',
+    ...b.files.map((f) => `  • ${f.path}`),
+    '',
+    b.deliver
+  ];
+  if (!b.fullyConfigured) lines.push('', '⚠️ Some build organs ran without their AI key configured — results are partial.');
+  return lines.join('\n');
+}
+
 export async function gatherContext(userId: string): Promise<ConnectorResult[]> {
   const results = await Promise.all(connectors.map((connector) => connector.pull(userId)));
   return results;
@@ -39,6 +64,13 @@ export async function askOrb(
   message: string,
   opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string; personality?: string; customPersona?: string } = {}
 ) {
+  // Build mode: if the user is asking ORB to construct a site/app, run the Construction Genome
+  // (Gemini designs, GPT architects, Claude codes) instead of a chat answer. Tier caps the depth.
+  if (looksLikeBuildRequest(message)) {
+    const build = await runBuild({ request: message, plan: opts.plan });
+    return { mode: 'build' as const, answer: buildReply(build), build };
+  }
+
   if (opts.council === false) {
     // Single-model path still needs the raw connector context for its prompt.
     const context = await gatherContext(userId);

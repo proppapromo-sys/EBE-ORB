@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { inferCategory, getBlueprint } from './blueprints.js';
 import { buildCapability } from './tiers.js';
 import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
+import { looksLikeBuildRequest } from '../agents/masterAgent.js';
 
 test('inferCategory: reads build family from a plain brief', () => {
   assert.equal(inferCategory('a booking app for a barbershop'), 'mobile');
@@ -32,6 +33,14 @@ test('buildCapability: power scales with tier', () => {
   assert.ok(exec.maxFiles > free.maxFiles);
   assert.equal(buildCapability(undefined).plan, 'free'); // unknown → free
   assert.equal(buildCapability('enterprise').maxFiles >= exec.maxFiles, true);
+});
+
+test('looksLikeBuildRequest: routes real build asks, ignores look-alikes', () => {
+  assert.equal(looksLikeBuildRequest('build me a landing page for my barbershop'), true);
+  assert.equal(looksLikeBuildRequest('create an online store for candles'), true);
+  assert.equal(looksLikeBuildRequest('make a booking app for my salon'), true);
+  assert.equal(looksLikeBuildRequest('build my confidence'), false);   // intent but no target
+  assert.equal(looksLikeBuildRequest('what is the weather today?'), false);
 });
 
 test('genome soul: five laws and seven organs are present', () => {
