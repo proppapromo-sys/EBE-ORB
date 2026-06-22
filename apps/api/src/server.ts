@@ -6,6 +6,11 @@ import { dirname, join } from 'node:path';
 import { orbRouter } from './routes/orb.js';
 import { loadPlatformKeys } from './services/platformKeys.js';
 
+// Keep the server alive: a single unexpected async error must never crash-loop the whole app.
+// Log it loudly and keep serving (so one bad request or integration can't take ORB down).
+process.on('unhandledRejection', (reason) => console.error('[unhandledRejection]', reason));
+process.on('uncaughtException', (err) => console.error('[uncaughtException]', err));
+
 // Pull any owner-set AI keys (set from Settings) into memory before serving requests.
 void loadPlatformKeys();
 
