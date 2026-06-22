@@ -10,9 +10,21 @@ import { supabase } from './supabase.js';
 const TABLE = 'orb_platform_settings';
 const cache = new Map<string, string>(); // name -> value (runtime overrides)
 
-/** The keys the owner can manage from Settings. */
+/** The AI brain keys (kept for back-compat). */
 export const PLATFORM_KEYS = ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY'] as const;
 export type PlatformKeyName = (typeof PLATFORM_KEYS)[number];
+
+/** Everything the OWNER may set from inside the app (grouped for the Keys panel). */
+export const OWNER_KEY_GROUPS: Record<string, string[]> = {
+  brains: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY'],
+  billing: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'PUBLIC_BASE_URL', 'ORB_TRIAL_DAYS',
+            'STRIPE_PRICE_PERSONAL', 'STRIPE_PRICE_PRO', 'STRIPE_PRICE_ENTREPRENEUR', 'STRIPE_PRICE_EXECUTIVE', 'STRIPE_PRICE_ENTERPRISE',
+            'STRIPE_PRICE_PERSONAL_ANNUAL', 'STRIPE_PRICE_PRO_ANNUAL', 'STRIPE_PRICE_ENTREPRENEUR_ANNUAL', 'STRIPE_PRICE_EXECUTIVE_ANNUAL', 'STRIPE_PRICE_ENTERPRISE_ANNUAL'],
+  voice: ['ELEVENLABS_API_KEY', 'ELEVENLABS_VOICE_ID', 'ORB_VOICE_ENGINE_URL'],
+  video: ['RUNWAY_API_KEY', 'ORB_VIDEO_PROVIDER']
+};
+export const OWNER_KEYS: string[] = Object.values(OWNER_KEY_GROUPS).flat();
+const isOwnerKey = (name: string) => OWNER_KEYS.includes(name);
 
 /** Load any saved keys into the cache at startup (best-effort). */
 export async function loadPlatformKeys(): Promise<void> {
@@ -28,7 +40,8 @@ export function getPlatformKey(name: string): string | undefined {
   return cache.get(name) ?? process.env[name] ?? undefined;
 }
 
-export async function setPlatformKey(name: PlatformKeyName, value: string): Promise<void> {
+export async function setPlatformKey(name: string, value: string): Promise<void> {
+  if (!isOwnerKey(name)) throw new Error(`not an owner-settable key: ${name}`);
   cache.set(name, value);
   if (supabase) {
     try {
@@ -37,21 +50,27 @@ export async function setPlatformKey(name: PlatformKeyName, value: string): Prom
   }
 }
 
-export async function clearPlatformKey(name: PlatformKeyName): Promise<void> {
+export async function clearPlatformKey(name: string): Promise<void> {
   cache.delete(name);
   if (supabase) { try { await supabase.from(TABLE).delete().eq('name', name); } catch { /* ignore */ } }
 }
 
-/** Safe status for the UI: which brains are on, and a masked hint — never the secret itself. */
-export function platformKeyStatus(): { name: PlatformKeyName; set: boolean; source: 'app' | 'env' | 'none'; hint: string }[] {
-  return PLATFORM_KEYS.map((name) => {
-    const inApp = cache.has(name);
-    const v = getPlatformKey(name);
-    return {
-      name,
-      set: Boolean(v),
-      source: inApp ? 'app' : v ? 'env' : 'none',
-      hint: v ? `••••${v.slice(-4)}` : ''
-    };
-  });
+type KeyStatus = { name: string; set: boolean; source: 'app' | 'env' | 'none'; hint: string };
+function statusOf(name: string): KeyStatus {
+  const inApp = cache.has(name);
+  const v = getPlatformKey(name);
+  const secret = !/^(PUBLIC_BASE_URL|ORB_VIDEO_PROVIDER|ORB_TRIAL_DAYS|ELEVENLABS_VOICE_ID|ORB_VOICE_ENGINE_URL)$/.test(name);
+  return { name, set: Boolean(v), source: inApp ? 'app' : v ? 'env' : 'none', hint: v ? (secret ? `••••${v.slice(-4)}` : v) : '' };
+}
+
+/** Safe status for the AI brains (back-compat). */
+export function platformKeyStatus(): KeyStatus[] {
+  return PLATFORM_KEYS.map(statusOf);
+}
+
+/** Safe status for every owner key, grouped — never returns the secret itself. */
+export function ownerKeyStatus(): Record<string, KeyStatus[]> {
+  const out: Record<string, KeyStatus[]> = {};
+  for (const [group, names] of Object.entries(OWNER_KEY_GROUPS)) out[group] = names.map(statusOf);
+  return out;
 }

@@ -1,57 +1,69 @@
 /**
- * billing.ts — Stripe subscriptions, one per ORB tier. Hosted Stripe Checkout (no card data ever
- * touches our server) creates the subscription; a webhook flips the user's plan in planStore, which
- * in turn unlocks council depth and Build power. Fully optional: with no STRIPE_SECRET_KEY the whole
- * module degrades to "not configured" and never crashes the app.
+ * billing.ts — Stripe subscriptions per ORB tier. Keys are read LIVE (from the in-app owner settings
+ * or env) so they can be set from inside the app without a restart. Hosted Stripe Checkout creates
+ * the subscription; a webhook flips the user's plan. Supports monthly/annual cycles and free trials.
+ * Fully optional — no key = billing off, never throws at startup.
  */
 import Stripe from 'stripe';
 import { setUserPlan } from './planStore.js';
+import { getPlatformKey } from './platformKeys.js';
 import { PLANS, type PlanId } from '../billing/plans.js';
 
-const secret = process.env.STRIPE_SECRET_KEY;
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-const baseUrl = (process.env.PUBLIC_BASE_URL ?? '').replace(/\/$/, '');
+export type BillingCycle = 'monthly' | 'annual';
 
-// Lazy, guarded init — a missing/placeholder key disables billing instead of throwing at startup.
-function initStripe(): Stripe | null {
-  if (!secret || /your_|placeholder|changeme/i.test(secret)) return null;
-  try {
-    return new Stripe(secret);
-  } catch (err) {
-    console.warn('[billing] Stripe init failed — billing disabled:', err instanceof Error ? err.message : err);
-    return null;
-  }
+const secret = () => getPlatformKey('STRIPE_SECRET_KEY');
+const webhookSecret = () => getPlatformKey('STRIPE_WEBHOOK_SECRET');
+const baseUrl = () => (getPlatformKey('PUBLIC_BASE_URL') || '').replace(/\/$/, '');
+const trialDays = () => Math.max(0, Number(getPlatformKey('ORB_TRIAL_DAYS') || 0)) || undefined;
+
+// Memoized client, rebuilt if the key changes (so setting the key in-app takes effect immediately).
+let _stripe: Stripe | null = null;
+let _forKey = '';
+function stripe(): Stripe | null {
+  const k = secret();
+  if (!k || /your_|placeholder|changeme/i.test(k)) { _stripe = null; _forKey = ''; return null; }
+  if (_stripe && _forKey === k) return _stripe;
+  try { _stripe = new Stripe(k); _forKey = k; return _stripe; }
+  catch (err) { console.warn('[billing] Stripe init failed:', err instanceof Error ? err.message : err); _stripe = null; return null; }
 }
-const stripe = initStripe();
 
-export const billingConfigured = Boolean(stripe);
+export function billingConfigured(): boolean {
+  return Boolean(stripe());
+}
 
-/** The Stripe price id for a plan, from env (e.g. STRIPE_PRICE_PRO). Free has no price. */
-function priceFor(plan: PlanId): string | undefined {
+/** The Stripe price id for a plan + cycle, from settings (e.g. STRIPE_PRICE_PRO / STRIPE_PRICE_PRO_ANNUAL). */
+function priceFor(plan: PlanId, cycle: BillingCycle): string | undefined {
   if (plan === 'free') return undefined;
-  return process.env[`STRIPE_PRICE_${plan.toUpperCase()}`];
+  const suffix = cycle === 'annual' ? '_ANNUAL' : '';
+  return getPlatformKey(`STRIPE_PRICE_${plan.toUpperCase()}${suffix}`);
 }
 
-/** Which tiers are actually purchasable right now (have a configured price). */
-export function purchasablePlans(): { id: PlanId; name: string; price: string; ready: boolean }[] {
+/** Which tiers are purchasable right now (have a configured monthly price). */
+export function purchasablePlans(): { id: PlanId; name: string; price: string; ready: boolean; annual: boolean }[] {
+  const on = Boolean(stripe());
   return PLANS.map((p) => ({
     id: p.id, name: p.name, price: p.price,
-    ready: p.id === 'free' ? true : Boolean(stripe && priceFor(p.id))
+    ready: p.id === 'free' ? true : Boolean(on && priceFor(p.id, 'monthly')),
+    annual: Boolean(on && priceFor(p.id, 'annual'))
   }));
 }
 
 /** Create a hosted Checkout session for a tier; returns the URL to send the user to. */
-export async function createCheckoutSession(userId: string, plan: PlanId): Promise<{ url: string }> {
-  if (!stripe) throw new Error('Billing is not configured. Set STRIPE_SECRET_KEY.');
-  const price = priceFor(plan);
+export async function createCheckoutSession(
+  userId: string, plan: PlanId, cycle: BillingCycle = 'monthly'
+): Promise<{ url: string }> {
+  const s = stripe();
+  if (!s) throw new Error('Billing is not configured. Set STRIPE_SECRET_KEY.');
+  const price = priceFor(plan, cycle) || priceFor(plan, 'monthly');
   if (!price) throw new Error(`No Stripe price configured for the "${plan}" plan (set STRIPE_PRICE_${plan.toUpperCase()}).`);
-  const base = baseUrl || 'http://localhost:8080';
-  const session = await stripe.checkout.sessions.create({
+  const base = baseUrl() || 'http://localhost:8080';
+  const days = trialDays();
+  const session = await s.checkout.sessions.create({
     mode: 'subscription',
     line_items: [{ price, quantity: 1 }],
     client_reference_id: userId,
-    metadata: { userId, plan },
-    subscription_data: { metadata: { userId, plan } },
+    metadata: { userId, plan, cycle },
+    subscription_data: { metadata: { userId, plan }, ...(days ? { trial_period_days: days } : {}) },
     success_url: `${base}/?upgraded=${plan}`,
     cancel_url: `${base}/?checkout=canceled`
   });
@@ -61,15 +73,17 @@ export async function createCheckoutSession(userId: string, plan: PlanId): Promi
 
 /** Verify and process a Stripe webhook. Raw body required for signature verification. */
 export async function handleWebhook(rawBody: Buffer, signature: string | undefined): Promise<{ received: true }> {
-  if (!stripe || !webhookSecret) throw new Error('Webhook not configured.');
+  const s = stripe();
+  const ws = webhookSecret();
+  if (!s || !ws) throw new Error('Webhook not configured.');
   if (!signature) throw new Error('Missing Stripe signature.');
-  const event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+  const event = s.webhooks.constructEvent(rawBody, signature, ws);
 
   switch (event.type) {
     case 'checkout.session.completed': {
-      const s = event.data.object as Stripe.Checkout.Session;
-      const userId = s.client_reference_id ?? s.metadata?.userId;
-      const plan = s.metadata?.plan as PlanId | undefined;
+      const sess = event.data.object as Stripe.Checkout.Session;
+      const userId = sess.client_reference_id ?? sess.metadata?.userId;
+      const plan = sess.metadata?.plan as PlanId | undefined;
       if (userId && plan) await setUserPlan(userId, plan);
       break;
     }
@@ -80,7 +94,7 @@ export async function handleWebhook(rawBody: Buffer, signature: string | undefin
       break;
     }
     default:
-      break; // ignore everything else for now
+      break;
   }
   return { received: true };
 }

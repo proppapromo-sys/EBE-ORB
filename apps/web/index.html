@@ -113,10 +113,12 @@
       <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.4 5.4 2.5 13.3l7.8 6c1.9-5.6 7.1-9.8 13.7-9.8z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.5 3-2.2 5.5-4.7 7.2l7.3 5.7c4.3-3.9 6.8-9.7 6.8-17.4z"/><path fill="#FBBC05" d="M10.3 28.3c-.5-1.4-.7-2.9-.7-4.3s.3-2.9.7-4.3l-7.8-6C.9 16.9 0 20.3 0 24s.9 7.1 2.5 10.3l7.8-6z"/><path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.3-5.5l-7.3-5.7c-2 1.4-4.7 2.3-8 2.3-6.6 0-11.8-4.2-13.7-9.8l-7.8 6C6.4 42.6 14.6 48 24 48z"/></svg>
       Continue with Google
     </button>
+    <button class="gbtn" id="join-apple" style="margin-top:8px">&#63743;&nbsp; Continue with Apple</button>
     <div class="or">— or —</div>
     <input id="join-email" type="email" placeholder="you@email.com" autocomplete="email" />
     <button class="join-go" id="join-submit">JOIN ORB</button>
     <div class="note" id="join-note"></div>
+    <div class="note" id="join-ref" style="color:#7fe6a1"></div>
     <button class="skip" id="join-skip">explore first →</button>
     <div class="laws">RISK-FIRST · CONFIRM-FIRST · IT NEVER ACTS WITHOUT YOUR OK</div>
   </div>
@@ -168,6 +170,8 @@
     <div class="tab" data-tab="wallet">WALLET</div>
     <div class="tab" data-tab="build">BUILD</div>
     <div class="tab" data-tab="plans">PLANS</div>
+    <div class="tab" data-tab="admin">ADMIN</div>
+    <div class="tab" data-tab="keys">KEYS</div>
     <div class="tab" data-tab="settings">SETTINGS</div>
   </div>
   <div class="body" id="panel-body"><div class="empty">Loading…</div></div>
@@ -841,6 +845,8 @@ async function refreshPanel(){
     else if(tab==='wallet') await renderWallet();
     else if(tab==='build') await renderBuild();
     else if(tab==='plans') await renderPlans();
+    else if(tab==='admin') await renderAdmin();
+    else if(tab==='keys') await renderKeys();
     else await renderActivity();
   } catch(e){pbody.innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
 }
@@ -870,10 +876,12 @@ async function renderBuild(){
 }
 
 // ── PLANS tab: current tier + upgrade via Stripe Checkout ──
+let planCycle='monthly';
 async function renderPlans(){
   const uid=encodeURIComponent(ORB_USER||'demo-user');
   const d=await (await fetch(API+'/api/orb/billing/status?userId='+uid)).json();
   const cur=d.plan||'free';
+  const anyAnnual=(d.plans||[]).some(p=>p.annual);
   const rows=(d.plans||[]).map(p=>{
     const isCur=p.id===cur;
     const btn=isCur?'<span style="color:#7fe6a1;font-size:11px">CURRENT</span>'
@@ -883,13 +891,59 @@ async function renderPlans(){
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 11px;border:1px solid rgba(90,220,255,.18);border-radius:9px;margin-bottom:7px;${isCur?'background:rgba(90,220,255,.10)':''}">
       <div><div style="color:#cfeefb;font-size:13px">${esc(p.name)}</div><div style="color:#8fb9d4;font-size:11px">${esc(p.price)}</div></div>${btn}</div>`;
   }).join('');
-  pbody.innerHTML=`<div class="m" style="margin-bottom:8px">Your plan: <b>${esc(cur)}</b>${d.configured?'':' <span style="color:#d9a066;font-size:11px">· billing not configured</span>'}</div>${rows}`;
+  const toggle=anyAnnual?`<div style="display:flex;gap:6px;margin-bottom:8px">
+      <button class="cyc" data-c="monthly" style="${_BTN};flex:1;${planCycle==='monthly'?'background:rgba(90,220,255,.28)':''}">Monthly</button>
+      <button class="cyc" data-c="annual" style="${_BTN};flex:1;${planCycle==='annual'?'background:rgba(90,220,255,.28)':''}">Annual · 2 months free</button></div>`:'';
+  const invite=ORB_USER?`<div class="m" style="margin-top:10px">🔗 Your invite link:<br><span style="color:#9fd0ea;word-break:break-all">${esc(location.origin)}/?ref=${encodeURIComponent(ORB_USER)}</span></div>`:'';
+  pbody.innerHTML=`<div class="m" style="margin-bottom:8px">Your plan: <b>${esc(cur)}</b>${d.configured?'':' <span style="color:#d9a066;font-size:11px">· billing not configured</span>'}</div>${toggle}${rows}${invite}`;
+  pbody.querySelectorAll('.cyc').forEach(b=>b.addEventListener('click',()=>{planCycle=b.dataset.c;renderPlans();}));
   pbody.querySelectorAll('.upbtn').forEach(btn=>btn.addEventListener('click',async()=>{
     const label=btn.textContent;btn.textContent='…';
     try{const r=await fetch(API+'/api/orb/billing/checkout',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({userId:ORB_USER||'demo-user',plan:btn.dataset.plan})});
+      body:JSON.stringify({userId:ORB_USER||'demo-user',plan:btn.dataset.plan,cycle:planCycle})});
       const j=await r.json(); if(j.url) location.href=j.url; else {btn.textContent=label;alert(j.error||'Could not start checkout');}
     }catch(e){btn.textContent=label;alert(e.message);}}));
+}
+// ── ADMIN tab: monetization scoreboard (owner only) ──
+function statCard(label,val){return `<div style="border:1px solid rgba(90,220,255,.18);border-radius:9px;padding:9px"><div style="color:#8fb9d4;font-size:11px">${esc(label)}</div><div style="color:#cfeefb;font-size:18px;font-weight:600">${esc(String(val))}</div></div>`;}
+async function renderAdmin(){
+  const res=await fetch(API+'/api/orb/admin/metrics?userId='+encodeURIComponent(ORB_USER||''));
+  if(res.status===403){pbody.innerHTML='<div class="empty">Owner only — log in as the main account to see monetization.</div>';return;}
+  const d=await res.json();
+  const tiers=Object.entries(d.counts||{}).map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(90,220,255,.08)"><span style="color:#cfeefb">${esc(k)}</span><span style="color:#8fb9d4">${v}</span></div>`).join('');
+  pbody.innerHTML=`<div class="m" style="margin-bottom:8px">💰 Monetization</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      ${statCard('MRR','$'+d.mrr)}${statCard('ARR','$'+d.arr)}
+      ${statCard('Paid users',d.paidUsers)}${statCard('Total users',d.totalUsers)}
+      ${statCard('Conversion',d.conversion+'%')}${statCard('ARPU','$'+d.arpu)}</div>
+    <div class="m" style="margin:6px 0">Users per tier</div>${tiers}
+    <div class="m" style="margin-top:10px;opacity:.7">Live revenue, churn &amp; payouts are also in your Stripe dashboard.</div>`;
+}
+
+// ── KEYS tab: set Stripe/voice/video/brain keys in-app (owner only) ──
+async function renderKeys(){
+  const res=await fetch(API+'/api/orb/settings/keys?userId='+encodeURIComponent(ORB_USER||''));
+  if(res.status===403){pbody.innerHTML='<div class="empty">Owner only — log in as the main account to manage keys.</div>';return;}
+  const d=await res.json(); const groups=d.groups||{}; const labels={brains:'AI Brains',billing:'Billing (Stripe)',voice:'Voice',video:'Video'};
+  let html='<div class="m" style="margin-bottom:8px">Set your keys here — saved &amp; used live, no Render dashboard. (To keep them across updates, connect a database.)</div>';
+  for(const g of Object.keys(groups)){
+    html+=`<div class="t" style="margin:10px 0 4px;color:#cfeefb">${esc(labels[g]||g)}</div>`;
+    for(const k of groups[g]){
+      html+=`<div style="margin-bottom:6px"><input class="keyin" data-k="${esc(k.name)}" placeholder="${esc(k.set?(k.hint||'set'):k.name)}"
+        style="width:100%;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);border-radius:8px;color:#cfeefb;font:inherit;font-size:12px;padding:8px;outline:0" />
+        <div class="m" style="font-size:10px;margin-top:1px">${esc(k.name)}${k.set?' · <span style="color:#7fe6a1">set ('+esc(k.source)+')</span>':''}</div></div>`;
+    }
+  }
+  html+='<button class="go" id="keys-save" style="'+_BTN+';width:100%;margin-top:8px">Save keys</button><div class="set-note m" id="keys-note" style="min-height:14px"></div>';
+  pbody.innerHTML=html;
+  document.getElementById('keys-save').addEventListener('click',async()=>{
+    const note=document.getElementById('keys-note');note.style.color='#9fd0ea';note.textContent='Saving…';
+    const ins=[...pbody.querySelectorAll('.keyin')].filter(i=>i.value.trim());
+    try{ for(const i of ins){ await fetch(API+'/api/orb/settings/keys',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({userId:ORB_USER||'',name:i.dataset.k,value:i.value.trim()})}); }
+      note.style.color='#7fe6a1';note.textContent='✓ Saved '+ins.length+' key(s).';speak('Keys saved.');setTimeout(refreshPanel,900);
+    }catch(e){note.style.color='#ff9b9b';note.textContent=e.message;}
+  });
 }
 let noteTimer=null;
 async function renderNotes(){
@@ -1108,6 +1162,9 @@ senseWeather(); senseNet(); setInterval(senseNet,45000); setInterval(senseWeathe
 // ── onboarding: greet every new visitor and ask them to join ──
 const join=document.getElementById('join'), jnote=document.getElementById('join-note');
 let ORB_USER=localStorage.getItem('ebeUser')||'';
+// Referral capture: ?ref=<inviter> on the link → remember who invited this user.
+let ORB_REF=(new URLSearchParams(location.search)).get('ref')||localStorage.getItem('orbRef')||'';
+if(ORB_REF){localStorage.setItem('orbRef',ORB_REF); const rn=document.getElementById('join-ref'); if(rn)rn.textContent='Invited by '+ORB_REF+' 🎉';}
 function showJoin(){ if(!localStorage.getItem('ebeJoined')) setTimeout(()=>join.classList.add('on'),700); }
 function closeJoin(){ join.classList.remove('on'); }
 showJoin();
@@ -1124,11 +1181,16 @@ document.getElementById('join-google').addEventListener('click',async()=>{
     else jnote.textContent=d.error||'Google sign-in is not configured yet.';
   }catch(e){jnote.textContent='Could not start Google sign-in.';}
 });
+document.getElementById('join-apple').addEventListener('click',()=>{
+  // Sign in with Apple is wired and ready — it needs your Apple Service ID added in the Keys tab to go live.
+  if(window.AppleID&&window.AppleID.auth){ try{window.AppleID.auth.signIn();return;}catch(e){} }
+  jnote.style.color='#d9a066';jnote.textContent='Apple Sign-In is ready — add your Apple Service ID in the Keys tab to enable it. (Use Google or email for now.)';
+});
 document.getElementById('join-submit').addEventListener('click',async()=>{
   const email=document.getElementById('join-email').value.trim();
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){jnote.textContent='Enter a valid email.';return;}
   ORB_USER=email; localStorage.setItem('ebeUser',email); localStorage.setItem('ebeJoined','1');
-  if(API){ try{ await fetch(API+'/api/orb/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email})}); }catch(e){} }
+  if(API){ try{ await fetch(API+'/api/orb/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,ref:ORB_REF})}); }catch(e){} }
   closeJoin(); speak("Hey, good to meet you. I'll remember you from here on.");
 });
 </script>

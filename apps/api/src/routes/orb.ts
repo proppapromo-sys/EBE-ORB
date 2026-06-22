@@ -22,7 +22,9 @@ import { searchRestaurants, placesConfigured } from '../services/places.js';
 import { mailerConfigured, sendMail } from '../services/mailer.js';
 import { PLANS } from '../billing/plans.js';
 import { createCheckoutSession, purchasablePlans, billingConfigured } from '../services/billing.js';
-import { getUserPlan, setUserPlan } from '../services/planStore.js';
+import { getUserPlan, setUserPlan, isOwner } from '../services/planStore.js';
+import { ownerKeyStatus, setPlatformKey } from '../services/platformKeys.js';
+import { monetizationMetrics } from '../services/admin.js';
 import { generateVideo, videoAllowedFor, videoConfigured } from '../services/video.js';
 import { synthesizeSpeech, ttsConfigured } from '../services/tts.js';
 import { listSkills } from '../brains/skills.js';
@@ -99,12 +101,45 @@ orbRouter.get('/billing/status', async (req, res, next) => {
 // Start a hosted Stripe Checkout for a tier; the client redirects to the returned URL.
 const CheckoutSchema = z.object({
   userId: z.string().min(1).default('demo-user'),
-  plan: z.enum(['personal', 'pro', 'entrepreneur', 'executive', 'enterprise'])
+  plan: z.enum(['personal', 'pro', 'entrepreneur', 'executive', 'enterprise']),
+  cycle: z.enum(['monthly', 'annual']).optional()
 });
 orbRouter.post('/billing/checkout', async (req, res, next) => {
   try {
-    const { userId, plan } = CheckoutSchema.parse(req.body ?? {});
-    res.json(await createCheckoutSession(userId, plan));
+    const { userId, plan, cycle } = CheckoutSchema.parse(req.body ?? {});
+    res.json(await createCheckoutSession(userId, plan, cycle ?? 'monthly'));
+  } catch (error) { next(error); }
+});
+
+// ── Owner-only: monetization dashboard + in-app key management ──────────────────
+function requireOwner(req: any, res: any): boolean {
+  const userId = String(req.query.userId ?? req.body?.userId ?? '');
+  if (!isOwner(userId)) { res.status(403).json({ error: 'Owner only.' }); return false; }
+  return true;
+}
+
+// The money scoreboard: users per tier, MRR/ARR, conversion.
+orbRouter.get('/admin/metrics', async (req, res, next) => {
+  try {
+    if (!requireOwner(req, res)) return;
+    res.json(await monetizationMetrics());
+  } catch (error) { next(error); }
+});
+
+// Read every owner key's status (masked — never the secret).
+orbRouter.get('/settings/keys', (req, res) => {
+  if (!requireOwner(req, res)) return;
+  res.json({ groups: ownerKeyStatus() });
+});
+
+// Set an owner key from inside the app (Stripe / voice / video / brains).
+const KeySchema = z.object({ userId: z.string().min(1), name: z.string().min(1), value: z.string().min(1) });
+orbRouter.post('/settings/keys', async (req, res, next) => {
+  try {
+    if (!requireOwner(req, res)) return;
+    const { name, value } = KeySchema.parse(req.body ?? {});
+    await setPlatformKey(name, value.trim());
+    res.json({ ok: true, name });
   } catch (error) { next(error); }
 });
 

@@ -5,7 +5,7 @@
  * still works without a database. Defaults to 'free'.
  */
 import { supabase } from './supabase.js';
-import { getPlan, type PlanId } from '../billing/plans.js';
+import { getPlan, PLANS, type PlanId } from '../billing/plans.js';
 
 const TABLE = 'orb_user_plans';
 const cache = new Map<string, PlanId>(); // userId -> plan
@@ -38,6 +38,19 @@ export async function getUserPlan(userId: string): Promise<PlanId> {
 export function getUserPlanCached(userId: string): PlanId {
   if (isOwner(userId)) return 'enterprise';
   return cache.get(userId) ?? 'free';
+}
+
+/** How many users are on each tier (Supabase → in-memory). Powers the owner Admin dashboard. */
+export async function planCounts(): Promise<Record<PlanId, number>> {
+  const counts = Object.fromEntries(PLANS.map((p) => [p.id, 0])) as Record<PlanId, number>;
+  if (supabase) {
+    try {
+      const { data } = await supabase.from(TABLE).select('plan');
+      if (data) { for (const r of data) counts[getPlan(String(r.plan)).id]++; return counts; }
+    } catch { /* fall back to cache */ }
+  }
+  for (const p of cache.values()) counts[p]++;
+  return counts;
 }
 
 /** Set a user's plan (called by the Stripe webhook on subscribe/cancel). */

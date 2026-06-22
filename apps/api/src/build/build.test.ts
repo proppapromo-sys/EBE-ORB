@@ -12,6 +12,8 @@ import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
 import { classifyTask, ROUTES } from '../brains/router.js';
 import { matchSkill, listSkills } from '../brains/skills.js';
+import { monetizationMetrics } from '../services/admin.js';
+import { OWNER_KEYS, setPlatformKey } from '../services/platformKeys.js';
 
 test('inferCategory: reads build family from a plain brief', () => {
   assert.equal(inferCategory('a booking app for a barbershop'), 'mobile');
@@ -86,6 +88,15 @@ test('skills: voice cloning/recognition are owner-only and talk-triggered', () =
   assert.equal(matchSkill('what is the weather'), null);
   const voice = listSkills().filter((s) => s.id.startsWith('voice'));
   assert.ok(voice.length >= 2 && voice.every((s) => s.ownerOnly));
+});
+
+test('admin metrics + owner keys', async () => {
+  const m = await monetizationMetrics();
+  assert.ok(typeof m.mrr === 'number' && typeof m.arr === 'number' && typeof m.conversion === 'number');
+  assert.ok(m.arr === Math.round(m.mrr * 12 * 100) / 100);
+  // Owner key whitelist gates what can be set in-app.
+  assert.ok(OWNER_KEYS.includes('STRIPE_SECRET_KEY') && OWNER_KEYS.includes('RUNWAY_API_KEY'));
+  await assert.rejects(() => setPlatformKey('NOT_AN_OWNER_KEY', 'x'));
 });
 
 test('genome soul: five laws and seven organs are present', () => {
