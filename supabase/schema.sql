@@ -146,3 +146,20 @@ create table if not exists orb_user_plans (
   plan       text not null default 'free',
   updated_at timestamptz default now()
 );
+
+-- Referral conversions — who invited whom (one referrer per invitee).
+create table if not exists orb_referrals (
+  invitee    text primary key,
+  inviter    text not null,
+  created_at timestamptz default now()
+);
+
+-- Teams / seats (Entrepreneur & Enterprise) — owner adds members, each gets their own login.
+create table if not exists orb_teams (
+  id         uuid primary key default gen_random_uuid(),
+  owner      text not null,
+  member     text not null,
+  role       text not null default 'member',
+  created_at timestamptz default now(),
+  unique (owner, member)
+);

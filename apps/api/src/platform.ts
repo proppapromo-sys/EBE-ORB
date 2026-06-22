@@ -21,6 +21,14 @@ import { cloneVoice, verifySpeaker } from './services/tts.js';
 import { isOwner } from './services/planStore.js';
 
 export function mountOrb(app: Express, opts: { jsonLimit?: string } = {}): Express {
+  // Baseline safety headers on every ORB API response (cheap, no deps).
+  app.use('/api/orb', (_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    next();
+  });
+
   // Raw-body routes MUST be registered before any JSON parser (signature/audio need raw bytes).
   app.post('/api/orb/billing/webhook', express.raw({ type: () => true, limit: '5mb' }), async (req, res) => {
     try { res.json(await handleWebhook(req.body as Buffer, req.header('stripe-signature'))); }

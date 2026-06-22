@@ -49,6 +49,17 @@ export function appleConfigured(): boolean {
 const codes = new Map<string, { code: string; exp: number }>();
 const gen = () => String(Math.floor(100000 + Math.random() * 900000));
 
+// SMS abuse guard: cap codes per number so nobody can run up the Twilio bill.
+const sends = new Map<string, number[]>();
+const MAX_PER_HOUR = Number(process.env.ORB_SMS_MAX_PER_HOUR || 5);
+function rateLimited(phone: string): boolean {
+  const now = Date.now();
+  const hist = (sends.get(phone) || []).filter((t) => now - t < 3600_000);
+  if (hist.length >= MAX_PER_HOUR) { sends.set(phone, hist); return true; }
+  hist.push(now); sends.set(phone, hist);
+  return false;
+}
+
 export function phoneConfigured(): boolean {
   return Boolean(getPlatformKey('TWILIO_ACCOUNT_SID') && getPlatformKey('TWILIO_AUTH_TOKEN') && getPlatformKey('TWILIO_FROM'));
 }
@@ -58,6 +69,7 @@ export async function startPhone(phone: string): Promise<{ sent: boolean; note?:
   const sid = getPlatformKey('TWILIO_ACCOUNT_SID'), token = getPlatformKey('TWILIO_AUTH_TOKEN'), from = getPlatformKey('TWILIO_FROM');
   if (!sid || !token || !from) return { sent: false, note: 'Phone sign-in not configured (set TWILIO_* keys).' };
   if (!/^\+?[1-9]\d{6,15}$/.test(phone)) return { sent: false, note: 'Enter a valid phone number with country code.' };
+  if (rateLimited(phone)) return { sent: false, note: 'Too many codes requested — try again later.' };
   const code = gen();
   codes.set(phone, { code, exp: Date.now() + 5 * 60_000 });
   try {

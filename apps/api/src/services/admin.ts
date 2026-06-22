@@ -5,9 +5,9 @@
 import { planCounts } from './planStore.js';
 import type { PlanId } from '../billing/plans.js';
 
-// Monthly price per tier (Enterprise counted at its floor).
+// Monthly price per tier (Enterprise counted at its floor). Kept in sync with billing/plans.ts.
 const MONTHLY: Record<PlanId, number> = {
-  free: 0, personal: 19.99, pro: 49.99, entrepreneur: 99, executive: 249, enterprise: 499
+  free: 0, personal: 29.99, pro: 59.99, entrepreneur: 99, executive: 249, enterprise: 499
 };
 
 const r2 = (n: number) => Math.round(n * 100) / 100;

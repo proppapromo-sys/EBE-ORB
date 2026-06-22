@@ -26,6 +26,7 @@ import { getUserPlan, setUserPlan, isOwner } from '../services/planStore.js';
 import { ownerKeyStatus, setPlatformKey, getPlatformKey } from '../services/platformKeys.js';
 import { monetizationMetrics } from '../services/admin.js';
 import { verifyAppleToken, appleConfigured, startPhone, verifyPhone, phoneConfigured } from '../services/auth.js';
+import { recordReferral, referralStats } from '../services/referrals.js';
 import { generateVideo, videoAllowedFor, videoConfigured } from '../services/video.js';
 import { synthesizeSpeech, ttsConfigured } from '../services/tts.js';
 import { listSkills } from '../brains/skills.js';
@@ -716,7 +717,8 @@ orbRouter.get('/speedtest', (req, res) => {
 // ── Join / onboarding (capture a new owner) ─────────────────────────────────
 const JoinSchema = z.object({
   email: z.string().email(),
-  name: z.string().optional()
+  name: z.string().optional(),
+  ref: z.string().optional()   // who invited them (referral integrity)
 });
 orbRouter.post('/join', async (req, res, next) => {
   try {
@@ -728,7 +730,16 @@ orbRouter.post('/join', async (req, res, next) => {
       content: `${p.name ? p.name + ' — ' : ''}${p.email} joined EBE ORB.`,
       importance: 9
     });
+    if (p.ref) await recordReferral(p.email, p.ref);   // track the invite that brought them in
     res.json({ ok: true, userId: p.email, next: 'connect-google' });
+  } catch (error) { next(error); }
+});
+
+// Owner-only: referral conversions (invites + count per inviter).
+orbRouter.get('/admin/referrals', async (req, res, next) => {
+  try {
+    if (!requireOwner(req, res)) return;
+    res.json(await referralStats());
   } catch (error) { next(error); }
 });
 
