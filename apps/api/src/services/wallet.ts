@@ -15,6 +15,13 @@ import {
   requestPayment, getTxn, markTxn, type WalletTxn, type PaymentRail
 } from './walletStore.js';
 import { getCredential } from './credentialStore.js';
+import { getPlatformKey } from './platformKeys.js';
+
+/** The default rail comes from the central Payments & Banking section (BILL_PAY_RAIL). */
+export function defaultBillRail(): PaymentRail {
+  const r = (getPlatformKey('BILL_PAY_RAIL') || '').toLowerCase();
+  return (['stripe', 'card', 'bank', 'manual'] as const).includes(r as PaymentRail) ? (r as PaymentRail) : 'stripe';
+}
 
 export const RAILS: { rail: PaymentRail; label: string; ready: boolean; note: string }[] = [
   { rail: 'stripe', label: 'Stripe', ready: true, note: 'Stripe holds and moves the money; ORB just instructs it.' },
@@ -67,7 +74,7 @@ export async function getWalletView(userKey: string): Promise<WalletView> {
 export async function payBill(userKey: string, p: {
   payee: string; amountCents: number; rail?: PaymentRail; memo?: string;
 }): Promise<{ txn: WalletTxn; say: string }> {
-  const txn = await requestPayment(userKey, p);
+  const txn = await requestPayment(userKey, { ...p, rail: p.rail ?? defaultBillRail() });
   const say = `I've set up ${fmt(txn.amountCents, txn.currency)} to ${txn.payee}` +
     `${txn.memo ? ` for ${txn.memo}` : ''}. Say "confirm" and I'll send it, or "cancel" to drop it.`;
   return { txn, say };
