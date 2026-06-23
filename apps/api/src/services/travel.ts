@@ -43,8 +43,8 @@ export async function cityCode(keyword: string): Promise<string | null> {
 }
 
 /** Search flight offers. Returns a compact, readable summary. Prefers Duffel (bookable) when set. */
-export async function searchFlights(origin: string, dest: string, date: string, adults = 1): Promise<string | null> {
-  if (duffelConfigured()) { const r = await duffelSearchFlights(origin, dest, date); if (r) return r; }
+export async function searchFlights(origin: string, dest: string, date: string, adults = 1, userId?: string): Promise<string | null> {
+  if (duffelConfigured()) { const r = await duffelSearchFlights(origin, dest, date, userId); if (r) return r; }
   if (!travelConfigured()) return null;
   const [o, dcode] = await Promise.all([cityCode(origin), cityCode(dest)]);
   if (!o || !dcode) return null;
@@ -75,6 +75,11 @@ export async function searchHotels(city: string): Promise<string | null> {
 // ── Duffel: real, bookable flights (search + confirm-first order) ──────────────
 const DUFFEL = 'https://api.duffel.com';
 export function duffelConfigured(): boolean { return Boolean(getPlatformKey('DUFFEL_TOKEN')); }
+
+// Remember the last search's offers per user so "book the first one" can reference a real offer id.
+type StashedOffer = { id: string; amount: string; currency: string; label: string };
+const lastOffers = new Map<string, StashedOffer[]>();
+export function getLastOffers(userId: string): StashedOffer[] { return lastOffers.get(userId) ?? []; }
 function duffelHeaders(): Record<string, string> {
   return { Authorization: `Bearer ${getPlatformKey('DUFFEL_TOKEN')}`, 'Duffel-Version': 'v2', 'content-type': 'application/json', Accept: 'application/json' };
 }
@@ -91,7 +96,7 @@ async function duffelCity(keyword: string): Promise<string | null> {
 }
 
 /** Search bookable flight offers via Duffel. */
-export async function duffelSearchFlights(origin: string, dest: string, date: string): Promise<string | null> {
+export async function duffelSearchFlights(origin: string, dest: string, date: string, userId?: string): Promise<string | null> {
   const [o, d2] = await Promise.all([duffelCity(origin), duffelCity(dest)]);
   if (!o || !d2) return null;
   try {
@@ -101,16 +106,20 @@ export async function duffelSearchFlights(origin: string, dest: string, date: st
     });
     if (!r.ok) return null;
     const d = (await r.json()) as { data?: { offers?: any[] } };
-    const offers = d.data?.offers ?? [];
+    const offers = (d.data?.offers ?? []).slice(0, 4);
     if (!offers.length) return `Flights ${o}→${d2} on ${date}: none found.`;
-    const lines = offers.slice(0, 4).map((of: any) => {
+    const stash: StashedOffer[] = [];
+    const lines = offers.map((of: any) => {
       const seg = of.slices?.[0]?.segments ?? [];
       const carr = of.owner?.iata_code ?? seg[0]?.marketing_carrier?.iata_code ?? '??';
       const stops = seg.length - 1;
       const dep = seg[0]?.departing_at?.slice(11, 16); const arr = seg[seg.length - 1]?.arriving_at?.slice(11, 16);
-      return `- ${carr} ${o}→${d2} ${dep}→${arr}, ${stops === 0 ? 'nonstop' : stops + ' stop'}, $${of.total_amount}`;
+      const label = `${carr} ${o}→${d2} ${dep}→${arr}`;
+      stash.push({ id: of.id, amount: String(of.total_amount), currency: of.total_currency ?? 'USD', label });
+      return `- ${label}, ${stops === 0 ? 'nonstop' : stops + ' stop'}, $${of.total_amount}`;
     });
-    return `Flights ${o}→${d2}, ${date} (bookable via Duffel):\n${lines.join('\n')}`;
+    if (userId) lastOffers.set(userId, stash);
+    return `Flights ${o}→${d2}, ${date} (bookable via Duffel):\n${lines.join('\n')}\nSay "book the first one" to reserve (confirm-first).`;
   } catch { return null; }
 }
 

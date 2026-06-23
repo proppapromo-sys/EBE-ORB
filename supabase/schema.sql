@@ -147,6 +147,14 @@ create table if not exists orb_user_plans (
   updated_at timestamptz default now()
 );
 
+-- Traveler profiles — details ORB needs to book flights for a user.
+create table if not exists orb_profiles (
+  user_id     text primary key,
+  given_name  text, family_name text, born_on text,
+  gender      text, title text, email text, phone text,
+  updated_at  timestamptz default now()
+);
+
 -- Referral conversions — who invited whom (one referrer per invitee).
 create table if not exists orb_referrals (
   invitee    text primary key,

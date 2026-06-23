@@ -27,6 +27,7 @@ import { ownerKeyStatus, setPlatformKey, getPlatformKey } from '../services/plat
 import { monetizationMetrics } from '../services/admin.js';
 import { verifyAppleToken, appleConfigured, startPhone, verifyPhone, phoneConfigured } from '../services/auth.js';
 import { recordReferral, referralStats } from '../services/referrals.js';
+import { getTraveler, setTraveler } from '../services/profileStore.js';
 import { generateVideo, videoAllowedFor, videoConfigured } from '../services/video.js';
 import { synthesizeSpeech, ttsConfigured } from '../services/tts.js';
 import { listSkills } from '../brains/skills.js';
@@ -539,6 +540,20 @@ orbRouter.post('/auth/phone/start', async (req, res, next) => {
 });
 orbRouter.post('/auth/phone/verify', (req, res) => {
   res.json(verifyPhone(String(req.body?.phone ?? ''), String(req.body?.code ?? '')));
+});
+
+// Traveler profile (for booking flights) — the user's own details.
+orbRouter.get('/profile', async (req, res, next) => {
+  try { res.json(await getTraveler(String(req.query.userId ?? 'demo-user'))); } catch (error) { next(error); }
+});
+const ProfileSchema = z.object({
+  userId: z.string().min(1).default('demo-user'),
+  given_name: z.string().optional(), family_name: z.string().optional(), born_on: z.string().optional(),
+  gender: z.string().optional(), title: z.string().optional(), email: z.string().optional(), phone: z.string().optional()
+});
+orbRouter.post('/profile', async (req, res, next) => {
+  try { const { userId, ...rest } = ProfileSchema.parse(req.body ?? {}); res.json(await setTraveler(userId, rest)); }
+  catch (error) { next(error); }
 });
 
 // ORB's skills (capabilities), incl. which are owner-only.

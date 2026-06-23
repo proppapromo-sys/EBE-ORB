@@ -1005,13 +1005,26 @@ async function renderConnections(){
     try{ const d=await (await fetch(API+'/api/orb/connectors/google/auth?userId='+uid)).json();
       if(d.url) location.href=d.url; else { gb.textContent='🔗 Connect Google (Gmail + Calendar)'; alert(d.error||'Google sign-in isn\\'t set up yet (add Google OAuth keys).'); }
     }catch(e){ gb.textContent='🔗 Connect Google (Gmail + Calendar)'; alert(e.message); } });
+  // Traveler details — needed for ORB to book flights for you.
+  let prof={}; try{ prof=await (await fetch(API+'/api/orb/profile?userId='+uid)).json(); }catch(e){}
+  const pf=(k,ph,val)=>`<input class="trav" data-k="${k}" placeholder="${ph}" value="${esc(val||'')}" style="width:100%;margin:3px 0;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);border-radius:8px;color:#cfeefb;font:inherit;font-size:12px;padding:8px;outline:0" />`;
+  pbody.insertAdjacentHTML('beforeend',`<div class="t" style="margin:14px 0 4px;color:#cfeefb">🧍 Traveler details (for booking flights)</div>
+    ${pf('given_name','First name',prof.given_name)}${pf('family_name','Last name',prof.family_name)}
+    ${pf('born_on','Date of birth (YYYY-MM-DD)',prof.born_on)}${pf('email','Email',prof.email)}${pf('phone','Phone (+1…)',prof.phone)}
+    <button class="go" id="trav-save" style="${_BTN};width:100%;margin-top:6px">Save traveler details</button><div class="set-note m" id="trav-note" style="min-height:14px"></div>`);
+  document.getElementById('trav-save').addEventListener('click',async()=>{
+    const body={userId:ORB_USER||'demo-user'}; pbody.querySelectorAll('.trav').forEach(i=>{if(i.value.trim())body[i.dataset.k]=i.value.trim();});
+    const n=document.getElementById('trav-note');n.style.color='#9fd0ea';n.textContent='Saving…';
+    try{ await fetch(API+'/api/orb/profile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+      n.style.color='#7fe6a1';n.textContent='✓ Saved — ORB can book travel for you now.'; }catch(e){n.style.color='#ff9b9b';n.textContent=e.message;}
+  });
 }
 
 // ── KEYS tab: set Stripe/voice/video/brain keys in-app (owner only) ──
 async function renderKeys(){
   const res=await fetch(API+'/api/orb/settings/keys?userId='+encodeURIComponent(ORB_USER||''));
   if(res.status===403){pbody.innerHTML='<div class="empty">Owner only — log in as the main account to manage keys.</div>';return;}
-  const d=await res.json(); const groups=d.groups||{}; const labels={brains:'AI Brains',billing:'Billing (Stripe)',voice:'Voice',video:'Video'};
+  const d=await res.json(); const groups=d.groups||{}; const labels={brains:'AI Brains',billing:'Billing (Stripe)',voice:'Voice',video:'Video',auth:'Sign-in (Apple/Twilio)',whatsapp:'WhatsApp',travel:'Travel search (Amadeus)',payments:'💳 Payments & Banking — funds all payments',persistence:'Database (Supabase)'};
   let html='<div class="m" style="margin-bottom:8px">Set your keys here — saved &amp; used live, no Render dashboard. (To keep them across updates, connect a database.)</div>';
   for(const g of Object.keys(groups)){
     html+=`<div class="t" style="margin:10px 0 4px;color:#cfeefb">${esc(labels[g]||g)}</div>`;

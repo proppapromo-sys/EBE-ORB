@@ -24,7 +24,8 @@ export const OWNER_KEY_GROUPS: Record<string, string[]> = {
   video: ['RUNWAY_API_KEY', 'ORB_VIDEO_PROVIDER'],
   auth: ['APPLE_CLIENT_ID', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM'],
   whatsapp: ['WHATSAPP_TOKEN', 'WHATSAPP_PHONE_ID', 'WHATSAPP_VERIFY_TOKEN', 'TWILIO_WHATSAPP_FROM'],
-  travel: ['DUFFEL_TOKEN', 'AMADEUS_CLIENT_ID', 'AMADEUS_CLIENT_SECRET', 'AMADEUS_HOST'],
+  travel: ['AMADEUS_CLIENT_ID', 'AMADEUS_CLIENT_SECRET', 'AMADEUS_HOST'],
+  payments: ['DUFFEL_TOKEN', 'BILL_PAY_RAIL', 'PAYMENTS_CURRENCY'],   // one place that funds ALL payments (flights, bills…)
   persistence: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']
 };
 export const OWNER_KEYS: string[] = Object.values(OWNER_KEY_GROUPS).flat();
