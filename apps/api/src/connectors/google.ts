@@ -14,7 +14,8 @@ const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI ?? 'http://localhost:8080/a
 
 export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
-  'https://www.googleapis.com/auth/calendar.events'   // read + create/update events
+  'https://www.googleapis.com/auth/calendar.events',   // read + create/update events
+  'https://www.googleapis.com/auth/drive.metadata.readonly'  // search file names
 ];
 
 export function isConfigured(): boolean {
@@ -109,6 +110,14 @@ export async function calendarToday(token: string): Promise<{ summary: string; s
     `&timeMin=${encodeURIComponent(now.toISOString())}&timeMax=${encodeURIComponent(end.toISOString())}&maxResults=10`;
   const d = (await gget(url, token)) as { items?: { summary?: string; start?: { dateTime?: string; date?: string } }[] };
   return (d.items ?? []).map((e) => ({ summary: e.summary ?? '(no title)', start: e.start?.dateTime ?? e.start?.date }));
+}
+
+/** Search the user's Google Drive by file name. */
+export async function driveSearch(token: string, query: string): Promise<{ name: string; link?: string; type?: string }[]> {
+  const q = encodeURIComponent(`name contains '${query.replace(/'/g, '')}' and trashed=false`);
+  const url = `https://www.googleapis.com/drive/v3/files?q=${q}&pageSize=5&fields=files(name,webViewLink,mimeType,modifiedTime)&orderBy=modifiedTime desc`;
+  const d = (await gget(url, token)) as { files?: { name?: string; webViewLink?: string; mimeType?: string }[] };
+  return (d.files ?? []).map((f) => ({ name: f.name ?? '(untitled)', link: f.webViewLink, type: f.mimeType }));
 }
 
 /** Upcoming events over the next `days` (default 2 → today + tomorrow). */

@@ -12,10 +12,10 @@ import { getQuote } from '../services/stocks.js';
 import { defineWord, wikiSummary, countryInfo, convertCurrency, timeIn } from '../services/reference.js';
 import { govRegulations } from '../services/civics.js';
 import { handleAction } from '../services/actions.js';
-import { getAccessToken, calendarUpcoming, gmailUnreadImportant } from '../connectors/google.js';
+import { getAccessToken, calendarUpcoming, gmailUnreadImportant, driveSearch } from '../connectors/google.js';
 import { recall } from '../services/memoryStore.js';
 import { cacheGet, cacheSet } from '../services/cache.js';
-import { searchFlights, searchHotels, travelConfigured } from '../services/travel.js';
+import { searchFlights, searchHotels, travelConfigured, duffelConfigured } from '../services/travel.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -207,7 +207,7 @@ async function flightAgent(message: string): Promise<string | null> {
   if (!/\bflights?\b/i.test(message)) return null;
   const m = message.match(/from\s+([A-Za-z][A-Za-z .]+?)\s+to\s+([A-Za-z][A-Za-z .]+?)(?:\s+(?:on|next|this|tomorrow|in)\b.*)?[?.!]*$/i);
   if (!m) return null;
-  if (!travelConfigured()) return 'Flight search needs an Amadeus key — add it in the Keys tab and I can pull live flights.';
+  if (!travelConfigured() && !duffelConfigured()) return 'Flight search needs a travel key (Duffel or Amadeus) — add it in the Keys tab and I can pull live flights.';
   return searchFlights(m[1].trim(), m[2].trim(), travelDate(message));
 }
 async function hotelAgent(message: string): Promise<string | null> {
@@ -218,11 +218,20 @@ async function hotelAgent(message: string): Promise<string | null> {
   return searchHotels(m[1].trim());
 }
 
-// File AI (ready for Google Drive — returns nothing until a file source is connected)
+// File AI — searches the user's Google Drive by name.
 const FILE_RE = /\b(file|files|document|doc|drive|folder|spreadsheet)\b/i;
-async function fileAgent(_userId: string, message: string): Promise<string | null> {
+async function fileAgent(userId: string, message: string): Promise<string | null> {
   if (!FILE_RE.test(message)) return null;
-  return 'Files: no file source connected yet — connect Google Drive to let me search your files.';
+  const token = await getAccessToken(userId);
+  if (!token) return 'Files: connect Google Drive in the Connect tab and I can search your files.';
+  const m = message.match(/\b(?:file|document|doc|spreadsheet|drive)s?\s+(?:about|named|called|on|for|with|titled)\s+([A-Za-z0-9 .'-]{2,40})/i)
+    || message.match(/\b(?:find|search|open|get|pull up)\s+(?:my\s+)?(?:file|doc|document|spreadsheet)?\s*(?:about|named|called)?\s*([A-Za-z0-9 .'-]{2,40})/i);
+  const q = m ? m[1].trim() : '';
+  if (!q) return null;
+  try {
+    const files = await driveSearch(token, q);
+    return files.length ? `Files matching "${q}":\n${files.map((f) => `- ${f.name}`).join('\n')}` : `Files: nothing matching "${q}".`;
+  } catch { return null; }
 }
 
 /**

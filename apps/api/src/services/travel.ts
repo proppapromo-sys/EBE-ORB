@@ -42,8 +42,9 @@ export async function cityCode(keyword: string): Promise<string | null> {
   return d?.data?.[0]?.iataCode ?? null;
 }
 
-/** Search flight offers. Returns a compact, readable summary. */
+/** Search flight offers. Returns a compact, readable summary. Prefers Duffel (bookable) when set. */
 export async function searchFlights(origin: string, dest: string, date: string, adults = 1): Promise<string | null> {
+  if (duffelConfigured()) { const r = await duffelSearchFlights(origin, dest, date); if (r) return r; }
   if (!travelConfigured()) return null;
   const [o, dcode] = await Promise.all([cityCode(origin), cityCode(dest)]);
   if (!o || !dcode) return null;
@@ -69,4 +70,68 @@ export async function searchHotels(city: string): Promise<string | null> {
   if (!hotels.length) return `Hotels in ${city}: none found.`;
   const lines = hotels.slice(0, 5).map((h: any) => `- ${h.name}${h.address?.countryCode ? ` (${h.address.countryCode})` : ''}`);
   return `Hotels near ${city} (live):\n${lines.join('\n')}`;
+}
+
+// ── Duffel: real, bookable flights (search + confirm-first order) ──────────────
+const DUFFEL = 'https://api.duffel.com';
+export function duffelConfigured(): boolean { return Boolean(getPlatformKey('DUFFEL_TOKEN')); }
+function duffelHeaders(): Record<string, string> {
+  return { Authorization: `Bearer ${getPlatformKey('DUFFEL_TOKEN')}`, 'Duffel-Version': 'v2', 'content-type': 'application/json', Accept: 'application/json' };
+}
+
+/** Resolve a city/airport name → IATA code via Duffel place suggestions. */
+async function duffelCity(keyword: string): Promise<string | null> {
+  if (/^[A-Z]{3}$/.test(keyword.trim())) return keyword.trim().toUpperCase();
+  try {
+    const r = await fetch(`${DUFFEL}/places/suggestions?query=${encodeURIComponent(keyword)}`, { headers: duffelHeaders() });
+    if (!r.ok) return null;
+    const d = (await r.json()) as { data?: { iata_code?: string }[] };
+    return (d.data ?? []).find((p) => p.iata_code)?.iata_code ?? null;
+  } catch { return null; }
+}
+
+/** Search bookable flight offers via Duffel. */
+export async function duffelSearchFlights(origin: string, dest: string, date: string): Promise<string | null> {
+  const [o, d2] = await Promise.all([duffelCity(origin), duffelCity(dest)]);
+  if (!o || !d2) return null;
+  try {
+    const r = await fetch(`${DUFFEL}/air/offer_requests?return_offers=true`, {
+      method: 'POST', headers: duffelHeaders(),
+      body: JSON.stringify({ data: { slices: [{ origin: o, destination: d2, departure_date: date }], passengers: [{ type: 'adult' }], cabin_class: 'economy' } })
+    });
+    if (!r.ok) return null;
+    const d = (await r.json()) as { data?: { offers?: any[] } };
+    const offers = d.data?.offers ?? [];
+    if (!offers.length) return `Flights ${o}→${d2} on ${date}: none found.`;
+    const lines = offers.slice(0, 4).map((of: any) => {
+      const seg = of.slices?.[0]?.segments ?? [];
+      const carr = of.owner?.iata_code ?? seg[0]?.marketing_carrier?.iata_code ?? '??';
+      const stops = seg.length - 1;
+      const dep = seg[0]?.departing_at?.slice(11, 16); const arr = seg[seg.length - 1]?.arriving_at?.slice(11, 16);
+      return `- ${carr} ${o}→${d2} ${dep}→${arr}, ${stops === 0 ? 'nonstop' : stops + ' stop'}, $${of.total_amount}`;
+    });
+    return `Flights ${o}→${d2}, ${date} (bookable via Duffel):\n${lines.join('\n')}`;
+  } catch { return null; }
+}
+
+/** Create a Duffel order (BOOK). Requires a selected offer, passenger details, and payment.
+ *  Confirm-first: the caller must have collected traveler info + a funded Duffel balance. */
+export async function duffelCreateOrder(
+  offerId: string, passenger: { given_name: string; family_name: string; born_on: string; gender: string; title: string; email: string; phone: string },
+  amount: string, currency = 'USD'
+): Promise<{ ok: boolean; ref?: string; note?: string }> {
+  if (!duffelConfigured()) return { ok: false, note: 'DUFFEL_TOKEN not set' };
+  try {
+    const r = await fetch(`${DUFFEL}/air/orders`, {
+      method: 'POST', headers: duffelHeaders(),
+      body: JSON.stringify({ data: {
+        type: 'instant', selected_offers: [offerId],
+        passengers: [{ ...passenger }],
+        payments: [{ type: 'balance', amount, currency }]
+      } })
+    });
+    if (!r.ok) return { ok: false, note: `duffel ${r.status}: ${(await r.text()).slice(0, 180)}` };
+    const d = (await r.json()) as { data?: { booking_reference?: string } };
+    return { ok: true, ref: d.data?.booking_reference };
+  } catch (e) { return { ok: false, note: e instanceof Error ? e.message : 'duffel order error' }; }
 }
