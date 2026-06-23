@@ -6,6 +6,7 @@ import { runCouncil, type CouncilLevel } from '../brains/council.js';
 import { runBuild } from '../build/genome.js';
 import { classifyTask, routedAnswer } from '../brains/router.js';
 import { matchSkill, isOwner } from '../brains/skills.js';
+import { getForecast, geocode } from '../services/weather.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -50,6 +51,24 @@ export function needsContext(message: string): boolean {
   return NEEDS_CONTEXT.test(message);
 }
 
+// Weather is a real tool, not a guess: detect the ask, find the location, fetch a live forecast.
+const WEATHER_RE = /\b(weather|forecast|temperature|how (?:hot|cold|warm)|will it (?:rain|snow)|rain|snow|sunny|umbrella|degrees)\b/i;
+function extractCity(message: string): string | null {
+  const m = message.match(/\b(?:in|for|at|near)\s+([A-Za-z][A-Za-z .'-]{1,40}?)(?:\s+(?:today|tomorrow|tonight|this\s+week|right\s+now|please|tho|though))?[?.!]*$/i);
+  return m ? m[1].trim() : null;
+}
+async function weatherContext(message: string, opts: { lat?: number; lon?: number }): Promise<string | null> {
+  if (!WEATHER_RE.test(message)) return null;
+  let lat = opts.lat, lon = opts.lon, place: string | undefined;
+  const city = extractCity(message);
+  if (city) { const g = await geocode(city); if (g) { lat = g.lat; lon = g.lon; place = g.name; } }
+  if (lat == null && process.env.DEFAULT_LAT && process.env.DEFAULT_LON) {
+    lat = Number(process.env.DEFAULT_LAT); lon = Number(process.env.DEFAULT_LON); place = process.env.DEFAULT_CITY || place;
+  }
+  if (lat == null || lon == null) return "WEATHER: no location available — ask the user which city (or have them allow location).";
+  return `Real, current weather data (use this — speak it naturally, don't tell them to check their phone):\n${await getForecast(lat, lon, place)}`;
+}
+
 /** Strip "make me a video of …" down to just the subject for the Veo prompt. */
 function videoPrompt(message: string): string {
   const m = message.replace(/^.*?\b(video|clip|animation|short film|movie|reel)\b\s*(of|showing|about|with|featuring|:)?\s*/i, '').trim();
@@ -85,7 +104,7 @@ export async function gatherContext(userId: string): Promise<ConnectorResult[]> 
 export async function askOrb(
   userId: string,
   message: string,
-  opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string; personality?: string; customPersona?: string } = {}
+  opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string; personality?: string; customPersona?: string; lat?: number; lon?: number } = {}
 ) {
   // Video mode (Veo): generate an AI video. Top tiers only — it's the priciest call.
   if (looksLikeVideoRequest(message)) {
@@ -141,11 +160,14 @@ Flag every action whose requiresApproval is true — never imply it can run on i
   const taskClass = classifyTask(message, Boolean(opts.images && opts.images.length));
   const forceCouncil = opts.council === true || taskClass === 'heavy' || Boolean(opts.documents);
   if (!forceCouncil) {
-    // Fetch your data ONLY when the request needs it (calendar/email/tasks/money) — otherwise answer
-    // straight from the model, instantly, with no fetching at all.
-    const context = needsContext(message) ? await gatherContext(userId) : undefined;
-    const routed = await routedAnswer(message, { images: opts.images, context: context ? JSON.stringify(context).slice(0, 4000) : undefined });
-    return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label, context };
+    // Weather is a live tool. Otherwise fetch your data ONLY when the request needs it
+    // (calendar/email/tasks/money). Plain questions answer straight from the model — no fetching.
+    let context: string | undefined;
+    const wx = await weatherContext(message, { lat: opts.lat, lon: opts.lon });
+    if (wx) context = wx;
+    else if (needsContext(message)) context = JSON.stringify(await gatherContext(userId)).slice(0, 4000);
+    const routed = await routedAnswer(message, { images: opts.images, context });
+    return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label };
   }
 
   const council = await runCouncil(userId, message, {

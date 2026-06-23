@@ -81,7 +81,9 @@ const AskSchema = z.object({
   level: z.enum(['standard', 'important', 'high', 'critical']).optional(),
   plan: z.string().optional(),      // caps how many brains may convene
   personality: z.enum(['executive', 'friendly', 'advisor', 'custom']).optional(),
-  customPersona: z.string().optional()
+  customPersona: z.string().optional(),
+  lat: z.number().optional(),       // optional location for weather, etc.
+  lon: z.number().optional()
 });
 
 orbRouter.get('/health', (_req, res) => {
@@ -361,7 +363,9 @@ orbRouter.post('/ask', async (req, res, next) => {
       level: parsed.level,
       plan,
       personality: parsed.personality,
-      customPersona: parsed.customPersona
+      customPersona: parsed.customPersona,
+      lat: parsed.lat,
+      lon: parsed.lon
     });
     res.json(result);
   } catch (error) { next(error); }

@@ -38,6 +38,32 @@ export async function geocode(city: string): Promise<{ lat: number; lon: number;
   }
 }
 
+/** A few days of forecast (today, tomorrow, …) as a compact line the model can read aloud. */
+export async function getForecast(lat: number, lon: number, place?: string): Promise<string> {
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
+      `&temperature_unit=fahrenheit&forecast_days=4&timezone=auto`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`weather ${r.status}`);
+    const d = (await r.json()) as {
+      current?: { temperature_2m: number; weather_code: number };
+      daily?: { time: string[]; weather_code: number[]; temperature_2m_max: number[]; temperature_2m_min: number[]; precipitation_probability_max: (number | null)[] };
+    };
+    const out: string[] = [];
+    if (place) out.push(`Location: ${place}`);
+    if (d.current) out.push(`Now: ${Math.round(d.current.temperature_2m)}°F, ${describeWeather(d.current.weather_code)}`);
+    const labels = ['Today', 'Tomorrow'];
+    const dy = d.daily;
+    for (let i = 0; i < (dy?.time?.length ?? 0); i++) {
+      out.push(`${labels[i] || dy!.time[i]}: high ${Math.round(dy!.temperature_2m_max[i])}°F, low ${Math.round(dy!.temperature_2m_min[i])}°F, ${describeWeather(dy!.weather_code[i])}, ${dy!.precipitation_probability_max[i] ?? 0}% rain`);
+    }
+    return out.join('\n');
+  } catch (e) {
+    return `Weather unavailable right now${place ? ` for ${place}` : ''}.`;
+  }
+}
+
 export async function getWeather(lat: number, lon: number, place?: string): Promise<Weather> {
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
