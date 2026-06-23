@@ -43,6 +43,13 @@ export function looksLikeVideoRequest(message: string): boolean {
   return VIDEO_INTENT.test(message) && VIDEO_TARGET.test(message);
 }
 
+// Only pull connected-system data (calendar, email, tasks, money…) when the request actually needs
+// it. Otherwise ORB answers straight from the model — no fetching, instant.
+const NEEDS_CONTEXT = /\b(calendar|schedul|meeting|appointment|today|tomorrow|tonight|this week|agenda|upcoming|coming up|due|email|inbox|gmail|unread|message|task|to-?do|reminder|brief|priorit|what'?s on|my day|my plate|wallet|balance|invoice|bill|pay(ment)?|contact|connected|status)\b/i;
+export function needsContext(message: string): boolean {
+  return NEEDS_CONTEXT.test(message);
+}
+
 /** Strip "make me a video of …" down to just the subject for the Veo prompt. */
 function videoPrompt(message: string): string {
   const m = message.replace(/^.*?\b(video|clip|animation|short film|movie|reel)\b\s*(of|showing|about|with|featuring|:)?\s*/i, '').trim();
@@ -134,8 +141,9 @@ Flag every action whose requiresApproval is true — never imply it can run on i
   const taskClass = classifyTask(message, Boolean(opts.images && opts.images.length));
   const forceCouncil = opts.council === true || taskClass === 'heavy' || Boolean(opts.documents);
   if (!forceCouncil) {
-    // Simple questions answer instantly — no connector pull. Only 'medium' tasks gather context.
-    const context = taskClass === 'medium' ? await gatherContext(userId) : undefined;
+    // Fetch your data ONLY when the request needs it (calendar/email/tasks/money) — otherwise answer
+    // straight from the model, instantly, with no fetching at all.
+    const context = needsContext(message) ? await gatherContext(userId) : undefined;
     const routed = await routedAnswer(message, { images: opts.images, context: context ? JSON.stringify(context).slice(0, 4000) : undefined });
     return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label, context };
   }

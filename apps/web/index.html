@@ -845,14 +845,9 @@ document.getElementById('wake').addEventListener('click',async()=>{
 });
 
 // Proactive ORB — speak first with the top priorities (EBE greets you).
-async function greetProactive(){
-  if(!API){ speak("I'm here. What's up?",voiceLang.code); return; }
-  try{
-    const d=await (await fetch(API+'/api/orb/proactive',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({userId:ORB_USER||'demo-user'})})).json();
-    const box=document.getElementById('answer'); if(box){box.classList.add('show');box.innerHTML='<span class="badge">ORB</span>'+(d.alert||'');}
-    speak(d.alert||"I'm here. What's up?",voiceLang.code);
-  }catch(e){ speak("I'm here. What's up?",voiceLang.code); }
+function greetProactive(){
+  // Idle until asked — just say hi, never fetch anything until you give a task.
+  speak("I'm here. What do you need?",voiceLang.code);
 }
 
 // ● the one button — go completely live: only the orb, always listening, first person

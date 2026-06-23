@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { inferCategory, getBlueprint } from './blueprints.js';
 import { buildCapability } from './tiers.js';
 import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
-import { looksLikeBuildRequest, looksLikeVideoRequest } from '../agents/masterAgent.js';
+import { looksLikeBuildRequest, looksLikeVideoRequest, needsContext } from '../agents/masterAgent.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
 import { classifyTask, ROUTES } from '../brains/router.js';
@@ -116,6 +116,13 @@ test('whatsapp: parses inbound from Twilio and Meta', () => {
   const meta = parseInbound({ entry: [{ changes: [{ value: { messages: [{ from: '15551234567', text: { body: 'hello' } }] } }] }] });
   assert.deepEqual(meta, { from: '15551234567', text: 'hello' });
   assert.equal(parseInbound({ status: 'delivered' }), null); // non-message events ignored
+});
+
+test('needsContext: fetch data only when the request needs it', () => {
+  assert.equal(needsContext("what's on my calendar today?"), true);
+  assert.equal(needsContext('any unread email?'), true);
+  assert.equal(needsContext('what is the capital of France?'), false);  // no fetch
+  assert.equal(needsContext('write me a haiku'), false);                // no fetch
 });
 
 test('genome soul: five laws and seven organs are present', () => {
