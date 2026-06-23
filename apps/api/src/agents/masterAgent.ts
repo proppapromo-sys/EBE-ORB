@@ -5,11 +5,12 @@ import { createJournal } from '../services/journalStore.js';
 import { runCouncil, type CouncilLevel } from '../brains/council.js';
 import { runBuild } from '../build/genome.js';
 import { classifyTask, routedAnswer } from '../brains/router.js';
-import { matchSkill, isOwner } from '../brains/skills.js';
+import { matchSkill, isOwner, listSkills } from '../brains/skills.js';
 import { getForecast, geocode } from '../services/weather.js';
 import { getNews } from '../services/news.js';
 import { getQuote } from '../services/stocks.js';
-import { defineWord, wikiSummary, countryInfo, convertCurrency } from '../services/reference.js';
+import { defineWord, wikiSummary, countryInfo, convertCurrency, timeIn } from '../services/reference.js';
+import { govRegulations } from '../services/civics.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -138,12 +139,39 @@ async function currencyContext(message: string): Promise<string | null> {
   return convertCurrency(Number(m[1]), norm(m[2]), norm(m[3]));
 }
 
+// World time: "what time is it in Tokyo".
+async function timeContext(message: string): Promise<string | null> {
+  const m = message.match(/\b(?:time (?:is it )?in|what time.*in|current time in)\s+([A-Za-z][A-Za-z .'-]{2,30})/i);
+  return m ? timeIn(m[1].replace(/[?.!]+$/, '').trim()) : null;
+}
+
+// Government & law: regulations, rules, executive orders on a topic (US Federal Register).
+const GOV_RE = /\b(law|laws|legal|regulation|regulations|statute|executive order|federal|government|congress|bill|policy|compliance|rule)\b/i;
+async function govContext(message: string): Promise<string | null> {
+  if (!GOV_RE.test(message)) return null;
+  const m = message.match(/\b(?:about|on|regarding|for)\s+([A-Za-z][A-Za-z &'-]{2,40})/i)
+    || message.match(/\b(?:law|laws|regulation|regulations|rules?|policy)\s+(?:on|about|for)?\s*([A-Za-z][A-Za-z &'-]{2,40})/i);
+  const topic = m ? m[1].replace(/[?.!]+$/, '').trim() : '';
+  return topic ? govRegulations(topic) : null;
+}
+
+// System / self-knowledge: "what can you do", "your capabilities", "help".
+const SELF_RE = /\b(what can you do|what do you do|your (?:capabilities|skills|features|abilities|tools)|what are you|how can you help|help me with)\b/i;
+function selfContext(message: string): string | null {
+  if (!SELF_RE.test(message)) return null;
+  const skills = listSkills().map((s) => s.name).join(', ');
+  return `ORB capabilities (describe these naturally, in first person, no jargon): I chat and reason with a council of AI models; I build websites and apps; I generate video; I speak in a cloned voice and recognize the owner's voice; and I pull live info — weather, news, stocks, dictionary, encyclopedia, world geography, currency, world time, and US government regulations. I connect to Google (Gmail/Calendar), handle reminders, notes, tasks and wallet, and I run subscriptions/billing. Registered skills: ${skills}.`;
+}
+
 /** Run the live tools in parallel; only the one(s) matching the message actually fetch. */
 async function toolContext(message: string, opts: { lat?: number; lon?: number }): Promise<string | undefined> {
-  const parts = (await Promise.all([
+  const sync = [selfContext(message)].filter(Boolean) as string[];
+  const fetched = (await Promise.all([
     weatherContext(message, opts), newsContext(message), stocksContext(message),
-    dictionaryContext(message), wikiContext(message), geographyContext(message), currencyContext(message)
+    dictionaryContext(message), wikiContext(message), geographyContext(message), currencyContext(message),
+    timeContext(message), govContext(message)
   ])).filter(Boolean) as string[];
+  const parts = [...sync, ...fetched];
   return parts.length ? parts.join('\n\n') : undefined;
 }
 

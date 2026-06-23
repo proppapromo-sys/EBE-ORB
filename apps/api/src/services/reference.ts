@@ -4,6 +4,26 @@
  * or null if nothing's found / unreachable.
  */
 
+// World time — computed instantly via Intl (no network). City → IANA timezone.
+const CITY_TZ: Record<string, string> = {
+  tokyo: 'Asia/Tokyo', london: 'Europe/London', paris: 'Europe/Paris', berlin: 'Europe/Berlin', rome: 'Europe/Rome',
+  madrid: 'Europe/Madrid', amsterdam: 'Europe/Amsterdam', moscow: 'Europe/Moscow', dubai: 'Asia/Dubai',
+  'hong kong': 'Asia/Hong_Kong', singapore: 'Asia/Singapore', beijing: 'Asia/Shanghai', shanghai: 'Asia/Shanghai',
+  delhi: 'Asia/Kolkata', mumbai: 'Asia/Kolkata', sydney: 'Australia/Sydney', seoul: 'Asia/Seoul',
+  'new york': 'America/New_York', 'los angeles': 'America/Los_Angeles', chicago: 'America/Chicago',
+  denver: 'America/Denver', 'las vegas': 'America/Los_Angeles', seattle: 'America/Los_Angeles',
+  atlanta: 'America/New_York', miami: 'America/New_York', austin: 'America/Chicago', toronto: 'America/Toronto',
+  'mexico city': 'America/Mexico_City', 'sao paulo': 'America/Sao_Paulo', 'san francisco': 'America/Los_Angeles'
+};
+export function timeIn(city: string): string | null {
+  const tz = CITY_TZ[city.toLowerCase().trim()];
+  if (!tz) return null;
+  try {
+    const s = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date());
+    return `Time — ${city}: ${s} (${tz})`;
+  } catch { return null; }
+}
+
 /** Define a word (dictionaryapi.dev). */
 export async function defineWord(word: string): Promise<string | null> {
   try {
