@@ -13,6 +13,8 @@ import { defineWord, wikiSummary, countryInfo, convertCurrency, timeIn } from '.
 import { govRegulations } from '../services/civics.js';
 import { handleAction } from '../services/actions.js';
 import { getAccessToken, calendarUpcoming, gmailUnreadImportant } from '../connectors/google.js';
+import { recall } from '../services/memoryStore.js';
+import { cacheGet, cacheSet } from '../services/cache.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -312,10 +314,24 @@ Flag every action whose requiresApproval is true — never imply it can run on i
   if (!forceCouncil) {
     // Weather is a live tool. Otherwise fetch your data ONLY when the request needs it
     // (calendar/email/tasks/money). Plain questions answer straight from the model — no fetching.
-    // Router → parallel agents (knowledge + Calendar/Email/File) → Finalizer → one fast answer.
-    let context = await toolContext(message, userId, { lat: opts.lat, lon: opts.lon });
-    if (!context && needsContext(message)) context = JSON.stringify(await gatherContext(userId)).slice(0, 4000);
+    // Router → memory search + parallel agents (knowledge + Calendar/Email/File), all at once →
+    // Finalizer → one fast answer. Cache reuses stable answers; live/personal data is never cached.
+    const [mems, toolCtx] = await Promise.all([
+      recall(userId, message, 4).catch(() => []),
+      toolContext(message, userId, { lat: opts.lat, lon: opts.lon })
+    ]);
+    let liveCtx = toolCtx;
+    if (!liveCtx && needsContext(message)) liveCtx = JSON.stringify(await gatherContext(userId)).slice(0, 4000);
+
+    // Cache: only when no live/personal data was pulled (so cached answers can't go stale).
+    const cacheable = !liveCtx && !mems.length;
+    const key = `${userId}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
+    if (cacheable) { const hit = cacheGet(key); if (hit) return { mode: 'fast' as const, answer: hit, route: 'fast' as const, model: 'cache' }; }
+
+    const memCtx = mems.length ? `What I remember about you (use if relevant):\n${mems.map((m) => `- ${m.title}: ${m.content}`).join('\n')}` : '';
+    const context = [memCtx, liveCtx].filter(Boolean).join('\n\n') || undefined;
     const routed = await routedAnswer(message, { images: opts.images, context });
+    if (cacheable && routed.ok && routed.answer) cacheSet(key, routed.answer);
     return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label };
   }
 
