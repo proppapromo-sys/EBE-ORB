@@ -203,12 +203,12 @@ function travelDate(message: string): string {
     const d = new Date(now.getFullYear(), mo, Number(md[2])); if (d < now) d.setFullYear(now.getFullYear() + 1); return isoDate(d); }
   const d = new Date(now); d.setDate(d.getDate() + 7); return isoDate(d);   // default ~a week out
 }
-async function flightAgent(message: string): Promise<string | null> {
+async function flightAgent(userId: string, message: string): Promise<string | null> {
   if (!/\bflights?\b/i.test(message)) return null;
   const m = message.match(/from\s+([A-Za-z][A-Za-z .]+?)\s+to\s+([A-Za-z][A-Za-z .]+?)(?:\s+(?:on|next|this|tomorrow|in)\b.*)?[?.!]*$/i);
   if (!m) return null;
   if (!travelConfigured() && !duffelConfigured()) return 'Flight search needs a travel key (Duffel or Amadeus) — add it in the Keys tab and I can pull live flights.';
-  return searchFlights(m[1].trim(), m[2].trim(), travelDate(message));
+  return searchFlights(m[1].trim(), m[2].trim(), travelDate(message), 1, userId);
 }
 async function hotelAgent(message: string): Promise<string | null> {
   if (!/\bhotels?\b/i.test(message)) return null;
@@ -246,7 +246,7 @@ async function toolContext(message: string, userId: string, opts: { lat?: number
     dictionaryContext(message), wikiContext(message), geographyContext(message), currencyContext(message),
     timeContext(message), govContext(message),
     calendarAgent(userId, message), emailAgent(userId, message), fileAgent(userId, message),
-    flightAgent(message), hotelAgent(message)
+    flightAgent(userId, message), hotelAgent(message)
   ])).filter(Boolean) as string[];
   const parts = [...sync, ...fetched];
   return parts.length ? parts.join('\n\n') : undefined;
