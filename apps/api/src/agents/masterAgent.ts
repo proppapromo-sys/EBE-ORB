@@ -11,6 +11,7 @@ import { getNews } from '../services/news.js';
 import { getQuote } from '../services/stocks.js';
 import { defineWord, wikiSummary, countryInfo, convertCurrency, timeIn } from '../services/reference.js';
 import { govRegulations } from '../services/civics.js';
+import { handleAction } from '../services/actions.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -234,6 +235,11 @@ export async function askOrb(
       : "Let's do it. Speak naturally for about twenty seconds so I can learn and recognize your voice. Start whenever you're ready.";
     return { mode: 'skill' as const, skill: skill.id, action: 'record', answer };
   }
+
+  // Action mode: ORB *does* things — reminders/tasks now, email confirm-first. Nothing outward
+  // goes without a "confirm". Checked before build so "remind me to build X" stays a reminder.
+  const action = await handleAction(userId, message);
+  if (action) return action;
 
   // Build mode: if the user is asking ORB to construct a site/app, run the Construction Genome
   // (Gemini designs, GPT architects, Claude codes) instead of a chat answer. Tier caps the depth.
