@@ -170,6 +170,7 @@
     <div class="tab" data-tab="wallet">WALLET</div>
     <div class="tab" data-tab="build">BUILD</div>
     <div class="tab" data-tab="plans">PLANS</div>
+    <div class="tab" data-tab="connect">CONNECT</div>
     <div class="tab" data-tab="admin">ADMIN</div>
     <div class="tab" data-tab="keys">KEYS</div>
     <div class="tab" data-tab="settings">SETTINGS</div>
@@ -912,6 +913,7 @@ async function refreshPanel(){
     else if(tab==='plans') await renderPlans();
     else if(tab==='admin') await renderAdmin();
     else if(tab==='keys') await renderKeys();
+    else if(tab==='connect') await renderConnections();
     else await renderActivity();
   } catch(e){pbody.innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
 }
@@ -983,6 +985,26 @@ async function renderAdmin(){
       ${statCard('Conversion',d.conversion+'%')}${statCard('ARPU','$'+d.arpu)}</div>
     <div class="m" style="margin:6px 0">Users per tier</div>${tiers}
     <div class="m" style="margin-top:10px;opacity:.7">Live revenue, churn &amp; payouts are also in your Stripe dashboard.</div>`;
+}
+
+// ── CONNECT tab: consumers link their own accounts (OAuth) ──
+async function renderConnections(){
+  const uid=encodeURIComponent(ORB_USER||'demo-user');
+  let cons=[]; try{ cons=(await (await fetch(API+'/api/orb/connectors?userId='+uid)).json()).connectors||[]; }catch(e){}
+  const rows=cons.map(c=>{const st=typeof c.status==='string'?c.status:((c.status&&(c.status.state||c.status.status))||'');
+    const on=/connect|live|ok|on|active|true/i.test(JSON.stringify(c.status||''));
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid rgba(90,220,255,.15);border-radius:8px;margin-bottom:6px">
+      <span style="color:#cfeefb;font-size:13px">${esc(String(c.name).replace(/_/g,' '))}</span>
+      <span style="font-size:11px;color:${on?'#7fe6a1':'#8fb9d4'}">${on?'connected ✓':esc(st||'not connected')}</span></div>`;}).join('');
+  pbody.innerHTML=`<div class="m" style="margin-bottom:8px">Connect your accounts so ORB can work across them — your calendar, email, and more.</div>
+    <button class="go" id="connect-google" style="${_BTN};width:100%;margin-bottom:10px">🔗 Connect Google (Gmail + Calendar)</button>
+    ${rows||''}
+    <div class="m" style="margin-top:10px;opacity:.75">More services (X/Twitter, Google Drive, Shopify, Outlook) light up here once their app keys are added in the Keys tab.</div>`;
+  const gb=document.getElementById('connect-google');
+  if(gb) gb.addEventListener('click',async()=>{ gb.textContent='Opening Google…';
+    try{ const d=await (await fetch(API+'/api/orb/connectors/google/auth?userId='+uid)).json();
+      if(d.url) location.href=d.url; else { gb.textContent='🔗 Connect Google (Gmail + Calendar)'; alert(d.error||'Google sign-in isn\\'t set up yet (add Google OAuth keys).'); }
+    }catch(e){ gb.textContent='🔗 Connect Google (Gmail + Calendar)'; alert(e.message); } });
 }
 
 // ── KEYS tab: set Stripe/voice/video/brain keys in-app (owner only) ──

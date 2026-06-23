@@ -15,6 +15,7 @@ import { handleAction } from '../services/actions.js';
 import { getAccessToken, calendarUpcoming, gmailUnreadImportant } from '../connectors/google.js';
 import { recall } from '../services/memoryStore.js';
 import { cacheGet, cacheSet } from '../services/cache.js';
+import { searchFlights, searchHotels, travelConfigured } from '../services/travel.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -192,6 +193,31 @@ async function emailAgent(userId: string, message: string): Promise<string | nul
     return `Email: ${n} important unread message${n === 1 ? '' : 's'} in the inbox.`;
   } catch { return null; }
 }
+// Travel AI — flights & hotels (Amadeus). Search now; booking is confirm-first via the provider.
+function isoDate(d: Date): string { return d.toISOString().slice(0, 10); }
+function travelDate(message: string): string {
+  const now = new Date();
+  if (/\btomorrow\b/i.test(message)) { const d = new Date(now); d.setDate(d.getDate() + 1); return isoDate(d); }
+  const md = message.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{1,2})\b/i);
+  if (md) { const mo = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(md[1].slice(0, 3).toLowerCase());
+    const d = new Date(now.getFullYear(), mo, Number(md[2])); if (d < now) d.setFullYear(now.getFullYear() + 1); return isoDate(d); }
+  const d = new Date(now); d.setDate(d.getDate() + 7); return isoDate(d);   // default ~a week out
+}
+async function flightAgent(message: string): Promise<string | null> {
+  if (!/\bflights?\b/i.test(message)) return null;
+  const m = message.match(/from\s+([A-Za-z][A-Za-z .]+?)\s+to\s+([A-Za-z][A-Za-z .]+?)(?:\s+(?:on|next|this|tomorrow|in)\b.*)?[?.!]*$/i);
+  if (!m) return null;
+  if (!travelConfigured()) return 'Flight search needs an Amadeus key — add it in the Keys tab and I can pull live flights.';
+  return searchFlights(m[1].trim(), m[2].trim(), travelDate(message));
+}
+async function hotelAgent(message: string): Promise<string | null> {
+  if (!/\bhotels?\b/i.test(message)) return null;
+  const m = message.match(/hotels?\s+(?:in|near|around|at)\s+([A-Za-z][A-Za-z .]+?)[?.!]*$/i);
+  if (!m) return null;
+  if (!travelConfigured()) return 'Hotel search needs an Amadeus key — add it in the Keys tab.';
+  return searchHotels(m[1].trim());
+}
+
 // File AI (ready for Google Drive — returns nothing until a file source is connected)
 const FILE_RE = /\b(file|files|document|doc|drive|folder|spreadsheet)\b/i;
 async function fileAgent(_userId: string, message: string): Promise<string | null> {
@@ -210,7 +236,8 @@ async function toolContext(message: string, userId: string, opts: { lat?: number
     weatherContext(message, opts), newsContext(message), stocksContext(message),
     dictionaryContext(message), wikiContext(message), geographyContext(message), currencyContext(message),
     timeContext(message), govContext(message),
-    calendarAgent(userId, message), emailAgent(userId, message), fileAgent(userId, message)
+    calendarAgent(userId, message), emailAgent(userId, message), fileAgent(userId, message),
+    flightAgent(message), hotelAgent(message)
   ])).filter(Boolean) as string[];
   const parts = [...sync, ...fetched];
   return parts.length ? parts.join('\n\n') : undefined;
