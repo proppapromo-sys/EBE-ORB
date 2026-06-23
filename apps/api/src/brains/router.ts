@@ -59,9 +59,11 @@ export async function routedAnswer(
   const cls = classifyTask(message, Boolean(opts.images && opts.images.length));
   const user = opts.context ? `Context (use silently, never read aloud):\n${opts.context}\n\nUser: ${message}` : message;
   const chain = providerChain(cls);
+  // Keep spoken/chat answers short → far faster to generate. Heavy work goes through the council instead.
+  const maxTokens = cls === 'fast' ? 320 : 700;
   for (const route of chain) {
     try {
-      const { text, ok } = await getProviderClient(route.provider).complete({ model: route.model, system: BRAINS.finalizer.system, user, images: opts.images });
+      const { text, ok } = await getProviderClient(route.provider).complete({ model: route.model, system: BRAINS.finalizer.system, user, images: opts.images, maxTokens });
       if (ok && text.trim()) return { answer: text, route: cls, model: route.model, label: route.label, ok: true };
     } catch { /* try the next provider */ }
   }

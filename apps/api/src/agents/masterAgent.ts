@@ -134,8 +134,9 @@ Flag every action whose requiresApproval is true — never imply it can run on i
   const taskClass = classifyTask(message, Boolean(opts.images && opts.images.length));
   const forceCouncil = opts.council === true || taskClass === 'heavy' || Boolean(opts.documents);
   if (!forceCouncil) {
-    const context = await gatherContext(userId);
-    const routed = await routedAnswer(message, { images: opts.images, context: JSON.stringify(context).slice(0, 4000) });
+    // Simple questions answer instantly — no connector pull. Only 'medium' tasks gather context.
+    const context = taskClass === 'medium' ? await gatherContext(userId) : undefined;
+    const routed = await routedAnswer(message, { images: opts.images, context: context ? JSON.stringify(context).slice(0, 4000) : undefined });
     return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label, context };
   }
 

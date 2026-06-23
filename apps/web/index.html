@@ -353,8 +353,8 @@ function frame(){
     amp=amp*0.6+Math.min(1,(s/freq.length)/100)*0.4;                // real audio (fast, voice-rate)
     // BARGE-IN: if you start talking while ORB is speaking, it stops and listens to you.
     if(speaking&&(convoMode||wakeMode)){
-      if(amp>0.55)bargeFrames++;else bargeFrames=Math.max(0,bargeFrames-1);
-      if(bargeFrames>7){bargeFrames=0;try{speechSynthesis.cancel();}catch(e){} stopCloned();} // onend restarts listening
+      if(amp>0.70)bargeFrames++;else bargeFrames=Math.max(0,bargeFrames-2);   // less twitchy: louder + sustained
+      if(bargeFrames>16){bargeFrames=0;try{speechSynthesis.cancel();}catch(e){} stopCloned();} // only a clear interruption
     } else bargeFrames=0;
   }
   else if(speaking){                                            // simulate a voice waveform envelope
@@ -372,7 +372,7 @@ function frame(){
   // advance voice-wave ripples (the rings that emanate as it speaks/listens)
   for(const rp of ripples){rp.r+=R*0.013;rp.life-=0.018;}
   ripples=ripples.filter(rp=>rp.life>0);
-  if((speaking||listening)&&amp>0.5&&t-lastRipple>0.18){ripples.push({r:R*0.16,life:1});lastRipple=t;}
+  if((speaking||listening)&&amp>0.6&&t-lastRipple>0.18){ripples.push({r:R*0.16,life:1});lastRipple=t;}
 
   // PULSATES at voice-wave speed
   const pulse = 1 + 0.012*Math.sin(t*0.9) + 0.10*amp + 0.05*amp*Math.sin(t*18);
@@ -413,7 +413,9 @@ frame();
 // ── speech (ORB's voice) ──
 let convoMode=false, wakeMode=false, armedUntil=0, recog=null, recogActive=false;
 // "Hey ORB" and the ways speech engines tend to mishear "orb"
-const WAKE=/\b(?:hey|ok|okay|yo)?\s*(orb|orbs?|orbe|ourb|aurb|orp|or\s*b)\b/i;
+// Must say a real wake phrase — "hey orb", "ok orb", etc. (greeting required, tight match) so
+// normal conversation never triggers it.
+const WAKE=/\b(?:hey|hi|ok|okay|yo)\s+(?:orb|orbs|orbe|orby|orbie)\b/i;
 function afterWake(text){const m=WAKE.exec(text);return m?text.slice(m.index+m[0].length).replace(/^[\s,.:!?-]+/,'').trim():'';}
 function pickVoice(vs,lang){
   const pre=(lang||'en-US').slice(0,2).toLowerCase();

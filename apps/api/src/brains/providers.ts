@@ -10,7 +10,7 @@ import { getOpenAI } from '../services/openai.js';
 import { getPlatformKey } from '../services/platformKeys.js';
 import type { BrainProvider, BrainProviderClient } from './types.js';
 
-type CompleteOpts = { model: string; system: string; user: string; images?: string[] };
+type CompleteOpts = { model: string; system: string; user: string; images?: string[]; maxTokens?: number };
 
 function stub(provider: BrainProvider, envVar: string): { text: string; ok: boolean; note: string } {
   return {
@@ -23,7 +23,7 @@ function stub(provider: BrainProvider, envVar: string): { text: string; ok: bool
 const openaiClient: BrainProviderClient = {
   provider: 'openai',
   get configured() { return Boolean(getPlatformKey('OPENAI_API_KEY')); },
-  async complete({ model, system, user }: CompleteOpts) {
+  async complete({ model, system, user, maxTokens }: CompleteOpts) {
     const client = getOpenAI();
     if (!client) return stub('openai', 'OPENAI_API_KEY');
     const res = await client.chat.completions.create({
@@ -32,7 +32,8 @@ const openaiClient: BrainProviderClient = {
         { role: 'system', content: system },
         { role: 'user', content: user }
       ],
-      temperature: 0.2
+      temperature: 0.2,
+      ...(maxTokens ? { max_tokens: maxTokens } : {})
     });
     return { text: res.choices[0]?.message?.content ?? '', ok: true };
   }
@@ -41,7 +42,7 @@ const openaiClient: BrainProviderClient = {
 const anthropicClient: BrainProviderClient = {
   provider: 'anthropic',
   get configured() { return Boolean(getPlatformKey('ANTHROPIC_API_KEY')); },
-  async complete({ model, system, user }: CompleteOpts) {
+  async complete({ model, system, user, maxTokens }: CompleteOpts) {
     const key = getPlatformKey('ANTHROPIC_API_KEY');
     if (!key) return stub('anthropic', 'ANTHROPIC_API_KEY');
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -53,7 +54,7 @@ const anthropicClient: BrainProviderClient = {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 1500,
+        max_tokens: maxTokens ?? 1500,
         system,
         messages: [{ role: 'user', content: user }]
       })
@@ -68,7 +69,7 @@ const anthropicClient: BrainProviderClient = {
 const geminiClient: BrainProviderClient = {
   provider: 'gemini',
   get configured() { return Boolean(getPlatformKey('GEMINI_API_KEY') ?? getPlatformKey('GOOGLE_API_KEY')); },
-  async complete({ model, system, user, images }: CompleteOpts) {
+  async complete({ model, system, user, images, maxTokens }: CompleteOpts) {
     const key = getPlatformKey('GEMINI_API_KEY') ?? getPlatformKey('GOOGLE_API_KEY');
     if (!key) return stub('gemini', 'GEMINI_API_KEY');
     const parts: Record<string, unknown>[] = [{ text: user }];
@@ -85,7 +86,8 @@ const geminiClient: BrainProviderClient = {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: system }] },
-          contents: [{ role: 'user', parts }]
+          contents: [{ role: 'user', parts }],
+          ...(maxTokens ? { generationConfig: { maxOutputTokens: maxTokens } } : {})
         })
       }
     );

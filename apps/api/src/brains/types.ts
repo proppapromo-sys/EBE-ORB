@@ -53,5 +53,6 @@ export interface BrainProviderClient {
     system: string;
     user: string;
     images?: string[];
+    maxTokens?: number;
   }): Promise<{ text: string; ok: boolean; note?: string }>;
 }
