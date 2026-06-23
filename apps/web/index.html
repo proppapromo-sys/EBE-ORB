@@ -752,6 +752,7 @@ async function convene(q){
   // Weather needs a location: grab it (once) only when they ask about weather.
   if(/\b(weather|forecast|temperature|rain|snow|umbrella|how (hot|cold|warm))\b/i.test(q) && !ORB_GEO){ try{ORB_GEO=await getGeo();}catch(e){} }
   const askBody={userId:ORB_USER||'demo-user',message:q,personality:persona};
+  try{askBody.tz=Intl.DateTimeFormat().resolvedOptions().timeZone;}catch(e){}
   if(ORB_GEO){askBody.lat=ORB_GEO.lat;askBody.lon=ORB_GEO.lon;}
   try{const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(askBody)});
     const d=await r.json();

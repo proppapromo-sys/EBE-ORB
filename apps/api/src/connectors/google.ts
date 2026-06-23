@@ -14,7 +14,7 @@ const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI ?? 'http://localhost:8080/a
 
 export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
-  'https://www.googleapis.com/auth/calendar.readonly'
+  'https://www.googleapis.com/auth/calendar.events'   // read + create/update events
 ];
 
 export function isConfigured(): boolean {
@@ -109,4 +109,27 @@ export async function calendarToday(token: string): Promise<{ summary: string; s
     `&timeMin=${encodeURIComponent(now.toISOString())}&timeMax=${encodeURIComponent(end.toISOString())}&maxResults=10`;
   const d = (await gget(url, token)) as { items?: { summary?: string; start?: { dateTime?: string; date?: string } }[] };
   return (d.items ?? []).map((e) => ({ summary: e.summary ?? '(no title)', start: e.start?.dateTime ?? e.start?.date }));
+}
+
+/** Create an event on the user's primary calendar. Times are local wall-clock + an IANA timeZone. */
+export async function createCalendarEvent(
+  token: string, ev: { summary: string; startLocal: string; endLocal: string; timeZone: string; description?: string }
+): Promise<{ ok: boolean; htmlLink?: string; note?: string }> {
+  try {
+    const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        summary: ev.summary,
+        description: ev.description,
+        start: { dateTime: ev.startLocal, timeZone: ev.timeZone },
+        end: { dateTime: ev.endLocal, timeZone: ev.timeZone }
+      })
+    });
+    if (!res.ok) return { ok: false, note: `calendar ${res.status}: ${(await res.text()).slice(0, 160)}` };
+    const d = (await res.json()) as { htmlLink?: string };
+    return { ok: true, htmlLink: d.htmlLink };
+  } catch (e) {
+    return { ok: false, note: e instanceof Error ? e.message : 'calendar error' };
+  }
 }

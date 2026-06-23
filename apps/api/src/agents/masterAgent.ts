@@ -211,7 +211,7 @@ export async function gatherContext(userId: string): Promise<ConnectorResult[]> 
 export async function askOrb(
   userId: string,
   message: string,
-  opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string; personality?: string; customPersona?: string; lat?: number; lon?: number } = {}
+  opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string; personality?: string; customPersona?: string; lat?: number; lon?: number; tz?: string } = {}
 ) {
   // Video mode (Veo): generate an AI video. Top tiers only — it's the priciest call.
   if (looksLikeVideoRequest(message)) {
@@ -238,7 +238,7 @@ export async function askOrb(
 
   // Action mode: ORB *does* things — reminders/tasks now, email confirm-first. Nothing outward
   // goes without a "confirm". Checked before build so "remind me to build X" stays a reminder.
-  const action = await handleAction(userId, message);
+  const action = await handleAction(userId, message, { tz: opts.tz });
   if (action) return action;
 
   // Build mode: if the user is asking ORB to construct a site/app, run the Construction Genome

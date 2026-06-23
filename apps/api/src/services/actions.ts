@@ -5,9 +5,51 @@
  */
 import { createTask } from './taskStore.js';
 import { sendMail, mailerConfigured } from './mailer.js';
+import { getAccessToken, createCalendarEvent } from '../connectors/google.js';
 
-type Pending = { kind: 'email'; to: string; subject: string; body: string; summary: string };
+type EmailPending = { kind: 'email'; to: string; subject: string; body: string; summary: string };
+type EventPending = { kind: 'event'; summary: string; startLocal: string; endLocal: string; timeZone: string; when: string };
+type Pending = EmailPending | EventPending;
 const pending = new Map<string, Pending>();
+
+const pad = (n: number) => String(n).padStart(2, '0');
+const WD = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+/** Resolve "tomorrow at 2pm" / "Friday 10am" into a local wall-clock window in the user's timezone. */
+function parseWhen(message: string, tz: string): { startLocal: string; endLocal: string; label: string } | null {
+  const lower = message.toLowerCase();
+  // base date = "today" in the user's timezone
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const [y, mo, da] = todayStr.split('-').map(Number);
+  const base = new Date(Date.UTC(y, mo - 1, da));
+  if (/\btomorrow\b/.test(lower)) base.setUTCDate(base.getUTCDate() + 1);
+  else {
+    const wm = lower.match(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+    if (wm) { let diff = (WD.indexOf(wm[1]) - base.getUTCDay() + 7) % 7; if (diff === 0) diff = 7; base.setUTCDate(base.getUTCDate() + diff); }
+  }
+  // time
+  let hour: number | null = null, min = 0;
+  if (/\bnoon\b/.test(lower)) hour = 12;
+  else if (/\bmidnight\b/.test(lower)) hour = 0;
+  else {
+    const tm = lower.match(/\b(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/);
+    if (tm) { hour = parseInt(tm[1], 10); min = tm[2] ? parseInt(tm[2], 10) : 0; const ap = tm[3];
+      if (ap === 'pm' && hour < 12) hour += 12; if (ap === 'am' && hour === 12) hour = 0;
+      if (!ap && hour >= 1 && hour <= 7) hour += 12; }   // "at 2" → 2pm
+  }
+  if (hour == null) return null;
+  const d = `${base.getUTCFullYear()}-${pad(base.getUTCMonth() + 1)}-${pad(base.getUTCDate())}`;
+  const startLocal = `${d}T${pad(hour)}:${pad(min)}:00`;
+  const endLocal = `${d}T${pad((hour + 1) % 24)}:${pad(min)}:00`;
+  const label = new Date(`${startLocal}Z`).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return { startLocal, endLocal, label };
+}
+
+function parseEventTitle(message: string): string {
+  const m = message.match(/\b(?:schedule|create|add|set up|book|put)\s+(?:an? |the )?(?:event|meeting|appointment|reminder|call)?\s*(?:for |with |called |titled )?(.+?)(?:\s+(?:on|at|for|tomorrow|today|this|next|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b.*)?$/i);
+  const t = m && m[1] ? m[1].trim() : '';
+  return (t && t.length > 1 ? t : 'Event').slice(0, 140);
+}
 
 const CONFIRM = /\b(confirm|yes|yep|yeah|do it|send it|go ahead|approved?|ok(?:ay)? do it|please do)\b/i;
 const CANCEL = /\b(cancel|no|nope|stop|don'?t|drop it|never\s?mind)\b/i;
@@ -17,7 +59,7 @@ function parseReminder(message: string): { title: string } | null {
   return m ? { title: m[1].replace(/[?.!]+$/, '').trim().slice(0, 200) } : null;
 }
 
-function parseEmail(message: string): Pending | null {
+function parseEmail(message: string): EmailPending | null {
   const to = (message.match(/([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i) ?? [])[1];
   if (!to) return null;
   let subject = 'A note from me', body = '';
@@ -31,17 +73,37 @@ function parseEmail(message: string): Pending | null {
 
 export function hasPendingAction(userId: string): boolean { return pending.has(userId); }
 
+const EVENT_RE = /\b(schedule|calendar|meeting|appointment|book (?:a|an)|add (?:an? )?event|set up (?:a|an)|put .* on (?:my|the) calendar)\b/i;
+
 /** Returns an action reply, or null if the message isn't an action (let normal chat handle it). */
-export async function handleAction(userId: string, message: string): Promise<{ mode: 'action'; answer: string } | null> {
+export async function handleAction(userId: string, message: string, opts: { tz?: string } = {}): Promise<{ mode: 'action'; answer: string } | null> {
+  const tz = opts.tz || 'America/New_York';
   // 1) Resolve a staged confirm-first action.
   const p = pending.get(userId);
   if (p) {
     if (CONFIRM.test(message)) {
       pending.delete(userId);
-      const r = await sendMail(p.to, p.subject, p.body);
-      return { mode: 'action', answer: r.sent ? `Sent — your email to ${p.to} is on its way.` : `I couldn't send it: ${r.note || 'email not set up'}.` };
+      if (p.kind === 'email') {
+        const r = await sendMail(p.to, p.subject, p.body);
+        return { mode: 'action', answer: r.sent ? `Sent — your email to ${p.to} is on its way.` : `I couldn't send it: ${r.note || 'email not set up'}.` };
+      }
+      const token = await getAccessToken(userId);
+      if (!token) return { mode: 'action', answer: `I need your Google calendar connected first — connect it in Settings and try again.` };
+      const r = await createCalendarEvent(token, { summary: p.summary, startLocal: p.startLocal, endLocal: p.endLocal, timeZone: p.timeZone });
+      return { mode: 'action', answer: r.ok ? `Added to your calendar: ${p.summary}, ${p.when}.` : `I couldn't add it: ${r.note || 'calendar error'}.` };
     }
     if (CANCEL.test(message)) { pending.delete(userId); return { mode: 'action', answer: 'Okay, I dropped it.' }; }
+  }
+
+  // Calendar event — confirm-first.
+  if (EVENT_RE.test(message)) {
+    const when = parseWhen(message, tz);
+    const summary = parseEventTitle(message);
+    if (when) {
+      pending.set(userId, { kind: 'event', summary, startLocal: when.startLocal, endLocal: when.endLocal, timeZone: tz, when: when.label });
+      return { mode: 'action', answer: `Ready to add "${summary}" to your calendar, ${when.label}. Say "confirm" to add it, or "cancel".` };
+    }
+    return { mode: 'action', answer: `Sure — what day and time? (e.g. "tomorrow at 2pm")` };
   }
 
   // 2) Reminders / tasks — low risk, do it now.
