@@ -7,6 +7,8 @@ import { runBuild } from '../build/genome.js';
 import { classifyTask, routedAnswer } from '../brains/router.js';
 import { matchSkill, isOwner } from '../brains/skills.js';
 import { getForecast, geocode } from '../services/weather.js';
+import { getNews } from '../services/news.js';
+import { getQuote } from '../services/stocks.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -67,6 +69,47 @@ async function weatherContext(message: string, opts: { lat?: number; lon?: numbe
   }
   if (lat == null || lon == null) return "WEATHER: no location available — ask the user which city (or have them allow location).";
   return `Real, current weather data (use this — speak it naturally, don't tell them to check their phone):\n${await getForecast(lat, lon, place)}`;
+}
+
+// News is a real tool: pull live headlines when asked.
+const NEWS_RE = /\b(news|headlines?|what'?s happening|going on in the world|current events)\b/i;
+async function newsContext(message: string): Promise<string | null> {
+  if (!NEWS_RE.test(message)) return null;
+  const topicMatch = message.match(/\b(?:about|on|in)\s+([A-Za-z][A-Za-z &'-]{2,30})/i);
+  const news = await getNews(topicMatch ? topicMatch[1].trim() : undefined);
+  if (!news.available || !news.headlines.length) return null;
+  const lines = news.headlines.slice(0, 6).map((h, i) => `${i + 1}. ${h.title}${h.source ? ` (${h.source})` : ''}`).join('\n');
+  return `Live headlines (${news.source}) — summarize the relevant ones naturally:\n${lines}`;
+}
+
+// Stocks: pull a live quote when a ticker/company is mentioned.
+const STOCK_RE = /\b(stock|shares?|share price|ticker|nasdaq|dow|s&p|market)\b|\$[A-Za-z]{1,5}\b/i;
+const NAME_TO_TICKER: Record<string, string> = {
+  tesla: 'TSLA', apple: 'AAPL', amazon: 'AMZN', google: 'GOOGL', alphabet: 'GOOGL', microsoft: 'MSFT',
+  meta: 'META', facebook: 'META', nvidia: 'NVDA', netflix: 'NFLX', amd: 'AMD', intel: 'INTC',
+  walmart: 'WMT', disney: 'DIS', coinbase: 'COIN', 'sp500': '^SPX', 's&p': '^SPX', dow: '^DJI', nasdaq: '^NDQ'
+};
+function extractTicker(message: string): string | null {
+  const dollar = message.match(/\$([A-Za-z]{1,5})\b/);
+  if (dollar) return dollar[1].toUpperCase();
+  const low = message.toLowerCase();
+  for (const [name, sym] of Object.entries(NAME_TO_TICKER)) if (low.includes(name)) return sym;
+  const m = message.match(/\b(?:stock|shares?|price)\s+(?:of|for)\s+([A-Za-z]{1,5})\b/i) || message.match(/\b([A-Z]{2,5})\s+(?:stock|shares?)\b/);
+  return m ? m[1].toUpperCase() : null;
+}
+async function stocksContext(message: string): Promise<string | null> {
+  if (!STOCK_RE.test(message)) return null;
+  const ticker = extractTicker(message);
+  if (!ticker) return null;
+  const q = await getQuote(ticker);
+  if (!q) return null;
+  return `Live quote (use it): ${q.name} (${q.ticker}) is ${q.price} ${q.currency}.`;
+}
+
+/** Run the live tools in parallel; only the one(s) matching the message actually fetch. */
+async function toolContext(message: string, opts: { lat?: number; lon?: number }): Promise<string | undefined> {
+  const parts = (await Promise.all([weatherContext(message, opts), newsContext(message), stocksContext(message)])).filter(Boolean) as string[];
+  return parts.length ? parts.join('\n\n') : undefined;
 }
 
 /** Strip "make me a video of …" down to just the subject for the Veo prompt. */
@@ -162,10 +205,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
   if (!forceCouncil) {
     // Weather is a live tool. Otherwise fetch your data ONLY when the request needs it
     // (calendar/email/tasks/money). Plain questions answer straight from the model — no fetching.
-    let context: string | undefined;
-    const wx = await weatherContext(message, { lat: opts.lat, lon: opts.lon });
-    if (wx) context = wx;
-    else if (needsContext(message)) context = JSON.stringify(await gatherContext(userId)).slice(0, 4000);
+    let context = await toolContext(message, { lat: opts.lat, lon: opts.lon });   // weather / news / stocks
+    if (!context && needsContext(message)) context = JSON.stringify(await gatherContext(userId)).slice(0, 4000);
     const routed = await routedAnswer(message, { images: opts.images, context });
     return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label };
   }
