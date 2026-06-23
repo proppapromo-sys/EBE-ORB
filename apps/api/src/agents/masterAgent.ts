@@ -12,6 +12,7 @@ import { getQuote } from '../services/stocks.js';
 import { defineWord, wikiSummary, countryInfo, convertCurrency, timeIn } from '../services/reference.js';
 import { govRegulations } from '../services/civics.js';
 import { handleAction } from '../services/actions.js';
+import { getAccessToken, calendarUpcoming, gmailUnreadImportant } from '../connectors/google.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -164,13 +165,50 @@ function selfContext(message: string): string | null {
   return `ORB capabilities (describe these naturally, in first person, no jargon): I chat and reason with a council of AI models; I build websites and apps; I generate video; I speak in a cloned voice and recognize the owner's voice; and I pull live info — weather, news, stocks, dictionary, encyclopedia, world geography, currency, world time, and US government regulations. I connect to Google (Gmail/Calendar), handle reminders, notes, tasks and wallet, and I run subscriptions/billing. Registered skills: ${skills}.`;
 }
 
-/** Run the live tools in parallel; only the one(s) matching the message actually fetch. */
-async function toolContext(message: string, opts: { lat?: number; lon?: number }): Promise<string | undefined> {
+// ── Specialized parallel agents over the user's connected accounts ──
+// Calendar AI
+const CAL_RE = /\b(calendar|schedul|meeting|appointment|agenda|event|today|tomorrow|this week|coming up|free time|busy)\b/i;
+async function calendarAgent(userId: string, message: string): Promise<string | null> {
+  if (!CAL_RE.test(message)) return null;
+  const token = await getAccessToken(userId);
+  if (!token) return null;
+  try {
+    const days = /\b(week|upcoming|coming up)\b/i.test(message) ? 7 : 2;
+    const ev = await calendarUpcoming(token, days);
+    if (!ev.length) return 'Calendar: nothing scheduled in that window.';
+    return `Calendar (next ${days} days):\n` + ev.map((e) => `- ${e.summary}${e.start ? ` (${e.start})` : ''}`).join('\n');
+  } catch { return null; }
+}
+// Email AI
+const MAIL_RE = /\b(email|inbox|gmail|unread|messages?|mail)\b/i;
+async function emailAgent(userId: string, message: string): Promise<string | null> {
+  if (!MAIL_RE.test(message)) return null;
+  const token = await getAccessToken(userId);
+  if (!token) return null;
+  try {
+    const n = await gmailUnreadImportant(token);
+    return `Email: ${n} important unread message${n === 1 ? '' : 's'} in the inbox.`;
+  } catch { return null; }
+}
+// File AI (ready for Google Drive — returns nothing until a file source is connected)
+const FILE_RE = /\b(file|files|document|doc|drive|folder|spreadsheet)\b/i;
+async function fileAgent(_userId: string, message: string): Promise<string | null> {
+  if (!FILE_RE.test(message)) return null;
+  return 'Files: no file source connected yet — connect Google Drive to let me search your files.';
+}
+
+/**
+ * The fan-out: ORB Router → many specialized agents run in parallel (knowledge tools + Calendar /
+ * Email / File over the user's accounts) → results feed the Finalizer for one fast answer.
+ * Each agent only fetches if the request matches it, so plain chat stays instant.
+ */
+async function toolContext(message: string, userId: string, opts: { lat?: number; lon?: number }): Promise<string | undefined> {
   const sync = [selfContext(message)].filter(Boolean) as string[];
   const fetched = (await Promise.all([
     weatherContext(message, opts), newsContext(message), stocksContext(message),
     dictionaryContext(message), wikiContext(message), geographyContext(message), currencyContext(message),
-    timeContext(message), govContext(message)
+    timeContext(message), govContext(message),
+    calendarAgent(userId, message), emailAgent(userId, message), fileAgent(userId, message)
   ])).filter(Boolean) as string[];
   const parts = [...sync, ...fetched];
   return parts.length ? parts.join('\n\n') : undefined;
@@ -274,7 +312,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
   if (!forceCouncil) {
     // Weather is a live tool. Otherwise fetch your data ONLY when the request needs it
     // (calendar/email/tasks/money). Plain questions answer straight from the model — no fetching.
-    let context = await toolContext(message, { lat: opts.lat, lon: opts.lon });   // weather / news / stocks
+    // Router → parallel agents (knowledge + Calendar/Email/File) → Finalizer → one fast answer.
+    let context = await toolContext(message, userId, { lat: opts.lat, lon: opts.lon });
     if (!context && needsContext(message)) context = JSON.stringify(await gatherContext(userId)).slice(0, 4000);
     const routed = await routedAnswer(message, { images: opts.images, context });
     return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label };

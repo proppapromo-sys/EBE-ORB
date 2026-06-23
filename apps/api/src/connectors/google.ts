@@ -111,6 +111,17 @@ export async function calendarToday(token: string): Promise<{ summary: string; s
   return (d.items ?? []).map((e) => ({ summary: e.summary ?? '(no title)', start: e.start?.dateTime ?? e.start?.date }));
 }
 
+/** Upcoming events over the next `days` (default 2 → today + tomorrow). */
+export async function calendarUpcoming(token: string, days = 2): Promise<{ summary: string; start?: string }[]> {
+  const now = new Date();
+  const end = new Date(now); end.setDate(end.getDate() + days); end.setHours(23, 59, 59, 999);
+  const url =
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime` +
+    `&timeMin=${encodeURIComponent(now.toISOString())}&timeMax=${encodeURIComponent(end.toISOString())}&maxResults=15`;
+  const d = (await gget(url, token)) as { items?: { summary?: string; start?: { dateTime?: string; date?: string } }[] };
+  return (d.items ?? []).map((e) => ({ summary: e.summary ?? '(no title)', start: e.start?.dateTime ?? e.start?.date }));
+}
+
 /** Create an event on the user's primary calendar. Times are local wall-clock + an IANA timeZone. */
 export async function createCalendarEvent(
   token: string, ev: { summary: string; startLocal: string; endLocal: string; timeZone: string; description?: string }
