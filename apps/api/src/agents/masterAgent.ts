@@ -9,6 +9,7 @@ import { matchSkill, isOwner } from '../brains/skills.js';
 import { getForecast, geocode } from '../services/weather.js';
 import { getNews } from '../services/news.js';
 import { getQuote } from '../services/stocks.js';
+import { defineWord, wikiSummary, countryInfo, convertCurrency } from '../services/reference.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -106,9 +107,43 @@ async function stocksContext(message: string): Promise<string | null> {
   return `Live quote (use it): ${q.name} (${q.ticker}) is ${q.price} ${q.currency}.`;
 }
 
+// Dictionary: "define X", "what does X mean", "meaning of X".
+async function dictionaryContext(message: string): Promise<string | null> {
+  const m = message.match(/\b(?:define|definition of|meaning of|what does)\s+["']?([A-Za-z][A-Za-z-]{1,30})["']?(?:\s+mean)?\b/i);
+  return m ? defineWord(m[1]) : null;
+}
+
+// Encyclopedia: "who is/was X", "tell me about X", "history of X", "what is a <thing>".
+async function wikiContext(message: string): Promise<string | null> {
+  const m = message.match(/\b(?:who(?:'?s| is| was| are| were)|tell me about|history of|facts about|what(?:'?s| is| are) (?:a |an |the )?)\s+([A-Z][A-Za-z0-9 .'-]{2,40})/);
+  if (!m) return null;
+  const q = m[1].replace(/[?.!]+$/, '').trim();
+  return /\b(weather|stock|news|time|today|tomorrow)\b/i.test(q) ? null : wikiSummary(q);
+}
+
+// Geography: "capital of X", "population of X", "currency of X", "where is X".
+async function geographyContext(message: string): Promise<string | null> {
+  const m = message.match(/\b(?:capital of|population of|currency of|languages? of|where is|located|continent (?:is|of))\s+([A-Za-z][A-Za-z .'-]{2,40})/i)
+    || message.match(/\babout\s+(?:the country of\s+)?([A-Z][A-Za-z .'-]{2,40})/);
+  if (!m) return null;
+  return countryInfo(m[1].replace(/[?.!]+$/, '').trim());
+}
+
+// Currency: "convert 100 USD to EUR", "how much is 50 dollars in euros".
+const CUR: Record<string, string> = { dollars: 'USD', dollar: 'USD', usd: 'USD', euros: 'EUR', euro: 'EUR', eur: 'EUR', pounds: 'GBP', gbp: 'GBP', yen: 'JPY', jpy: 'JPY', pesos: 'MXN', mxn: 'MXN', cad: 'CAD', aud: 'AUD', rupees: 'INR', inr: 'INR', bitcoin: 'BTC', btc: 'BTC' };
+function norm(c: string): string { return CUR[c.toLowerCase()] || c.toUpperCase(); }
+async function currencyContext(message: string): Promise<string | null> {
+  const m = message.match(/\b(?:convert\s+)?(\d+(?:\.\d+)?)\s*([A-Za-z]{3,8})\s+(?:to|in|into)\s+([A-Za-z]{3,8})\b/i);
+  if (!m) return null;
+  return convertCurrency(Number(m[1]), norm(m[2]), norm(m[3]));
+}
+
 /** Run the live tools in parallel; only the one(s) matching the message actually fetch. */
 async function toolContext(message: string, opts: { lat?: number; lon?: number }): Promise<string | undefined> {
-  const parts = (await Promise.all([weatherContext(message, opts), newsContext(message), stocksContext(message)])).filter(Boolean) as string[];
+  const parts = (await Promise.all([
+    weatherContext(message, opts), newsContext(message), stocksContext(message),
+    dictionaryContext(message), wikiContext(message), geographyContext(message), currencyContext(message)
+  ])).filter(Boolean) as string[];
   return parts.length ? parts.join('\n\n') : undefined;
 }
 
