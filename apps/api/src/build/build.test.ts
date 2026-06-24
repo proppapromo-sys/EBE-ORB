@@ -45,6 +45,8 @@ import { RESONANCE_QUERY, RESONANCE_DIRECTIVE } from '../services/resonance.js';
 import { TRANSCENDENCE_QUERY, TRANSCENDENCE_DIRECTIVE } from '../services/transcendence.js';
 import { HARMONY_QUERY, HARMONY_DIRECTIVE } from '../services/harmony.js';
 import { FLOURISHING_QUERY, FLOURISHING_DIRECTIVE } from '../services/flourishing.js';
+import { EVOLVE_QUERY, EVOLVE_DIRECTIVE } from '../services/evolution.js';
+import { ANTIFRAGILE_QUERY, ANTIFRAGILE_DIRECTIVE } from '../services/antifragility.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -313,6 +315,20 @@ test('flourishing (#32): the north star — thriving over output, and excludes p
   assert.ok(FLOURISHING_QUERY.test('am I actually thriving'));
   assert.match(FLOURISHING_DIRECTIVE, /flourishing|becoming more|well-being|burnout|thriv/i);
   assert.equal(FLOURISHING_QUERY.test('what time is my meeting'), false);
+});
+
+test('apex layers (#33-#34): conscious evolution chooses, antifragility gains from stress', () => {
+  // #33 conscious evolution
+  assert.ok(EVOLVE_QUERY.test('what should I become next'));
+  assert.ok(EVOLVE_QUERY.test('what capabilities should we build for the future'));
+  assert.match(EVOLVE_DIRECTIVE, /evolution gap|become next|forecast|capability/i);
+  // #34 antifragility
+  assert.ok(ANTIFRAGILE_QUERY.test('what happens if our biggest client drops'));
+  assert.ok(ANTIFRAGILE_QUERY.test('how do we turn this setback into an advantage'));
+  assert.ok(ANTIFRAGILE_QUERY.test('where is our single point of failure'));
+  assert.match(ANTIFRAGILE_DIRECTIVE, /antifragil|redundancy|optionality|stress-test|single point of failure/i);
+  // Plain task triggers neither.
+  assert.equal([EVOLVE_QUERY, ANTIFRAGILE_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {

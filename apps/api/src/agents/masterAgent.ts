@@ -52,6 +52,8 @@ import { RESONANCE_QUERY, RESONANCE_DIRECTIVE } from '../services/resonance.js';
 import { TRANSCENDENCE_QUERY, TRANSCENDENCE_DIRECTIVE } from '../services/transcendence.js';
 import { HARMONY_QUERY, HARMONY_DIRECTIVE } from '../services/harmony.js';
 import { FLOURISHING_QUERY, FLOURISHING_DIRECTIVE } from '../services/flourishing.js';
+import { EVOLVE_QUERY, EVOLVE_DIRECTIVE } from '../services/evolution.js';
+import { ANTIFRAGILE_QUERY, ANTIFRAGILE_DIRECTIVE } from '../services/antifragility.js';
 import { parseReliability, recordReliability, reliabilityOf, roster } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -822,7 +824,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const resonant = RESONANCE_QUERY.test(message), transcend = TRANSCENDENCE_QUERY.test(message);   // #29 amplify, #30 surpass
     const harmonic = HARMONY_QUERY.test(message);   // #31 balance competing forces
     const flourish = FLOURISHING_QUERY.test(message);   // #32 the north star: thriving over output
-    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish;
+    const conscEvolve = EVOLVE_QUERY.test(message), antifragile = ANTIFRAGILE_QUERY.test(message);   // #33 become next, #34 gain from stress
+    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish || conscEvolve || antifragile;
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
       : (deepThink && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
@@ -870,7 +873,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
       + (legacyQ ? LEGACY_DIRECTIVE : '') + (cosmic ? COSMIC_DIRECTIVE : '') + (unified ? UNIFIED_DIRECTIVE : '') + (realityCheck ? REALITY_DIRECTIVE : '')
       + (genesis ? GENESIS_DIRECTIVE : '') + (emerge ? EMERGENCE_DIRECTIVE : '')
       + (synth ? SYNTHESIS_DIRECTIVE : '') + (coherent ? COHERENCE_DIRECTIVE : '') + (resonant ? RESONANCE_DIRECTIVE : '') + (transcend ? TRANSCENDENCE_DIRECTIVE : '')
-      + (harmonic ? HARMONY_DIRECTIVE : '') + (flourish ? FLOURISHING_DIRECTIVE : ''));
+      + (harmonic ? HARMONY_DIRECTIVE : '') + (flourish ? FLOURISHING_DIRECTIVE : '')
+      + (conscEvolve ? EVOLVE_DIRECTIVE : '') + (antifragile ? ANTIFRAGILE_DIRECTIVE : ''));
     const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir + higherDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));
