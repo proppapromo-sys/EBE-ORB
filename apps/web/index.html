@@ -492,6 +492,28 @@ function buildEqChain(ctx,tone){
 // EQ uses Web Audio, which can only process audio it's allowed to read — same-origin or data: URLs.
 // For anything cross-origin we skip EQ (and just play it) so the voice never goes silent on a CORS taint.
 function canEq(url){ return /^data:/i.test(url) || url.startsWith('/') || (typeof location!=='undefined' && url.startsWith(location.origin)); }
+
+// Studio conditioning for the voice-CLONE recording: clean the training sample so the learned voice is
+// clearer and more natural. Compressor (even out level) → de-esser (tame harsh S/SH/CH ~6.5 kHz) →
+// presence + warmth EQ → limiter (stop clipping). This is exactly where these tools earn their keep —
+// shaping audio we capture, not the browser's own transcription (which we can't touch). Returns a new,
+// processed MediaStream; on any failure it returns the original stream untouched.
+let _cloneChain=null;
+function conditionStream(stream){
+  try{
+    const ctx=outAudioCtx(); if(!ctx)return stream; if(ctx.state==='suspended')ctx.resume();
+    const src=ctx.createMediaStreamSource(stream);
+    const comp=ctx.createDynamicsCompressor(); comp.threshold.value=-28; comp.knee.value=18; comp.ratio.value=3; comp.attack.value=0.005; comp.release.value=0.2;
+    const deess=ctx.createBiquadFilter(); deess.type='peaking'; deess.frequency.value=6500; deess.Q.value=2.2; deess.gain.value=-5;   // de-ess
+    const pres=ctx.createBiquadFilter();  pres.type='peaking';  pres.frequency.value=2800; pres.Q.value=1;   pres.gain.value=2;       // clarity
+    const warm=ctx.createBiquadFilter();  warm.type='lowshelf'; warm.frequency.value=180;  warm.gain.value=1.5;                       // warmth
+    const lim=ctx.createDynamicsCompressor(); lim.threshold.value=-3; lim.knee.value=0; lim.ratio.value=20; lim.attack.value=0.001; lim.release.value=0.1;  // limiter
+    const dest=ctx.createMediaStreamDestination();
+    src.connect(comp); comp.connect(deess); deess.connect(pres); pres.connect(warm); warm.connect(lim); lim.connect(dest);
+    _cloneChain=[src,comp,deess,pres,warm,lim,dest];   // hold refs so the graph isn't garbage-collected
+    return dest.stream;
+  }catch(e){ return stream; }
+}
 function speakBrowser(text,lang,voice){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(speakable(text).slice(0,800));
   u.lang=lang||'en-US';
@@ -534,10 +556,11 @@ async function autoRecordClone(enableLock){
   if(!navigator.mediaDevices||!window.MediaRecorder){box.innerHTML=mdToHtml("I can't reach the microphone in this browser.");return;}
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
-    const chunks=[], rec=new MediaRecorder(stream);
+    const recStream=conditionStream(stream);   // studio-clean the training audio before learning the voice
+    const chunks=[], rec=new MediaRecorder(recStream);
     rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
     rec.onstop=async()=>{
-      stream.getTracks().forEach(t=>t.stop());
+      stream.getTracks().forEach(t=>t.stop()); _cloneChain=null;
       const blob=new Blob(chunks,{type:rec.mimeType||'audio/webm'});
       box.innerHTML='<span class="badge">🎙️</span> Got it — learning your voice…';
       try{
