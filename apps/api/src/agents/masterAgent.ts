@@ -33,6 +33,7 @@ import { predictBehavior, formatPredictions } from '../services/behavior.js';
 import { reflect, META_DIRECTIVE, AUDIT_DIRECTIVE, META_QUERY, AUDIT_QUERY } from '../services/metacognition.js';
 import { logEvent, habitPredictions, formatPatterns } from '../services/events.js';
 import { selfRegulation } from '../services/selfreg.js';
+import { parseOutcome, recordOutcome, whatWorks, formatAdaptation } from '../services/adaptation.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -566,6 +567,21 @@ export async function askOrb(
   }
   if (/\b(what are my goals|my (?:goals|objectives|targets)|show (?:me )?my goals|how am i (?:doing|tracking) (?:on|against) my goals|what am i (?:working toward|trying to (?:become|achieve)))\b/i.test(message)) {
     return { mode: 'fast' as const, answer: formatObjectives(await listObjectives(userId).catch(() => [])), route: 'fast' as const, model: 'goals' };
+  }
+
+  // Adaptation & Learning: learn from reported outcomes, and surface what's working vs what to rethink.
+  if (/\bwhat(?:'s| is| has been) working\b|\bwhat should i (?:do more of|double down on|change|stop doing)\b|\bwhat'?s working and what'?s not\b/i.test(message)) {
+    return { mode: 'fast' as const, answer: formatAdaptation(await whatWorks(userId).catch(() => ({ keep: [], rethink: [] }))), route: 'fast' as const, model: 'adapt' };
+  }
+  {
+    const oc = parseOutcome(message);
+    if (oc) {
+      await recordOutcome(userId, oc.label, oc.result).catch(() => {});
+      const answer = oc.result === 'win'
+        ? `Good to know — I'll remember "${oc.label}" worked and lean toward more of that.`
+        : `Noted — "${oc.label}" didn't land. I'll factor that in and we can rethink the approach.`;
+      return { mode: 'fast' as const, answer, route: 'fast' as const, model: 'adapt' };
+    }
   }
 
   // Self-Regulation: the execution read — follow-through, the avoided high-value task, discipline trend.

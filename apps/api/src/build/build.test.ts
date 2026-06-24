@@ -25,6 +25,7 @@ import { decisionProfile } from '../services/personality.js';
 import { buildReflection, META_DIRECTIVE, AUDIT_DIRECTIVE, META_QUERY, AUDIT_QUERY } from '../services/metacognition.js';
 import { analyzePatterns } from '../services/events.js';
 import { buildSelfReg } from '../services/selfreg.js';
+import { parseOutcome, recommendFrom } from '../services/adaptation.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -224,6 +225,23 @@ test('decision: detects a choice and frames trade-offs, bias-guards, goals + dri
   // Decision profile is derived from learned tendencies.
   assert.equal(decisionProfile({ risk: { s: 0.5, n: 3 }, analytical: { s: 0.4, n: 3 } }).risk, 'high');
   assert.equal(decisionProfile({}).risk, 'medium');        // unknown → balanced default
+});
+
+test('adaptation: learns from outcomes — do more of what works, rethink what fails', () => {
+  // Reads reported outcomes (and ignores questions).
+  assert.deepEqual(parseOutcome('the Friday promo worked'), { label: 'Friday promo', result: 'win' });
+  assert.deepEqual(parseOutcome('the new menu flopped'), { label: 'new menu', result: 'loss' });
+  assert.equal(parseOutcome('what worked last week?'), null);
+
+  // Recommends keep vs rethink by win-rate (needs >= 2 data points).
+  const rec = recommendFrom([
+    ['friday promo', { wins: 3, losses: 0 }],
+    ['cold emails', { wins: 0, losses: 3 }],
+    ['one-off thing', { wins: 1, losses: 0 }]   // too little data → neither
+  ]);
+  assert.ok(rec.keep.some((k) => /friday promo/i.test(k)));
+  assert.ok(rec.rethink.some((k) => /cold emails/i.test(k)));
+  assert.equal(rec.keep.length + rec.rethink.length, 2);   // the 1-datapoint item is excluded
 });
 
 test('events: clusters repeated activity into a recognized habit (time-of-day)', () => {

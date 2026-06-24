@@ -168,6 +168,16 @@ alter table orb_convo_prefs add column if not exists humor text not null default
 alter table orb_convo_prefs add column if not exists support text not null default 'standard';
 alter table orb_convo_prefs add column if not exists traits jsonb not null default '{}'::jsonb;
 
+-- Adaptation & Learning — outcomes of what the user tries, so ORB learns what works and adapts its
+-- recommendations (do more of what wins, rethink what keeps failing).
+create table if not exists orb_outcomes (
+  user_id text not null,
+  label   text not null,
+  wins    integer not null default 0,
+  losses  integer not null default 0,
+  primary key (user_id, label)
+);
+
 -- Behavioral event log — a timestamped record of what happens, so ORB learns habits and patterns
 -- (time-of-day / day-of-week clustering) and can gauge follow-through over time.
 create table if not exists orb_events (
