@@ -40,6 +40,7 @@ import { isStrategic, WISDOM_DIRECTIVE, getValues, setValues, parseValues, value
 import { selfModel, userIdentity } from '../services/identity.js';
 import { PURPOSE_QUERY, ALIGN_QUERY, ALIGNMENT_DIRECTIVE, getPurpose, setPurpose, parsePurpose, alignmentContext } from '../services/purpose.js';
 import { FORESIGHT_QUERY, FORESIGHT_DIRECTIVE } from '../services/foresight.js';
+import { chiefOfStaffBrief, describeArchitecture } from '../services/architecture.js';
 import { parseReliability, recordReliability, reliabilityOf, roster } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -591,6 +592,15 @@ export async function askOrb(
   {
     const rm = message.match(/\b(?:how reliable is|can i (?:count on|rely on|trust)|how dependable is|what'?s my read on)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
     if (rm) return { mode: 'fast' as const, answer: await reliabilityOf(userId, rm[1]).catch(() => `I haven't tracked ${rm[1]} yet.`), route: 'fast' as const, model: 'trust' };
+  }
+
+  // Universal Intelligence Architecture: the unified read (every layer → one briefing), and ORB's
+  // self-description of its own stack.
+  if (/\b(brief me|where do i stand|catch me up|chief of staff (?:brief|briefing|update)|the (?:full|big) picture|status (?:report|check)|where (?:are we|do things stand)|sitrep|run me through everything)\b/i.test(message)) {
+    return { mode: 'fast' as const, answer: await chiefOfStaffBrief(userId).catch(() => "We're just getting started — give me a few goals to track."), route: 'fast' as const, model: 'brief' };
+  }
+  if (/\bhow (?:do you work|are you (?:built|designed|wired))\b|\bwhat'?s your architecture\b|\bshow me your (?:stack|layers|architecture)\b|\bwhat makes you (?:you|different)\b|\bhow are you put together\b/i.test(message)) {
+    return { mode: 'fast' as const, answer: describeArchitecture(), route: 'fast' as const, model: 'architecture' };
   }
 
   // Self-Identity: ORB's model of itself (mission, boundaries, continuity) and its living model of you.

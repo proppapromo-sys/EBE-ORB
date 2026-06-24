@@ -33,6 +33,7 @@ import { parseReliability, reliability } from '../services/relationships.js';
 import { SYSTEMS_QUERY, SYSTEMS_DIRECTIVE, parseCausal } from '../services/systems.js';
 import { PURPOSE_QUERY, ALIGN_QUERY, ALIGNMENT_DIRECTIVE, parsePurpose } from '../services/purpose.js';
 import { FORESIGHT_QUERY, FORESIGHT_DIRECTIVE } from '../services/foresight.js';
+import { buildBrief, describeArchitecture, INTELLIGENCE_STACK } from '../services/architecture.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -233,6 +234,26 @@ test('decision: detects a choice and frames trade-offs, bias-guards, goals + dri
   // Decision profile is derived from learned tendencies.
   assert.equal(decisionProfile({ risk: { s: 0.5, n: 3 }, analytical: { s: 0.4, n: 3 } }).risk, 'high');
   assert.equal(decisionProfile({}).risk, 'medium');        // unknown → balanced default
+});
+
+test('architecture: unifies every layer into one briefing and can describe its own stack', () => {
+  const brief = buildBrief({
+    focus: [{ label: 'handle payroll', score: 88, tier: 'deadline' }, { label: 'reply to investor', score: 70, tier: 'deadline' }],
+    objectives: [{ label: 'grow revenue to 50k', progress: 50 }],
+    slipping: ['call the supplier'],
+    done: 4, open: 3, purpose: 'give people their time back', drivers: ['freedom']
+  });
+  assert.match(brief, /What matters right now/);
+  assert.match(brief, /handle payroll/);
+  assert.match(brief, /grow revenue.*50%/);
+  assert.match(brief, /4 of 7/);
+  assert.match(brief, /give people their time back/);
+  assert.match(brief, /highest-leverage/);   // closes with a single recommended next move
+  assert.match(buildBrief({ focus: [], objectives: [], slipping: [], done: 0, open: 0, purpose: '', drivers: [] }), /just getting started/i);
+
+  // ORB can describe its own architecture as one integrated system.
+  assert.match(describeArchitecture(), /council|layers|confirm-first/i);
+  assert.ok(INTELLIGENCE_STACK.length >= 8);
 });
 
 test('purpose + foresight: aligns to what matters and positions for possible futures', () => {
