@@ -78,6 +78,8 @@ import { MEANING_QUERY, MEANING_DIRECTIVE } from '../services/meaning.js';
 import { CREATE2_QUERY, DESIGN_QUERY, DESIGN_DIRECTIVE } from '../services/design.js';
 import { ARCH_QUERY, ARCH_DIRECTIVE, UNIFY_QUERY, UNIFY_DIRECTIVE } from '../services/realityarch.js';
 import { OPT_QUERY, OPT_DIRECTIVE, ACCEL_QUERY, ACCEL_DIRECTIVE } from '../services/optimize.js';
+import { METAREALITY_QUERY, METAREALITY_DIRECTIVE, EXIST_QUERY, EXIST_DIRECTIVE, QUESTION_QUERY, QUESTION_DIRECTIVE } from '../services/metareality.js';
+import { HORIZON_QUERY, HORIZON_DIRECTIVE } from '../services/horizon.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -616,6 +618,21 @@ test('meaning + create + design (#66-#68)', () => {
   // #77 universal possibility — folded into #44 POSSIBILITY_QUERY (unexplored-futures framing)
   assert.ok(POSSIBILITY_QUERY.test('what futures remain unexplored'));
   assert.ok(POSSIBILITY_QUERY.test('what markets do not yet exist'));
+  // #78 meta-reality, #79 existence, #80 ultimate question (new abstract-inquiry engines)
+  assert.ok(METAREALITY_QUERY.test('what rules generate reality'));
+  assert.match(METAREALITY_DIRECTIVE, /generates|generator|principles|speculation/i);
+  assert.ok(EXIST_QUERY.test('why is there something rather than nothing'));
+  assert.match(EXIST_DIRECTIVE, /something rather than nothing|humbl|genuinely open|honest/i);
+  assert.ok(QUESTION_QUERY.test('am I asking the right question'));
+  assert.ok(QUESTION_QUERY.test('are we solving the right problem'));
+  assert.match(QUESTION_DIRECTIVE, /better question|reframe|deeper|discovery engine/i);
+  assert.equal([METAREALITY_QUERY, EXIST_QUERY, QUESTION_QUERY].some((re) => re.test('what time is my meeting')), false);
+  // #81 + #82 — one HORIZON engine serves both (explore without end / what lies beyond every frontier)
+  assert.ok(HORIZON_QUERY.test('how do we explore without end'));
+  assert.ok(HORIZON_QUERY.test('what new horizons become visible'));
+  assert.ok(HORIZON_QUERY.test('what lies beyond current understanding'));
+  assert.match(HORIZON_DIRECTIVE, /horizon|frontier|humility|unknown|next step/i);
+  assert.equal(HORIZON_QUERY.test('what time is my meeting'), false);
   // Plain task triggers none of the batch.
   assert.equal([POTENTIAL_QUERY, COLLECTIVE_QUERY, PRINCIPLE_QUERY, FUTUREMEM_QUERY, DESTINY_QUERY, MEANING_QUERY, DESIGN_QUERY, CREATE2_QUERY, ARCH_QUERY, UNIFY_QUERY, OPT_QUERY, ACCEL_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
