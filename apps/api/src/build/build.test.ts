@@ -44,6 +44,7 @@ import { COHERENCE_QUERY, COHERENCE_DIRECTIVE, detectCoherenceGaps, formatCohere
 import { RESONANCE_QUERY, RESONANCE_DIRECTIVE } from '../services/resonance.js';
 import { TRANSCENDENCE_QUERY, TRANSCENDENCE_DIRECTIVE } from '../services/transcendence.js';
 import { HARMONY_QUERY, HARMONY_DIRECTIVE } from '../services/harmony.js';
+import { FLOURISHING_QUERY, FLOURISHING_DIRECTIVE } from '../services/flourishing.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -304,6 +305,14 @@ test('integrative layers (#27-#31): combine, align, amplify, surpass, balance', 
   assert.match(HARMONY_DIRECTIVE, /balance|sustainable flourishing|competing|gets weaker/i);
   // A plain task triggers none of them.
   assert.equal([SYNTHESIS_QUERY, COHERENCE_QUERY, RESONANCE_QUERY, TRANSCENDENCE_QUERY, HARMONY_QUERY].some((re) => re.test('what time is my meeting')), false);
+});
+
+test('flourishing (#32): the north star — thriving over output, and excludes plain tasks', () => {
+  assert.ok(FLOURISHING_QUERY.test('how do I actually live a better life'));
+  assert.ok(FLOURISHING_QUERY.test('what does success really mean'));
+  assert.ok(FLOURISHING_QUERY.test('am I actually thriving'));
+  assert.match(FLOURISHING_DIRECTIVE, /flourishing|becoming more|well-being|burnout|thriv/i);
+  assert.equal(FLOURISHING_QUERY.test('what time is my meeting'), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
