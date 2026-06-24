@@ -168,6 +168,16 @@ alter table orb_convo_prefs add column if not exists humor text not null default
 alter table orb_convo_prefs add column if not exists support text not null default 'standard';
 alter table orb_convo_prefs add column if not exists traits jsonb not null default '{}'::jsonb;
 
+-- Behavioral event log — a timestamped record of what happens, so ORB learns habits and patterns
+-- (time-of-day / day-of-week clustering) and can gauge follow-through over time.
+create table if not exists orb_events (
+  user_id text not null,
+  kind    text not null,
+  label   text not null default '',
+  at      timestamptz default now()
+);
+create index if not exists orb_events_user_at on orb_events (user_id, at desc);
+
 -- Motivation — the drivers behind a user's goals (Achievement / Freedom / Security / Legacy). Learned
 -- from the words they use; persists even as goals change. ORB frames why-it-matters around these.
 create table if not exists orb_motivation (

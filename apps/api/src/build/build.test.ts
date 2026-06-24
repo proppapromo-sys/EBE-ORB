@@ -23,6 +23,8 @@ import { parseDecision, decisionDirective } from '../services/decision.js';
 import { synthesizePredictions } from '../services/behavior.js';
 import { decisionProfile } from '../services/personality.js';
 import { buildReflection, META_DIRECTIVE, AUDIT_DIRECTIVE, META_QUERY, AUDIT_QUERY } from '../services/metacognition.js';
+import { analyzePatterns } from '../services/events.js';
+import { buildSelfReg } from '../services/selfreg.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -222,6 +224,25 @@ test('decision: detects a choice and frames trade-offs, bias-guards, goals + dri
   // Decision profile is derived from learned tendencies.
   assert.equal(decisionProfile({ risk: { s: 0.5, n: 3 }, analytical: { s: 0.4, n: 3 } }).risk, 'high');
   assert.equal(decisionProfile({}).risk, 'medium');        // unknown → balanced default
+});
+
+test('events: clusters repeated activity into a recognized habit (time-of-day)', () => {
+  // Five "active" events, all in the morning (8am local) → ORB learns a morning routine.
+  const morning = [9, 10, 11, 12, 13].map((day) => ({ kind: 'active', label: '', at: new Date(2024, 0, day, 8, 30).getTime() }));
+  const pats = analyzePatterns(morning);
+  assert.ok(pats.some((p) => /active in the morning/i.test(p)));
+  // Too few occurrences → no habit claimed.
+  assert.equal(analyzePatterns([{ kind: 'active', label: '', at: Date.now() }]).length, 0);
+});
+
+test('self-regulation: reads follow-through, the avoided high-value task, and discipline trend', () => {
+  const weak = buildSelfReg({ done: 1, open: 4, deferred: 6, avoided: 'call the supplier' });
+  assert.match(weak, /1 of 5|20%/);
+  assert.match(weak, /call the supplier/);
+  assert.match(weak, /slipping|focus block/i);
+  const strong = buildSelfReg({ done: 8, open: 2, deferred: 1, avoided: null });
+  assert.match(strong, /strong follow-through|do what you say/i);
+  assert.match(buildSelfReg({ done: 0, open: 0, deferred: 0, avoided: null }), /nothing tracked/i);
 });
 
 test('meta-cognition: reflection, confidence/assumption self-check, and process-vs-outcome audit', () => {

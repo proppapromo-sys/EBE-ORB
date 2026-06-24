@@ -31,6 +31,8 @@ import { observeMotivation, motivationDirective, describeMotivation, parseDriver
 import { parseDecision, decisionDirective } from '../services/decision.js';
 import { predictBehavior, formatPredictions } from '../services/behavior.js';
 import { reflect, META_DIRECTIVE, AUDIT_DIRECTIVE, META_QUERY, AUDIT_QUERY } from '../services/metacognition.js';
+import { logEvent, habitPredictions, formatPatterns } from '../services/events.js';
+import { selfRegulation } from '../services/selfreg.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -566,6 +568,16 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: formatObjectives(await listObjectives(userId).catch(() => [])), route: 'fast' as const, model: 'goals' };
   }
 
+  // Self-Regulation: the execution read — follow-through, the avoided high-value task, discipline trend.
+  if (/\b(how'?s|how is|what'?s) my (?:follow[- ]through|discipline|execution|consistency)\b|\bam i (?:executing|following through|staying (?:on track|focused|disciplined))\b|\b(?:keep|hold) me accountable\b/i.test(message)) {
+    return { mode: 'fast' as const, answer: await selfRegulation(userId).catch(() => "Give me a few commitments to track and I'll keep you honest."), route: 'fast' as const, model: 'selfreg' };
+  }
+
+  // Self-Regulation / habits: the patterns ORB has noticed in how the user actually works.
+  if (/\bwhat are my (?:habits|patterns|routines?)\b|\bwhen am i (?:usually )?(?:most )?(?:active|productive)\b|\bmy (?:daily )?routine\b/i.test(message)) {
+    return { mode: 'fast' as const, answer: formatPatterns(await habitPredictions(userId).catch(() => [])), route: 'fast' as const, model: 'habits' };
+  }
+
   // Meta-Cognition: strategic reflection — step back and look at the whole picture honestly.
   if (META_QUERY.test(message) && !AUDIT_QUERY.test(message)) {
     return { mode: 'fast' as const, answer: await reflect(userId).catch(() => "Let's set a goal or two first, then I can reflect with you."), route: 'fast' as const, model: 'meta' };
@@ -672,7 +684,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // Attention & Goals: track stated intentions and completions. If the user is re-raising something
     // important they keep putting off, surface a gentle nudge on this turn.
     const intent = await noteIntent(userId, message).catch(() => null);
-    void completeIntent(userId, message).catch(() => {});
+    completeIntent(userId, message).then((g) => { if (g) void logEvent(userId, 'completed', g.action); }).catch(() => {});
+    void logEvent(userId, 'active').catch(() => {});   // timestamped activity → habit/time-of-day patterns
     const nudge = intent && intent.deferred ? nudgeFor(intent.goal) : null;
     let liveCtx = toolCtx;
     if (!liveCtx && needsContext(message)) liveCtx = JSON.stringify(await gatherContext(userId)).slice(0, 4000);

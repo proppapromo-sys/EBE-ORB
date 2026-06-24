@@ -93,6 +93,19 @@ export function nudgeFor(g: Goal): string | null {
   return null;
 }
 
+/** Execution stats for self-regulation: how much the user closes vs lets slip, and the avoided one. */
+export async function goalStats(userId: string): Promise<{ done: number; open: number; deferred: number; avoided: string | null }> {
+  const map = await loadGoals(userId);
+  let done = 0, open = 0, deferred = 0, avoided: string | null = null, avoidScore = -1;
+  for (const g of map.values()) {
+    if (g.done) { done++; continue; }
+    open++; deferred += g.deferrals;
+    const score = g.importance * 2 + g.deferrals * 3;
+    if (g.deferrals >= 1 && g.importance >= 2 && score > avoidScore) { avoidScore = score; avoided = g.action; }
+  }
+  return { done, open, deferred, avoided };
+}
+
 export function formatPending(goals: Goal[]): string {
   if (!goals.length) return "You're clear — nothing's slipping that I'm tracking.";
   return 'Here\'s what\'s been slipping, most pressing first:\n' +
