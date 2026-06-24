@@ -50,6 +50,7 @@ import { ANTIFRAGILE_QUERY, ANTIFRAGILE_DIRECTIVE } from '../services/antifragil
 import { parseLesson, rankLessons, formatLessons, LESSONS_QUERY } from '../services/lessons.js';
 import { DISCOVERY_QUERY, DISCOVERY_DIRECTIVE } from '../services/discovery.js';
 import { GOVERNANCE_QUERY, GOVERNANCE_DIRECTIVE } from '../services/governance.js';
+import { CIVILIZATION_QUERY, CIVILIZATION_DIRECTIVE } from '../services/civilization.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -377,6 +378,14 @@ test('stewardship of intelligence (#37): governance posture — tiers, oversight
   assert.ok(GOVERNANCE_QUERY.test('does this need human approval'));
   assert.match(GOVERNANCE_DIRECTIVE, /confirm-first|sovereign|transparent|authority tiers|who bears the risk/i);
   assert.equal(GOVERNANCE_QUERY.test('what time is my meeting'), false);
+});
+
+test('civilization operating system (#38): reasons at society scale, excludes plain tasks', () => {
+  assert.ok(CIVILIZATION_QUERY.test('what actually benefits humanity here'));
+  assert.ok(CIVILIZATION_QUERY.test('how do institutions coordinate at scale'));
+  assert.ok(CIVILIZATION_QUERY.test('what\'s good for society and future generations'));
+  assert.match(CIVILIZATION_DIRECTIVE, /civilization scale|institutions|commons|second-order|sovereign/i);
+  assert.equal(CIVILIZATION_QUERY.test('what time is my meeting'), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
