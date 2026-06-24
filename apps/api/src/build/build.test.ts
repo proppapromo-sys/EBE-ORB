@@ -39,6 +39,11 @@ import { EVOLUTION_QUERY, STEWARDSHIP_QUERY, STEWARDSHIP_DIRECTIVE, LEGACY_QUERY
 import { COSMIC_QUERY, UNIFIED_QUERY, UNIFIED_DIRECTIVE, REALITY_QUERY, REALITY_DIRECTIVE, IMPROVEMENT_QUERY, INFINITE_PRINCIPLE } from '../services/unified.js';
 import { GENESIS_QUERY, GENESIS_DIRECTIVE } from '../services/genesis.js';
 import { EMERGENCE_QUERY, EMERGENCE_DIRECTIVE } from '../services/emergence.js';
+import { SYNTHESIS_QUERY, SYNTHESIS_DIRECTIVE } from '../services/synthesis.js';
+import { COHERENCE_QUERY, COHERENCE_DIRECTIVE, detectCoherenceGaps, formatCoherence } from '../services/coherence.js';
+import { RESONANCE_QUERY, RESONANCE_DIRECTIVE } from '../services/resonance.js';
+import { TRANSCENDENCE_QUERY, TRANSCENDENCE_DIRECTIVE } from '../services/transcendence.js';
+import { HARMONY_QUERY, HARMONY_DIRECTIVE } from '../services/harmony.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -274,6 +279,48 @@ test('genesis (#25) creates the new and emergence (#26) discovers the forming', 
   assert.match(EMERGENCE_DIRECTIVE, /weak signals?|emerging|intersection|signal from noise/i);
   // A plain task is neither.
   assert.equal([GENESIS_QUERY, EMERGENCE_QUERY].some((re) => re.test('what time is my meeting')), false);
+});
+
+test('integrative layers (#27-#31): combine, align, amplify, surpass, balance', () => {
+  // #27 synthesis
+  assert.ok(SYNTHESIS_QUERY.test('how do these all fit together'));
+  assert.ok(SYNTHESIS_QUERY.test('tie this together for me'));
+  assert.match(SYNTHESIS_DIRECTIVE, /synthesize|integrated understanding|intersections|sum of its parts/i);
+  // #28 coherence — directive + the REAL gap detector over stored goals
+  assert.ok(COHERENCE_QUERY.test('do my actions line up with my goals'));
+  assert.ok(COHERENCE_QUERY.test('am I being consistent'));
+  assert.match(COHERENCE_DIRECTIVE, /contradict|stated priorities|alignment/i);
+  // #29 resonance
+  assert.ok(RESONANCE_QUERY.test('what should I double down on'));
+  assert.ok(RESONANCE_QUERY.test('where is my highest leverage'));
+  assert.match(RESONANCE_DIRECTIVE, /amplify|leverage|compounding|double down/i);
+  // #30 transcendence
+  assert.ok(TRANSCENDENCE_QUERY.test('why does this limitation exist at all'));
+  assert.ok(TRANSCENDENCE_QUERY.test('let\'s think from first principles'));
+  assert.match(TRANSCENDENCE_DIRECTIVE, /assumption|first principles|inherited|step-change/i);
+  // #31 harmony
+  assert.ok(HARMONY_QUERY.test('how do I keep work-life balance'));
+  assert.ok(HARMONY_QUERY.test('I\'m worried about burnout'));
+  assert.match(HARMONY_DIRECTIVE, /balance|sustainable flourishing|competing|gets weaker/i);
+  // A plain task triggers none of them.
+  assert.equal([SYNTHESIS_QUERY, COHERENCE_QUERY, RESONANCE_QUERY, TRANSCENDENCE_QUERY, HARMONY_QUERY].some((re) => re.test('what time is my meeting')), false);
+});
+
+test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
+  const now = Date.now();
+  const goals = [
+    { id: 'a', action: 'exercise daily', importance: 3, created: now, lastSeen: now, deferrals: 3, done: false },
+    { id: 'b', action: 'reply to Sam', importance: 1, created: now, lastSeen: now, deferrals: 4, done: false },
+    { id: 'c', action: 'finish taxes', importance: 3, created: now, lastSeen: now, deferrals: 0, done: false },
+    { id: 'd', action: 'ship feature', importance: 3, created: now, lastSeen: now, deferrals: 5, done: true },
+  ];
+  const gaps = detectCoherenceGaps(goals);
+  // Only the high-importance, repeatedly-deferred, not-done goal qualifies.
+  assert.equal(gaps.length, 1);
+  assert.equal(gaps[0].action, 'exercise daily');
+  assert.match(formatCoherence(gaps), /don't line up|exercise daily/);
+  // No goals → no false alarms.
+  assert.equal(formatCoherence(detectCoherenceGaps([])), '');
 });
 
 test('architecture: unifies every layer into one briefing and can describe its own stack', () => {

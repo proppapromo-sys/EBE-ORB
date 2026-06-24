@@ -46,6 +46,11 @@ import { EVOLUTION_QUERY, EVOLUTION_DIRECTIVE, STEWARDSHIP_QUERY, STEWARDSHIP_DI
 import { COSMIC_QUERY, COSMIC_DIRECTIVE, UNIFIED_QUERY, UNIFIED_DIRECTIVE, REALITY_QUERY, REALITY_DIRECTIVE, IMPROVEMENT_QUERY, INFINITE_PRINCIPLE } from '../services/unified.js';
 import { GENESIS_QUERY, GENESIS_DIRECTIVE } from '../services/genesis.js';
 import { EMERGENCE_QUERY, EMERGENCE_DIRECTIVE } from '../services/emergence.js';
+import { SYNTHESIS_QUERY, SYNTHESIS_DIRECTIVE } from '../services/synthesis.js';
+import { COHERENCE_QUERY, COHERENCE_DIRECTIVE, detectCoherenceGaps, formatCoherence } from '../services/coherence.js';
+import { RESONANCE_QUERY, RESONANCE_DIRECTIVE } from '../services/resonance.js';
+import { TRANSCENDENCE_QUERY, TRANSCENDENCE_DIRECTIVE } from '../services/transcendence.js';
+import { HARMONY_QUERY, HARMONY_DIRECTIVE } from '../services/harmony.js';
 import { parseReliability, recordReliability, reliabilityOf, roster } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -812,7 +817,10 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const legacyQ = LEGACY_QUERY.test(message), cosmic = COSMIC_QUERY.test(message), unified = UNIFIED_QUERY.test(message);
     const realityCheck = REALITY_QUERY.test(message);   // #23 calibrate to evidence
     const genesis = GENESIS_QUERY.test(message), emerge = EMERGENCE_QUERY.test(message);   // #25 create, #26 discover
-    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge;
+    const synth = SYNTHESIS_QUERY.test(message), coherent = COHERENCE_QUERY.test(message);   // #27 combine, #28 align
+    const resonant = RESONANCE_QUERY.test(message), transcend = TRANSCENDENCE_QUERY.test(message);   // #29 amplify, #30 surpass
+    const harmonic = HARMONY_QUERY.test(message);   // #31 balance competing forces
+    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic;
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
       : (deepThink && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
@@ -858,7 +866,9 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const higherDir = urgent ? '' : (
       (orchestrating ? ORCHESTRATION_DIRECTIVE : '') + (evolving ? EVOLUTION_DIRECTIVE : '') + (steward ? STEWARDSHIP_DIRECTIVE : '')
       + (legacyQ ? LEGACY_DIRECTIVE : '') + (cosmic ? COSMIC_DIRECTIVE : '') + (unified ? UNIFIED_DIRECTIVE : '') + (realityCheck ? REALITY_DIRECTIVE : '')
-      + (genesis ? GENESIS_DIRECTIVE : '') + (emerge ? EMERGENCE_DIRECTIVE : ''));
+      + (genesis ? GENESIS_DIRECTIVE : '') + (emerge ? EMERGENCE_DIRECTIVE : '')
+      + (synth ? SYNTHESIS_DIRECTIVE : '') + (coherent ? COHERENCE_DIRECTIVE : '') + (resonant ? RESONANCE_DIRECTIVE : '') + (transcend ? TRANSCENDENCE_DIRECTIVE : '')
+      + (harmonic ? HARMONY_DIRECTIVE : ''));
     const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir + higherDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));
@@ -868,7 +878,14 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // Situational awareness: the first time a loud place is detected, ORB says so once (then drops it).
     const envNote = (noisy && lang.code === 'en' && shouldNoteEnv(userId)) ? "Sounds loud where you are — I'll keep this short. " : '';
     // Behavioral nudge for a high-impact thing the user keeps deferring (English turns only).
-    const lead = (nudge && lang.code === 'en') ? `${nudge}\n\n` : '';
+    const nudgeLead = (nudge && lang.code === 'en') ? `${nudge}\n\n` : '';
+    // #28 Coherence: when asked if things line up, surface REAL measured gaps (stated-important vs. deferred goals).
+    let cohLead = '';
+    if (coherent && lang.code === 'en') {
+      const gaps = formatCoherence(detectCoherenceGaps(await pendingGoals(userId, 12).catch(() => [])));
+      if (gaps) cohLead = `${gaps}\n\n`;
+    }
+    const lead = nudgeLead + cohLead;
     return { mode: 'fast' as const, answer: lead + envNote + routed.answer, route: routed.route, model: routed.label, voice, lang: lang.locale };
   }
 
