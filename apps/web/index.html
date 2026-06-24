@@ -131,7 +131,6 @@
   <div class="row">CONFIRM-FIRST. ENABLED</div>
   <div class="row">CORE PULSE.... <span id="st-pulse">NOMINAL</span></div>
   <div class="row">TIME.......... <span id="st-time">—</span></div>
-  <div class="row">WEATHER....... <span id="st-weather">—</span></div>
   <div class="row">NET........... <span id="st-net">—</span></div>
 </div>
 <div id="speaking">▮ AUDIBLE OUTPUT ACTIVE · CORE PULSE SYNC: PEAK ▮</div>
@@ -287,60 +286,48 @@ function drawNeural(pulse){
   }
 }
 
-// ORB = a living cluster of vibrant "data" — a rotating 3D sphere of glowing particles, some
-// flickering as Matrix glyphs. Green/cyan dominant with magenta + gold pops. Reacts to the voice.
-let ORB_PARTS=null;
-const GLYPHS='01ｱｲｳｴｶｷｸ0123456789<>*+=#$%'.split('');
+// ORB = a living DNA double helix (ORB runs on a genome). Two glowing strands spiral and twist
+// in 3D with vibrant base-pair rungs. Green/cyan with magenta + gold sparks. Reacts to the voice.
 const HUES=[145,160,175,135,120,190,300,48,165,150];   // green/cyan heavy, magenta + gold sparks
-function buildParticles(n){
-  const pts=[]; const gold=Math.PI*(3-Math.sqrt(5));
-  for(let i=0;i<n;i++){
-    const y=1-(i/(n-1))*2, rad=Math.sqrt(Math.max(0,1-y*y)), th=gold*i;
-    pts.push({x:Math.cos(th)*rad, y, z:Math.sin(th)*rad,
-      hue:HUES[(Math.random()*HUES.length)|0], tw:Math.random()*6.283,
-      glyph:Math.random()<0.16, gi:(Math.random()*GLYPHS.length)|0});
-  }
-  return pts;
-}
 function drawLucidOrb(pulse){
-  if(!ORB_PARTS) ORB_PARTS=buildParticles(Math.min(1100, Math.max(600, Math.round(R*5))));
   const r=R*pulse, base=R/150;
-  const ry=t*0.22, rx=0.35*Math.sin(t*0.13);
-  const cy=Math.cos(ry),sy=Math.sin(ry),cx=Math.cos(rx),sx=Math.sin(rx);
   ctx.save();
   ctx.globalCompositeOperation='lighter';
-  ctx.textAlign='center';ctx.textBaseline='middle';
 
-  // inner glow core
+  // soft glow core
   const core=ctx.createRadialGradient(CX,CY,0,CX,CY,r*1.1);
-  core.addColorStop(0,`rgba(70,255,180,${0.07+0.20*amp})`);core.addColorStop(0.6,`rgba(40,160,255,${0.04+0.08*amp})`);core.addColorStop(1,'rgba(0,30,25,0)');
+  core.addColorStop(0,`rgba(70,255,180,${0.06+0.18*amp})`);core.addColorStop(0.6,`rgba(40,160,255,${0.04+0.08*amp})`);core.addColorStop(1,'rgba(0,30,25,0)');
   ctx.fillStyle=core;ctx.beginPath();ctx.arc(CX,CY,r*1.1,0,7);ctx.fill();
 
-  // project every particle (rotate Y then X), sort far→near for depth
-  const proj=ORB_PARTS.map(p=>{
-    const x1=p.x*cy - p.z*sy, z1=p.x*sy + p.z*cy;
-    const y2=p.y*cx - z1*sx, z2=p.y*sx + z1*cx;
-    return {x:x1, y:y2, z:z2, p};
-  });
-  proj.sort((a,b)=>a.z-b.z);
+  // build the helix — two strands + base-pair rungs, spinning around the vertical axis
+  const N=46, helixR=r*0.5, turns=2.3, spin=t*0.7, tilt=0.22*Math.sin(t*0.18);
+  const ct=Math.cos(tilt), st=Math.sin(tilt);
+  const rungs=[];
+  for(let i=0;i<N;i++){
+    const f=i/(N-1), yy=(f-0.5)*1.84*r, ang=f*turns*6.283+spin, p=[];
+    for(let s=0;s<2;s++){
+      const a=ang+s*Math.PI, x=Math.cos(a)*helixR, z0=Math.sin(a)*helixR;
+      p.push({x, y:yy*ct - z0*st, z:yy*st + z0*ct});
+    }
+    rungs.push({a:p[0], b:p[1], z:(p[0].z+p[1].z)/2, hue:HUES[i%HUES.length]});
+  }
+  rungs.sort((u,v)=>u.z-v.z);                                 // far → near
 
-  const tick=(t*7)|0;
-  for(const o of proj){
-    const d=(o.z+1)/2;                                  // 0 back … 1 front
-    const px=CX+o.x*r, py=CY+o.y*r;
-    const tw=0.55+0.45*Math.sin(t*3+o.p.tw);            // twinkle
-    const a=Math.min(1,(0.10+0.9*d)*tw*(0.75+0.5*amp));
-    const light=42+30*d;
-    if(o.p.glyph && d>0.5){
-      ctx.font=`${Math.round(base*(7+7*d))}px "DejaVu Sans Mono",monospace`;
-      ctx.fillStyle=`hsla(${o.p.hue},100%,${light+12}%,${a})`;
-      ctx.fillText(GLYPHS[(o.p.gi+tick)%GLYPHS.length], px, py);
-    } else {
-      const sz=base*(0.7+2.6*d);
-      ctx.fillStyle=`hsla(${o.p.hue},100%,${light}%,${a*0.4})`;     // soft glow
-      ctx.beginPath();ctx.arc(px,py,sz*2.4,0,7);ctx.fill();
-      ctx.fillStyle=`hsla(${o.p.hue},100%,${Math.min(88,light+30)}%,${a})`;  // bright core
-      ctx.beginPath();ctx.arc(px,py,sz,0,7);ctx.fill();
+  const dep=z=>Math.max(0,Math.min(1,(z+helixR)/(2*helixR)));
+  const env=0.7+0.5*amp;
+  for(const ru of rungs){
+    const da=dep(ru.a.z), db=dep(ru.b.z), dm=(da+db)/2;
+    // base-pair rung
+    ctx.strokeStyle=`hsla(${ru.hue},100%,${48+22*dm}%,${(0.10+0.5*dm)*env})`;
+    ctx.lineWidth=Math.max(0.5, base*0.7*(0.4+dm));
+    ctx.beginPath();ctx.moveTo(CX+ru.a.x,CY+ru.a.y);ctx.lineTo(CX+ru.b.x,CY+ru.b.y);ctx.stroke();
+    // strand nodes (glow + bright core)
+    for(const nd of [[ru.a,da],[ru.b,db]]){
+      const pt=nd[0], d=nd[1], sz=base*(0.8+2.4*d), al=Math.min(1,(0.2+0.8*d)*env);
+      ctx.fillStyle=`hsla(${ru.hue},100%,${46+30*d}%,${al*0.35})`;
+      ctx.beginPath();ctx.arc(CX+pt.x,CY+pt.y,sz*2.4,0,7);ctx.fill();
+      ctx.fillStyle=`hsla(${ru.hue},100%,${Math.min(90,58+30*d)}%,${al})`;
+      ctx.beginPath();ctx.arc(CX+pt.x,CY+pt.y,sz,0,7);ctx.fill();
     }
   }
   ctx.restore();
