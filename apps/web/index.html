@@ -310,13 +310,14 @@ function drawLucidOrb(pulse){
   body.addColorStop(1,'#0e2057');
   ctx.fillStyle=body;ctx.beginPath();ctx.arc(CX,CY,r,0,7);ctx.fill();
 
-  // 3) inner drift + bright specular hotspot (clipped to the sphere, additive)
+  // 3) subtle rotation: soft surface bands sweep around (sphere turning under a fixed light)
   ctx.save();ctx.beginPath();ctx.arc(CX,CY,r,0,7);ctx.clip();ctx.globalCompositeOperation='lighter';
-  for(let i=0;i<4;i++){
-    const a=t*0.3+i*1.7, dist=r*(0.18+0.16*Math.sin(t*0.4+i));
-    const bx=CX+Math.cos(a)*dist, by=CY+Math.sin(a*0.8+i)*dist, br=r*0.55;
+  const rot=t*0.4;
+  for(let i=0;i<3;i++){
+    const a=rot+i*2.094;
+    const bx=CX+Math.cos(a)*r*0.34, by=CY-r*0.12+Math.sin(a)*r*0.20, br=r*0.6;
     const g=ctx.createRadialGradient(bx,by,0,bx,by,br);
-    g.addColorStop(0,`rgba(150,210,255,${0.05+0.06*amp})`);g.addColorStop(1,'rgba(150,210,255,0)');
+    g.addColorStop(0,`rgba(150,210,255,${0.045+0.05*amp})`);g.addColorStop(1,'rgba(150,210,255,0)');
     ctx.fillStyle=g;ctx.beginPath();ctx.arc(bx,by,br,0,7);ctx.fill();
   }
   const spec=ctx.createRadialGradient(hx,hy,0,hx,hy,r*0.55);
