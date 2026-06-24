@@ -20,6 +20,8 @@ import { priorityScore, classifyTier, focusList } from '../services/attention.js
 import { parseObjective, setObjective, updateProgress, progressOf, listObjectives, detectConflicts, classifyLevel, classifyType } from '../services/objectives.js';
 import { observeMotivation, topDrivers, motivationDirective, parseDriver, setDriver } from '../services/motivation.js';
 import { parseDecision, decisionDirective } from '../services/decision.js';
+import { synthesizePredictions } from '../services/behavior.js';
+import { decisionProfile } from '../services/personality.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -202,17 +204,33 @@ test('avatar: gated to top tiers, off by default, always disclosed', () => {
   assert.equal(avatarConfigured(), false);   // no DID_API_KEY in test env → off, degrades gracefully
 });
 
-test('decision: detects a choice and frames the trade-offs against goals + drivers', () => {
+test('decision: detects a choice and frames trade-offs, bias-guards, goals + drivers + profile', () => {
   const d = parseDecision('Should I hire now or wait a quarter?');
   assert.deepEqual(d?.options, ['hire now', 'wait a quarter']);
   assert.ok(parseDecision('choose between the Lagos office and the London office'));
   assert.ok(parseDecision('Runway vs Veo'));
   assert.equal(parseDecision('what time is my meeting?'), null);   // not a decision
 
-  const dir = decisionDirective(d!, ['freedom', 'security']);
-  assert.match(dir, /trade-?off/i);
-  assert.match(dir, /one clear recommendation|commit to ONE/i);
-  assert.match(dir, /freedom, security/i);   // weighed through the user's drivers
+  const dir = decisionDirective(d!, ['freedom', 'security'], { risk: 'high', style: 'analytical' });
+  assert.match(dir, /cost\/risk|likelihood/i);
+  assert.match(dir, /commit to ONE/i);
+  assert.match(dir, /freedom, security/i);                 // weighed through the user's drivers
+  assert.match(dir, /confirmation bias|loss aversion|anchoring/i);  // guards against bias
+  assert.match(dir, /analytical|risk tolerance/i);         // tuned to their decision profile
+
+  // Decision profile is derived from learned tendencies.
+  assert.equal(decisionProfile({ risk: { s: 0.5, n: 3 }, analytical: { s: 0.4, n: 3 } }).risk, 'high');
+  assert.equal(decisionProfile({}).risk, 'medium');        // unknown → balanced default
+});
+
+test('behavior prediction: synthesizes likely next moves from drivers, risk, goals, and deferrals', () => {
+  const bold = synthesizePredictions({ drivers: ['achievement'], risk: 'high', objectives: ['grow revenue to 50k'], deferring: ['call the supplier'] });
+  assert.ok(bold.some((p) => /bold moves|expansion|investment/i.test(p)));
+  assert.ok(bold.some((p) => /grow revenue/i.test(p)));
+  assert.ok(bold.some((p) => /call the supplier/i.test(p)));
+  const safe = synthesizePredictions({ drivers: ['security'], risk: 'low', objectives: [], deferring: [] });
+  assert.ok(safe.some((p) => /protecting|consolidat/i.test(p)));
+  assert.equal(synthesizePredictions({ drivers: [], risk: 'medium', objectives: [], deferring: [] }).length, 0);
 });
 
 test('motivation: learns the drivers behind goals and frames around them', async () => {

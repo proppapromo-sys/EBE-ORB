@@ -20,7 +20,7 @@ import { calculate, convertUnits } from '../services/calc.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type ConvoStyle, type HumorLevel, type SupportStyle } from '../services/convoPrefs.js';
-import { profileDirective, describeProfile } from '../services/personality.js';
+import { profileDirective, describeProfile, decisionProfile } from '../services/personality.js';
 import { analyzeComms, postureDirective, voiceFor, sceneDirective, sceneVoice, isUrgent, type Prosody, type Scene } from '../services/comms.js';
 import { detectLang } from '../services/lang.js';
 import { relate, aboutEntity, formatAbout, ingestItems, type IngestItem } from '../services/graph.js';
@@ -29,6 +29,7 @@ import { focusList, formatFocus } from '../services/attention.js';
 import { parseObjective, setObjective, updateProgress, listObjectives, formatObjectives, progressOf, goalsContext } from '../services/objectives.js';
 import { observeMotivation, motivationDirective, describeMotivation, parseDriver, setDriver, topDrivers } from '../services/motivation.js';
 import { parseDecision, decisionDirective } from '../services/decision.js';
+import { predictBehavior, formatPredictions } from '../services/behavior.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -564,6 +565,11 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: formatObjectives(await listObjectives(userId).catch(() => [])), route: 'fast' as const, model: 'goals' };
   }
 
+  // Behavior Prediction: anticipate the user's likely next moves from their patterns.
+  if (/\bwhat am i likely to (?:do|decide|choose)\b|\bpredict my (?:behavio(?:u)?r|next move|decisions?)\b|\bwhat would i (?:probably|likely) (?:do|decide)\b|\bwhat'?s my likely next move\b|\bwhat will i (?:probably )?do next\b/i.test(message)) {
+    return { mode: 'fast' as const, answer: formatPredictions(await predictBehavior(userId).catch(() => [])), route: 'fast' as const, model: 'behavior' };
+  }
+
   // Attention Engine: the spotlight — what deserves focus right now, priority-scored (emergency first).
   if (/\bwhat (?:needs|deserves|should have) my attention\b|\bwhat(?:'s| is) (?:the )?most important\b|\bmy (?:top )?priorit(?:y|ies)\b|\bwhat should i focus on right now\b|\bwhat matters (?:most|right now)\b|\bprioriti[sz]e my\b/i.test(message)) {
     return { mode: 'fast' as const, answer: formatFocus(await focusList(userId).catch(() => [])), route: 'fast' as const, model: 'attention' };
@@ -702,7 +708,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // Communication posture (urgency/emotion) + learned personality tendencies → quiet directives
     // shaping HOW ORB answers. Personality is skipped when rushed (speed wins); wit is dropped when
     // the user is frustrated (a chief of staff reads the room).
-    const decisionDir = (decision && !urgent) ? decisionDirective(decision, await topDrivers(userId).catch(() => [])) : '';
+    const decisionDir = (decision && !urgent) ? decisionDirective(decision, await topDrivers(userId).catch(() => []), decisionProfile(prefs.traits)) : '';
     const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));

@@ -73,6 +73,15 @@ export function profileDirective(traits: Traits): string {
   return ` Communication tendencies for this user (adapt to these naturally; never mention or explain them): ${c.join('; ')}.`;
 }
 
+/** A decision profile derived from the learned tendencies — risk tolerance and how they decide. */
+export function decisionProfile(traits: Traits): { risk: 'low' | 'medium' | 'high'; style: 'analytical' | 'intuitive' | 'balanced' } {
+  const r = traits.risk, a = traits.analytical, d = traits.decisive;
+  const risk = r && r.n >= 2 ? (r.s > 0.25 ? 'high' : r.s < -0.25 ? 'low' : 'medium') : 'medium';
+  const style = a && a.n >= 2 && a.s > 0.25 ? 'analytical'
+    : (d && d.n >= 2 && d.s > 0.25 && (!a || a.s <= 0)) ? 'intuitive' : 'balanced';
+  return { risk, style };
+}
+
 /** Plain-language, non-labeling read-back of what ORB has learned. Honest when it's still early. */
 export function describeProfile(traits: Traits): string {
   const p: string[] = [];

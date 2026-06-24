@@ -26,10 +26,15 @@ export function parseDecision(text: string): Decision | null {
   return null;
 }
 
-/** A directive that frames how ORB should reason about the choice — trade-offs, goals, drivers, a pick. */
-export function decisionDirective(d: Decision, drivers: string[] = []): string {
+export type DecisionProfile = { risk: 'low' | 'medium' | 'high'; style: 'analytical' | 'intuitive' | 'balanced' };
+
+/** A directive that frames how ORB reasons about the choice — options, risk, bias-guards, goals, a pick. */
+export function decisionDirective(d: Decision, drivers: string[] = [], profile?: DecisionProfile): string {
   const drv = drivers.length
     ? ` Weigh them through what drives this user (${drivers.join(', ')}) — surface the angle that actually matters to them.`
     : '';
-  return ` The user is weighing a decision: "${d.options[0]}" vs "${d.options[1]}". Be a decision partner: name the single biggest trade-off of EACH option (its key upside against its main cost or risk), check both against the user's goals,${drv} then commit to ONE clear recommendation with a one-line reason. Be concrete; don't just list pros and cons.`;
+  const prof = profile
+    ? ` They tend to decide ${profile.style} with ${profile.risk} risk tolerance — ${profile.style === 'analytical' ? 'show the reasoning and rough numbers' : profile.style === 'intuitive' ? 'lead with a clear recommendation, light on detail' : 'pair a clear pick with the key reasoning'}; ${profile.risk === 'low' ? 'weight downside protection' : profile.risk === 'high' ? "don't over-warn on risk" : 'keep risk and reward balanced'}.`
+    : '';
+  return ` The user is weighing a decision: "${d.options[0]}" vs "${d.options[1]}". Be a decision partner: for EACH option give its main benefit, its main cost/risk, and a rough sense of likelihood; check both against the user's goals.${drv}${prof} Guard against bias — don't merely confirm their existing lean (confirmation bias), don't overweight a recent event (availability) or the first figure mentioned (anchoring), and remember a loss stings more than an equal gain (loss aversion). Then commit to ONE clear recommendation with a one-line why — judged by sound reasoning, not a guaranteed outcome. Be concrete; this is good-vs-good, not pros-and-cons filler.`;
 }
