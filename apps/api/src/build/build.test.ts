@@ -68,6 +68,14 @@ import { FRONTIER_QUERY, FRONTIER_DIRECTIVE } from '../services/frontier.js';
 import { CREATION_QUERY, CREATION_DIRECTIVE } from '../services/creation.js';
 import { SELECTION_QUERY, SELECTION_DIRECTIVE } from '../services/selection.js';
 import { CIVEVOLUTION_QUERY, CIVEVOLUTION_DIRECTIVE } from '../services/civevolution.js';
+import { POTENTIAL_QUERY, POTENTIAL_DIRECTIVE } from '../services/potential.js';
+import { COLLECTIVE_QUERY, COLLECTIVE_DIRECTIVE } from '../services/hivemind.js';
+import { PRINCIPLE_QUERY, PRINCIPLE_DIRECTIVE } from '../services/principles.js';
+import { FUTUREMEM_QUERY, FUTUREMEM_DIRECTIVE } from '../services/futurememory.js';
+import { DESTINY_QUERY, DESTINY_DIRECTIVE } from '../services/destiny.js';
+import { INFCOORD_QUERY, PLANETARY_QUERY, SPECIES_QUERY, EXISTENTIAL_QUERY, EXISTENTIAL_DIRECTIVE, INTERGEN_QUERY } from '../services/planetary.js';
+import { MEANING_QUERY, MEANING_DIRECTIVE } from '../services/meaning.js';
+import { CREATE2_QUERY, DESIGN_QUERY, DESIGN_DIRECTIVE } from '../services/design.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -534,6 +542,48 @@ test('create/select/civ-evolve (#53-#55): build it, choose among futures, advanc
   assert.match(CIVEVOLUTION_DIRECTIVE, /stage|complexity outpac|preserved|institutions|sovereign/i);
   // Plain task triggers none.
   assert.equal([CREATION_QUERY, SELECTION_QUERY, CIVEVOLUTION_QUERY].some((re) => re.test('what time is my meeting')), false);
+});
+
+test('human/collective/principle layers (#56-#58)', () => {
+  assert.ok(POTENTIAL_QUERY.test('how do I reach my full potential'));
+  assert.ok(POTENTIAL_QUERY.test('what untapped strengths do I have'));
+  assert.match(POTENTIAL_DIRECTIVE, /developmental|growth ladder|untapped|practice|first step/i);
+  assert.ok(COLLECTIVE_QUERY.test('how do we think together better'));
+  assert.ok(COLLECTIVE_QUERY.test('tap into collective intelligence'));
+  assert.match(COLLECTIVE_DIRECTIVE, /network|collective|distributed|shared|bottleneck/i);
+  assert.ok(PRINCIPLE_QUERY.test('what\'s the timeless principle here'));
+  assert.ok(PRINCIPLE_QUERY.test('where else does this principle apply'));
+  assert.match(PRINCIPLE_DIRECTIVE, /principle|cross-domain|timeless|where else/i);
+});
+
+test('future-facing layers (#59-#60)', () => {
+  assert.ok(FUTUREMEM_QUERY.test('what would future me regret'));
+  assert.ok(FUTUREMEM_QUERY.test('let\'s do a premortem on this'));
+  assert.match(FUTUREMEM_DIRECTIVE, /premortem|future|regret|and then what|tomorrow/i);
+  assert.ok(DESTINY_QUERY.test('if I continue on this path where will I be'));
+  assert.ok(DESTINY_QUERY.test('what trajectory am I on'));
+  assert.match(DESTINY_DIRECTIVE, /trajectory|momentum|path-depend|direction|where (?:does|it) (?:this|lead)/i);
+});
+
+test('planetary/survival layers (#61-#65)', () => {
+  assert.ok(INFCOORD_QUERY.test('how do we coordinate at planetary scale'));
+  assert.ok(PLANETARY_QUERY.test('global systems and cascade failures'));
+  assert.ok(SPECIES_QUERY.test('how should humanity evolve as a species'));
+  assert.ok(EXISTENTIAL_QUERY.test('what could cause irreversible collapse'));
+  assert.match(EXISTENTIAL_DIRECTIVE, /irreversible|resilience|cascade|catastrophic|survival/i);
+  assert.ok(INTERGEN_QUERY.test('what do we owe future generations'));
+});
+
+test('meaning + create + design (#66-#68)', () => {
+  assert.ok(MEANING_QUERY.test('I\'m successful but feel empty'));
+  assert.ok(MEANING_QUERY.test('does any of this even matter'));
+  assert.match(MEANING_DIRECTIVE, /meaning|contribution|connection|significance|serves/i);
+  assert.ok(CREATE2_QUERY.test('let\'s invent something that doesn\'t exist'));
+  assert.ok(DESIGN_QUERY.test('how should we structure the team'));
+  assert.ok(DESIGN_QUERY.test('align incentives so people do the right thing'));
+  assert.match(DESIGN_DIRECTIVE, /structure|incentive|architecture|resilience|path of least resistance/i);
+  // Plain task triggers none of the batch.
+  assert.equal([POTENTIAL_QUERY, COLLECTIVE_QUERY, PRINCIPLE_QUERY, FUTUREMEM_QUERY, DESTINY_QUERY, MEANING_QUERY, DESIGN_QUERY, CREATE2_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
