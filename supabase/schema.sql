@@ -168,6 +168,19 @@ alter table orb_convo_prefs add column if not exists humor text not null default
 alter table orb_convo_prefs add column if not exists support text not null default 'standard';
 alter table orb_convo_prefs add column if not exists traits jsonb not null default '{}'::jsonb;
 
+-- Attention & Goals — open commitments ORB tracks so it can notice what you keep putting off.
+create table if not exists orb_goals (
+  user_id    text not null,
+  id         text not null,            -- normalized action key
+  action     text not null,
+  importance integer not null default 1,
+  created    timestamptz default now(),
+  last_seen  timestamptz default now(),
+  deferrals  integer not null default 0,
+  done       boolean not null default false,
+  primary key (user_id, id)
+);
+
 -- Digital Spatial Mapping — a per-user knowledge graph: entities (projects, people, businesses,
 -- documents, deals…) and the relationships between them. ORB navigates by meaning, not by location.
 create table if not exists orb_graph_nodes (

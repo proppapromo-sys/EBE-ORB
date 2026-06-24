@@ -24,6 +24,7 @@ import { profileDirective, describeProfile } from '../services/personality.js';
 import { analyzeComms, postureDirective, voiceFor, sceneDirective, sceneVoice, isUrgent, type Prosody, type Scene } from '../services/comms.js';
 import { detectLang } from '../services/lang.js';
 import { relate, aboutEntity, formatAbout, ingestItems, type IngestItem } from '../services/graph.js';
+import { noteIntent, completeIntent, pendingGoals, formatPending, nudgeFor } from '../services/goals.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -529,6 +530,11 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: acks[supportStyle], route: 'fast' as const, model: 'prefs' };
   }
 
+  // Attention & Goals: surface what the user keeps putting off, most pressing first.
+  if (/\bwhat(?:'s| is| has been)?\s*(?:slipping|been slipping)\b|\bwhat (?:should i|do i need to) (?:focus on|prioriti[sz]e|tackle first|do first)\b|\bwhat am i (?:forgetting|putting off|avoiding|procrastinating(?: on)?)\b|\bwhat have i been (?:putting off|avoiding|postponing)\b/i.test(message)) {
+    return { mode: 'fast' as const, answer: formatPending(await pendingGoals(userId).catch(() => [])), route: 'fast' as const, model: 'goals' };
+  }
+
   // Digital Spatial Mapping: auto-build the map from connected systems (calendar today).
   if (MAP_WORLD.test(message)) {
     const r = await mapMyWorld(userId);
@@ -611,6 +617,11 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const savedStyle = prefs.style;
     // Learn in the background — favorite phrasing + communication tendencies. Never blocks the answer.
     void observeMessage(userId, message).catch(() => {});
+    // Attention & Goals: track stated intentions and completions. If the user is re-raising something
+    // important they keep putting off, surface a gentle nudge on this turn.
+    const intent = await noteIntent(userId, message).catch(() => null);
+    void completeIntent(userId, message).catch(() => {});
+    const nudge = intent && intent.deferred ? nudgeFor(intent.goal) : null;
     let liveCtx = toolCtx;
     if (!liveCtx && needsContext(message)) liveCtx = JSON.stringify(await gatherContext(userId)).slice(0, 4000);
 
@@ -653,7 +664,9 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     if (cacheable && routed.ok && routed.answer) cacheSet(key, routed.answer);
     // Situational awareness: the first time a loud place is detected, ORB says so once (then drops it).
     const envNote = (noisy && lang.code === 'en' && shouldNoteEnv(userId)) ? "Sounds loud where you are — I'll keep this short. " : '';
-    return { mode: 'fast' as const, answer: envNote + routed.answer, route: routed.route, model: routed.label, voice, lang: lang.locale };
+    // Behavioral nudge for a high-impact thing the user keeps deferring (English turns only).
+    const lead = (nudge && lang.code === 'en') ? `${nudge}\n\n` : '';
+    return { mode: 'fast' as const, answer: lead + envNote + routed.answer, route: routed.route, model: routed.label, voice, lang: lang.locale };
   }
 
   const council = await runCouncil(userId, message, {

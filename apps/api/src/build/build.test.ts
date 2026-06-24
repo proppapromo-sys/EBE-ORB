@@ -15,6 +15,7 @@ import { detectLang } from '../services/lang.js';
 import { relate, aboutEntity, formatAbout, ingestItems } from '../services/graph.js';
 import { mentionsIn, senderName } from '../agents/masterAgent.js';
 import { avatarAllowedFor, avatarConfigured } from '../services/avatar.js';
+import { noteIntent, completeIntent, pendingGoals, nudgeFor } from '../services/goals.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -195,6 +196,27 @@ test('avatar: gated to top tiers, off by default, always disclosed', () => {
   assert.equal(avatarAllowedFor('pro'), false);
   assert.equal(avatarAllowedFor('free'), false);
   assert.equal(avatarConfigured(), false);   // no DID_API_KEY in test env → off, degrades gracefully
+});
+
+test('goals: tracks intentions, notices what keeps slipping, nudges, and closes on completion', async () => {
+  const u = 'test-goals@example.com';
+  // First mention — a new commitment (important: it's a client).
+  const a = await noteIntent(u, 'I need to call John, he is an important client');
+  assert.ok(a && !a.deferred && a.goal.importance === 3);
+  // Re-raised twice → ORB sees it being put off and nudges.
+  await noteIntent(u, 'I should call John');
+  const c = await noteIntent(u, 'I really need to call John');
+  assert.equal(c!.deferred, true);
+  assert.match(nudgeFor(c!.goal) || '', /call John.*\b3 times\b|knock it out/i);
+
+  // It rises to the top of "what's slipping".
+  const pend = await pendingGoals(u);
+  assert.ok(pend[0].action.toLowerCase().includes('call john'));
+
+  // Questions aren't commitments; completion closes it.
+  assert.equal(await noteIntent(u, 'do I need to call John?'), null);
+  assert.ok(await completeIntent(u, 'I just called John'));
+  assert.equal((await pendingGoals(u)).some((g) => g.id.includes('call john')), false);
 });
 
 test('thinking-partner: ORB helps clarify thinking instead of just answering', () => {
