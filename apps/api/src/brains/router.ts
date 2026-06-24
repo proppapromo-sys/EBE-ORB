@@ -52,9 +52,22 @@ function providerChain(cls: TaskClass): { provider: BrainProvider; model: string
 }
 
 /** Answer a request with one routed model, speaking as ORB. Falls back across providers on failure. */
+// Executive Wit — ORB's personality trait. A chief of staff who occasionally lands one sharp,
+// memorable observation (Observation + Truth + Unexpected Twist), then gets out of the way. The
+// guardrails matter more than the joke: sparingly, never distracting, never at the user's expense,
+// and silenced completely when the moment is wrong (handled by the caller via the `wit` flag).
+const WIT_DIRECTIVE =
+  ' Executive Wit: you are a sharp chief of staff with a dry, intelligent sense of humor. Occasionally — ' +
+  'not most turns — land ONE brief, clever observation: something true about the situation with an unexpected ' +
+  'twist (e.g. "You scheduled 12 hours of work into a 10-hour day — even physics has concerns."). Keep it ' +
+  'professional, warm, and under one sentence; never goofy, never at the user\'s expense, never a pun for its ' +
+  'own sake. If nothing genuinely clever fits, stay plain — forced wit is worse than none. The quip never ' +
+  'delays, replaces, or buries the actual answer or any important detail. Skip wit entirely for anything ' +
+  'sensitive, serious, or bad news (money trouble, health, conflict, errors, grief).';
+
 export async function routedAnswer(
   message: string,
-  opts: { images?: string[]; context?: string; style?: 'short' | 'detailed'; urgent?: boolean } = {}
+  opts: { images?: string[]; context?: string; style?: 'short' | 'detailed'; urgent?: boolean; wit?: boolean } = {}
 ): Promise<{ answer: string; route: TaskClass; model: string; label: string; ok: boolean }> {
   const cls = classifyTask(message, Boolean(opts.images && opts.images.length));
   // Adaptive Conversation Memory: honor the user's learned answer-length preference. "short" keeps
@@ -65,8 +78,10 @@ export async function routedAnswer(
     : 'Answer briefly and directly — one or two sentences unless more is truly needed.';
   // Urgency/tone: when the user sounds rushed, lead with the answer, no preamble or pleasantries.
   const urgentDirective = opts.urgent ? ' The user is in a hurry — give the answer first, no preamble.' : '';
+  // Executive Wit: only when enabled AND the user isn't rushed (speed beats cleverness when urgent).
+  const witDirective = (opts.wit && !opts.urgent) ? WIT_DIRECTIVE : '';
   const base = opts.context ? `Context (use silently, never read aloud):\n${opts.context}\n\nUser: ${message}` : message;
-  const user = `${styleDirective}${urgentDirective}\n\n${base}`;
+  const user = `${styleDirective}${urgentDirective}${witDirective}\n\n${base}`;
   const chain = providerChain(cls);
   // Keep spoken/chat answers short → far faster to generate. Heavy work goes through the council instead.
   const maxTokens = detailed ? 900 : cls === 'fast' ? 240 : 700;

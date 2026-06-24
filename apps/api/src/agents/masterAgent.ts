@@ -19,7 +19,7 @@ import { searchFlights, searchHotels, travelConfigured, duffelConfigured } from 
 import { calculate, convertUnits } from '../services/calc.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
-import { getStyle, setPrefs, recordCommand, topCommands, type ConvoStyle } from '../services/convoPrefs.js';
+import { getPrefs, setPrefs, recordCommand, topCommands, type ConvoStyle } from '../services/convoPrefs.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
 // Adaptive Conversation Memory — answer-length intent.
@@ -39,6 +39,10 @@ export function isUrgent(message: string): boolean {
   const letters = message.replace(/[^A-Za-z]/g, '');
   return letters.length >= 6 && letters === letters.toUpperCase();   // SHOUTING in all-caps
 }
+
+// Executive Wit toggle — the user can switch ORB's personality on or off in plain language.
+const WIT_OFF = /\b(turn off (?:the )?wit|no jokes?|be serious|cut the (?:jokes?|humor|wit)|stop being (?:funny|witty|cute)|just the facts|no humor|all business)\b/i;
+const WIT_ON = /\b(turn on (?:the )?wit|be (?:more )?(?:witty|playful|funny|clever)|add (?:some )?wit|lighten up|some humor|bring (?:back )?the wit)\b/i;
 
 // ORB runs on the Universal Genome. The five laws are not advice — they are the gate.
 const SYSTEM_PROMPT = `You are ORB, the user's Digital Chief of Staff, running on the Universal Genome.
@@ -369,6 +373,16 @@ export async function askOrb(
     return { mode: 'fast' as const, answer, route: 'fast' as const, model: 'prefs' };
   }
 
+  // Executive Wit toggle: turn ORB's personality on or off. WIT_OFF wins if the message hits both.
+  if (WIT_OFF.test(message) || WIT_ON.test(message)) {
+    const wit = !WIT_OFF.test(message);
+    await setPrefs(userId, { wit });
+    const answer = wit
+      ? "Wit's back on. I'll keep it sharp and rare — you won't even see most of them coming."
+      : "Understood — all business from here. I'll keep my observations to myself.";
+    return { mode: 'fast' as const, answer, route: 'fast' as const, model: 'prefs' };
+  }
+
   // Action mode: ORB *does* things — reminders/tasks now, email confirm-first. Nothing outward
   // goes without a "confirm". Checked before build so "remind me to build X" stays a reminder.
   const action = await handleAction(userId, message, { tz: opts.tz });
@@ -409,12 +423,13 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // (calendar/email/tasks/money). Plain questions answer straight from the model — no fetching.
     // Router → memory search + parallel agents (knowledge + Calendar/Email/File), all at once →
     // Finalizer → one fast answer. Cache reuses stable answers; live/personal data is never cached.
-    const [mems, toolCtx, savedStyle, faves] = await Promise.all([
+    const [mems, toolCtx, prefs, faves] = await Promise.all([
       recall(userId, message, 4).catch(() => []),
       toolContext(message, userId, { lat: opts.lat, lon: opts.lon }),
-      getStyle(userId).catch(() => 'short' as ConvoStyle),
+      getPrefs(userId).catch(() => ({ style: 'short' as ConvoStyle, pauseMs: 1600, commands: {}, wit: true })),
       topCommands(userId, 5).catch(() => [] as string[])
     ]);
+    const savedStyle = prefs.style;
     // Learn this phrasing in the background (short commands only) — never blocks the answer.
     void recordCommand(userId, message).catch(() => {});
     let liveCtx = toolCtx;
@@ -430,13 +445,13 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // Cache: only when no live/personal data was pulled (so cached answers can't go stale).
     // Key includes style + urgency so short/detailed/rushed answers don't collide.
     const cacheable = !liveCtx && !mems.length;
-    const key = `${userId}|${style}|${urgent ? 'u' : 'n'}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
+    const key = `${userId}|${style}|${urgent ? 'u' : 'n'}|${prefs.wit ? 'w' : 'p'}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
     if (cacheable) { const hit = cacheGet(key); if (hit) return { mode: 'fast' as const, answer: hit, route: 'fast' as const, model: 'cache' }; }
 
     const memCtx = mems.length ? `What I remember about you (use if relevant):\n${mems.map((m) => `- ${m.title}: ${m.content}`).join('\n')}` : '';
     const faveCtx = faves.length ? `Commands this user reaches for often (recognize these shortcuts, act on intent fast): ${faves.map((c) => `"${c}"`).join(', ')}.` : '';
     const context = [memCtx, faveCtx, liveCtx].filter(Boolean).join('\n\n') || undefined;
-    const routed = await routedAnswer(message, { images: opts.images, context, style, urgent });
+    const routed = await routedAnswer(message, { images: opts.images, context, style, urgent, wit: prefs.wit });
     if (cacheable && routed.ok && routed.answer) cacheSet(key, routed.answer);
     return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label };
   }

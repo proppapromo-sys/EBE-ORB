@@ -8,7 +8,7 @@ import { inferCategory, getBlueprint } from './blueprints.js';
 import { buildCapability } from './tiers.js';
 import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
 import { looksLikeBuildRequest, looksLikeVideoRequest, needsContext, isUrgent } from '../agents/masterAgent.js';
-import { recordCommand, topCommands, getPrefs } from '../services/convoPrefs.js';
+import { recordCommand, topCommands, getPrefs, setPrefs } from '../services/convoPrefs.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
 import { classifyTask, ROUTES } from '../brains/router.js';
@@ -102,6 +102,15 @@ test('convoPrefs: learns short commands, ignores private-length speech', async (
   assert.ok(top.includes("what's urgent"), 'recurring short command is remembered');
   const prefs = await getPrefs(u);
   assert.equal(Object.keys(prefs.commands).some((k) => k.length > 60), false, 'long private speech never stored');
+});
+
+test('convoPrefs: Executive Wit defaults on and toggles off/on', async () => {
+  const u = 'test-wit@example.com';
+  assert.equal((await getPrefs(u)).wit, true, 'wit is on by default');
+  await setPrefs(u, { wit: false });
+  assert.equal((await getPrefs(u)).wit, false, 'wit can be switched off');
+  await setPrefs(u, { wit: true });
+  assert.equal((await getPrefs(u)).wit, true, 'wit can be switched back on');
 });
 
 test('skills: voice cloning/recognition are owner-only and talk-triggered', () => {

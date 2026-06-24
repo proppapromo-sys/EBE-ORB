@@ -12,8 +12,8 @@
 import { supabase } from './supabase.js';
 
 export type ConvoStyle = 'short' | 'detailed';
-export type ConvoPrefs = { style: ConvoStyle; pauseMs: number; commands: Record<string, number> };
-const DEFAULTS: ConvoPrefs = { style: 'short', pauseMs: 1600, commands: {} };
+export type ConvoPrefs = { style: ConvoStyle; pauseMs: number; commands: Record<string, number>; wit: boolean };
+const DEFAULTS: ConvoPrefs = { style: 'short', pauseMs: 1600, commands: {}, wit: true };
 
 const TABLE = 'orb_convo_prefs';
 const cache = new Map<string, ConvoPrefs>();
@@ -21,18 +21,19 @@ const cache = new Map<string, ConvoPrefs>();
 const MAX_COMMANDS = 24;            // keep only the user's most-used phrasings
 const MAX_CMD_WORDS = 8;            // a "command" is short; longer text is private speech — never stored
 
-function clone(p: ConvoPrefs): ConvoPrefs { return { style: p.style, pauseMs: p.pauseMs, commands: { ...p.commands } }; }
+function clone(p: ConvoPrefs): ConvoPrefs { return { style: p.style, pauseMs: p.pauseMs, commands: { ...p.commands }, wit: p.wit }; }
 
 export async function getPrefs(userId: string): Promise<ConvoPrefs> {
   if (cache.has(userId)) return clone(cache.get(userId)!);
   if (supabase) {
     try {
-      const { data } = await supabase.from(TABLE).select('style,pause_ms,commands').eq('user_id', userId).maybeSingle();
+      const { data } = await supabase.from(TABLE).select('style,pause_ms,commands,wit').eq('user_id', userId).maybeSingle();
       if (data) {
         const p: ConvoPrefs = {
           style: data.style === 'detailed' ? 'detailed' : 'short',
           pauseMs: Number(data.pause_ms) || DEFAULTS.pauseMs,
-          commands: (data.commands && typeof data.commands === 'object') ? data.commands as Record<string, number> : {}
+          commands: (data.commands && typeof data.commands === 'object') ? data.commands as Record<string, number> : {},
+          wit: data.wit !== false   // on by default
         };
         cache.set(userId, p); return clone(p);
       }
@@ -89,7 +90,7 @@ async function persist(userId: string, cur: ConvoPrefs): Promise<void> {
   if (!supabase) return;
   try {
     await supabase.from(TABLE).upsert(
-      { user_id: userId, style: cur.style, pause_ms: cur.pauseMs, commands: cur.commands, updated_at: new Date().toISOString() },
+      { user_id: userId, style: cur.style, pause_ms: cur.pauseMs, commands: cur.commands, wit: cur.wit, updated_at: new Date().toISOString() },
       { onConflict: 'user_id' }
     );
   } catch { /* keep in-memory */ }
