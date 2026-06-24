@@ -61,6 +61,9 @@ import { SOURCE_QUERY, SOURCE_DIRECTIVE } from '../services/source.js';
 import { UNITY_QUERY, UNITY_DIRECTIVE } from '../services/unity.js';
 import { RECURSION_QUERY, RECURSION_DIRECTIVE } from '../services/recursion.js';
 import { AWAKENING_QUERY, AWAKENING_DIRECTIVE } from '../services/awakening.js';
+import { PERSPECTIVE_QUERY, PERSPECTIVE_DIRECTIVE } from '../services/perspectives.js';
+import { METAPURPOSE_QUERY, METAPURPOSE_DIRECTIVE } from '../services/metapurpose.js';
+import { LEARNING_QUERY, LEARNING_DIRECTIVE } from '../services/learning.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -485,6 +488,23 @@ test('awakening (#48): surfaces blind spots and reframes, excludes plain tasks',
   assert.ok(AWAKENING_QUERY.test('help me see this differently'));
   assert.match(AWAKENING_DIRECTIVE, /blind spot|hidden assumption|reframe|disagrees|perspective shift/i);
   assert.equal(AWAKENING_QUERY.test('what time is my meeting'), false);
+});
+
+test('apex layers (#49-#51): perspectives, deeper purpose, infinite learning', () => {
+  // #49 transcendent awareness — integrate multiple viewpoints
+  assert.ok(PERSPECTIVE_QUERY.test('show me this from all sides'));
+  assert.ok(PERSPECTIVE_QUERY.test('how would different stakeholders see this'));
+  assert.match(PERSPECTIVE_DIRECTIVE, /steel-man|partial truth|integrate|stakeholders?|standpoint/i);
+  // #50 infinite recursion of purpose — deepen the why
+  assert.ok(METAPURPOSE_QUERY.test('why does this really matter'));
+  assert.ok(METAPURPOSE_QUERY.test('what\'s the bigger why here'));
+  assert.match(METAPURPOSE_DIRECTIVE, /purpose chain|why does that matter|greater purpose|ladder/i);
+  // #51 infinite learning — learn from everything, forever
+  assert.ok(LEARNING_QUERY.test('what can I learn from this'));
+  assert.ok(LEARNING_QUERY.test('how do I learn faster'));
+  assert.match(LEARNING_DIRECTIVE, /more to know|what failed|update|remains unknown|next step/i);
+  // Plain task triggers none.
+  assert.equal([PERSPECTIVE_QUERY, METAPURPOSE_QUERY, LEARNING_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
