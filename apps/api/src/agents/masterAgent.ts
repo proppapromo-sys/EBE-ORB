@@ -23,7 +23,8 @@ import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type Con
 import { profileDirective, describeProfile, decisionProfile } from '../services/personality.js';
 import { analyzeComms, postureDirective, voiceFor, sceneDirective, sceneVoice, isUrgent, type Prosody, type Scene } from '../services/comms.js';
 import { detectLang } from '../services/lang.js';
-import { relate, aboutEntity, formatAbout, ingestItems, type IngestItem } from '../services/graph.js';
+import { relate, aboutEntity, formatAbout, ingestItems, traceCausal, formatTrace, type IngestItem } from '../services/graph.js';
+import { SYSTEMS_QUERY, SYSTEMS_DIRECTIVE, parseCausal } from '../services/systems.js';
 import { noteIntent, completeIntent, pendingGoals, formatPending, nudgeFor } from '../services/goals.js';
 import { focusList, formatFocus } from '../services/attention.js';
 import { parseObjective, setObjective, updateProgress, listObjectives, formatObjectives, progressOf, goalsContext } from '../services/objectives.js';
@@ -662,6 +663,20 @@ export async function askOrb(
     return { mode: 'fast' as const, answer, route: 'fast' as const, model: 'graph' };
   }
 
+  // Systems Thinking: record a cause→effect, or trace the downstream chain through the system.
+  {
+    const cz = parseCausal(message);
+    if (cz) {
+      await relate(userId, cz.cause, cz.effect, cz.rel).catch(() => {});
+      return { mode: 'fast' as const, answer: `Mapped the causal link — **${cz.cause}** ${cz.rel} **${cz.effect}**. Ask me to "trace ${cz.cause}" to follow the chain.`, route: 'fast' as const, model: 'systems' };
+    }
+  }
+  {
+    const tm = message.match(/\b(?:trace|downstream (?:of|effects of)|what does .* (?:cause|affect|lead to)|ripple effects? of|knock[- ]on effects? of)\s+(.+?)[?.!]*$/i)
+      || message.match(/\bwhat does\s+(.+?)\s+(?:cause|affect|lead to)\b/i);
+    if (tm) { const t = await traceCausal(userId, tm[1].trim()).catch(() => null); if (t) return { mode: 'fast' as const, answer: formatTrace(t), route: 'fast' as const, model: 'systems' }; }
+  }
+
   // Digital Spatial Mapping: build/navigate the user's knowledge graph. Relate two things, or ask
   // what's connected to one. Unknown entities fall through to a normal answer (never hijacked).
   const rel = parseRelate(message);
@@ -756,8 +771,9 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const auditing = AUDIT_QUERY.test(message);   // reviewing a past decision (process vs outcome)
     const creative = CREATIVE_QUERY.test(message);
     const strategic = isStrategic(message);
+    const systemic = SYSTEMS_QUERY.test(message);
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
-      : ((decision || auditing || creative || strategic) && !urgent) ? 'detailed'
+      : ((decision || auditing || creative || strategic || systemic) && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
 
     // Humor: the user's level, downgraded to professional this turn if they're rushed, frustrated, or
@@ -792,7 +808,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // Creativity: push past the obvious. Wisdom: weigh strategic calls through consequences + values.
     const creativeDir = (creative && !urgent) ? CREATIVE_DIRECTIVE : '';
     const wisdomDir = (strategic && !urgent) ? WISDOM_DIRECTIVE + valuesDirective(await getValues(userId).catch(() => '')) : '';
-    const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir;
+    const systemsDir = (systemic && !urgent) ? SYSTEMS_DIRECTIVE : '';
+    const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));
     const replyLang = lang.code === 'en' ? undefined : lang.name;

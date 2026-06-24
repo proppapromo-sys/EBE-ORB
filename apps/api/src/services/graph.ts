@@ -102,6 +102,41 @@ export async function ingestItems(userId: string, items: IngestItem[]): Promise<
   return added;
 }
 
+// ── Systems Thinking: cause→effect propagation through the graph ──
+const CAUSAL = new Set(['causes', 'reduces', 'leads to', 'drives', 'triggers']);
+function findNode(g: UserGraph, query: string): GraphNode | null {
+  const q = idOf(query); if (!q) return null;
+  let match = g.nodes.get(q);
+  if (!match) { let best = 0; for (const n of g.nodes.values()) if (n.id.includes(q) || q.includes(n.id)) { if (n.id.length > best) { best = n.id.length; match = n; } } }
+  return match ?? null;
+}
+export type CausalStep = { label: string; rel: string };
+export type Trace = { start: GraphNode; chains: CausalStep[][] };
+
+/** Follow causal edges from an entity to surface the downstream cause→effect chains (with delays in mind). */
+export async function traceCausal(userId: string, query: string, depth = 4): Promise<Trace | null> {
+  const g = await load(userId);
+  const start = findNode(g, query);
+  if (!start) return null;
+  const chains: CausalStep[][] = [];
+  const walk = (id: string, path: CausalStep[], seen: Set<string>, d: number) => {
+    const outs = g.edges.filter((e) => e.from === id && CAUSAL.has(e.rel));
+    if (!outs.length || d === 0) { if (path.length) chains.push(path); return; }
+    for (const e of outs) {
+      const t = g.nodes.get(e.to); if (!t || seen.has(t.id)) continue;
+      walk(t.id, [...path, { label: t.label, rel: e.rel }], new Set([...seen, t.id]), d - 1);
+    }
+  };
+  walk(start.id, [], new Set([start.id]), depth);
+  return { start, chains: chains.slice(0, 6) };
+}
+
+export function formatTrace(t: Trace | null): string {
+  if (!t || !t.chains.length) return `I don't have downstream effects mapped for ${t?.start.label || 'that'} yet — tell me what it causes ("X causes Y", "X reduces Z") and I'll trace the chain.`;
+  const lines = t.chains.map((chain) => `${t.start.label} ${chain.map((s) => `→ ${s.rel} → ${s.label}`).join(' ')}`);
+  return `Tracing the system from **${t.start.label}** (mind the delays — effects arrive later):\n${lines.join('\n')}`;
+}
+
 /** Turn a subgraph into a navigable, human answer. */
 export function formatAbout(r: AboutResult): string {
   const head = `Here's what I know about **${r.node.label}**${r.node.type !== 'thing' ? ` (${r.node.type})` : ''}.`;

@@ -30,6 +30,8 @@ import { CREATIVE_QUERY, CREATIVE_DIRECTIVE } from '../services/creativity.js';
 import { isStrategic, WISDOM_DIRECTIVE, parseValues, valuesDirective } from '../services/wisdom.js';
 import { selfModel, buildIdentity } from '../services/identity.js';
 import { parseReliability, reliability } from '../services/relationships.js';
+import { SYSTEMS_QUERY, SYSTEMS_DIRECTIVE, parseCausal } from '../services/systems.js';
+import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -229,6 +231,27 @@ test('decision: detects a choice and frames trade-offs, bias-guards, goals + dri
   // Decision profile is derived from learned tendencies.
   assert.equal(decisionProfile({ risk: { s: 0.5, n: 3 }, analytical: { s: 0.4, n: 3 } }).risk, 'high');
   assert.equal(decisionProfile({}).risk, 'medium');        // unknown → balanced default
+});
+
+test('systems thinking: records causal links and traces the chain through the system', async () => {
+  // Detects stated cause→effect (and ignores questions).
+  assert.deepEqual(parseCausal('late deliveries cause unhappy customers'), { cause: 'late deliveries', effect: 'unhappy customers', rel: 'causes' });
+  assert.deepEqual(parseCausal('good service reduces complaints'), { cause: 'good service', effect: 'complaints', rel: 'reduces' });
+  assert.equal(parseCausal('why are deliveries late?'), null);
+
+  // Systemic questions get the structure/feedback/leverage frame.
+  assert.ok(SYSTEMS_QUERY.test('why does revenue keep dropping'));
+  assert.match(SYSTEMS_DIRECTIVE, /feedback loop|bottleneck|leverage|second-? and third-order|second- and third-order/i);
+
+  // Build a causal chain and trace propagation through it.
+  const u = 'test-systems@example.com';
+  await relate(u, 'late deliveries', 'unhappy customers', 'causes');
+  await relate(u, 'unhappy customers', 'churn', 'causes');
+  await relate(u, 'churn', 'lower revenue', 'causes');
+  const t = await traceCausal(u, 'late deliveries');
+  assert.ok(t && t.chains.length);
+  assert.match(formatTrace(t), /churn/);
+  assert.match(formatTrace(t), /lower revenue/);   // traces multiple hops downstream
 });
 
 test('relationships: tracks trust across people — who delivers vs who flakes', () => {
