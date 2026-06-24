@@ -363,17 +363,24 @@ function drawLucidOrb(pulse){
 function frame(){
   t+=0.016;
   voiceKick*=0.80;                                              // per-word kick decays fast
+  let micAmp=-1;
   if(analyser){analyser.getByteFrequencyData(freq);let s=0;for(let i=0;i<freq.length;i++)s+=freq[i];
-    amp=amp*0.6+Math.min(1,(s/freq.length)/100)*0.4;                // real audio (fast, voice-rate)
-    // BARGE-IN: if you start talking while ORB is speaking, it stops and listens to you.
+    micAmp=Math.min(1,(s/freq.length)/100);                       // the room/user mic level
+    // BARGE-IN: if you start talking while ORB is speaking, it stops and listens to you. Uses the MIC
+    // (not ORB's own output), so the orb's lip-sync below can't trigger a false barge-in.
     if(speaking&&(convoMode||wakeMode)){
-      if(amp>0.62)bargeFrames++;else bargeFrames=Math.max(0,bargeFrames-2);   // interrupting voice, not a blip
-      if(bargeFrames>11){bargeFrames=0;try{speechSynthesis.cancel();}catch(e){} stopCloned();setPhase('listening');} // user cut in → stop + listen
+      if(micAmp>0.62)bargeFrames++;else bargeFrames=Math.max(0,bargeFrames-2);
+      if(bargeFrames>11){bargeFrames=0;try{speechSynthesis.cancel();}catch(e){} stopCloned();setPhase('listening');}
     } else bargeFrames=0;
   }
-  else if(speaking){                                            // simulate a voice waveform envelope
-    amp=Math.min(1, 0.16 + 0.55*voiceKick + 0.16*Math.abs(Math.sin(t*12)) + 0.10*Math.abs(Math.sin(t*23)));
-  } else amp*=0.86;
+  if(speaking){
+    if(outAnalyser){outAnalyser.getByteFrequencyData(outFreq);let s2=0;for(let i=0;i<outFreq.length;i++)s2+=outFreq[i];
+      amp=amp*0.45+Math.min(1,(s2/outFreq.length)/95)*0.55;}      // LIP-SYNC: pulse with ORB's real voice
+    else if(micAmp>=0){amp=amp*0.6+micAmp*0.4;}                   // fallback (no output tap)
+    else{amp=Math.min(1, 0.16 + 0.55*voiceKick + 0.16*Math.abs(Math.sin(t*12)) + 0.10*Math.abs(Math.sin(t*23)));} // last resort
+  }
+  else if(micAmp>=0){amp=amp*0.6+micAmp*0.4;}                     // listening → react to the user's voice
+  else amp*=0.86;
   target=(speaking||listening)?(0.45+0.3*amp):(0.12+0.04*Math.sin(t*0.5));
   energy+=(target-energy)*0.10;                                 // overall glow level (smooth)
   document.getElementById('st-pulse').textContent=energy>0.55?'PEAK':energy>0.32?'ELEVATED':'NOMINAL';
@@ -463,7 +470,10 @@ function mdToHtml(text){return String(text||'')
   .replace(/\n/g,'<br>');}
 // ORB's voice. If a cloned voice (ElevenLabs) is configured, speak in it; else the browser voice.
 let CLONED=false, clonedAudio=null;
-function stopCloned(){ if(clonedAudio){try{clonedAudio.pause();}catch(e){}} clonedAudio=null; }
+// Lip-sync: an analyser tapped off ORB's OWN spoken audio, so the orb pulses with the real phonemes
+// of its voice (not a synthetic waveform). Only available on the cloned-audio path (Web Audio graph).
+let outAnalyser=null, outFreq=null;
+function stopCloned(){ if(clonedAudio){try{clonedAudio.pause();}catch(e){}} clonedAudio=null; outAnalyser=null; }
 function onSpeakStart(){speaking=true;setPhase('speaking');document.getElementById('speaking').classList.add('on');
   if(recogActive){try{recog.stop();}catch(e){}}}                    // don't transcribe our own voice
 function onSpeakEnd(){speaking=false;document.getElementById('speaking').classList.remove('on');
@@ -539,11 +549,12 @@ async function speakCloned(text,voice){
     // EQ: shape the cloned voice by frequency band for the current tone (warmth/clarity/air + leveling).
     if(canEq(d.audioUrl)){ try{ const ctx=outAudioCtx(); if(ctx){ if(ctx.state==='suspended')ctx.resume();
       const srcN=ctx.createMediaElementSource(a); const chain=buildEqChain(ctx,voice&&voice.tone);
-      srcN.connect(chain.input); chain.output.connect(ctx.destination); } }catch(e){/* play unprocessed */} }
+      srcN.connect(chain.input); chain.output.connect(ctx.destination);
+      const an=ctx.createAnalyser(); an.fftSize=256; chain.output.connect(an); outAnalyser=an; outFreq=new Uint8Array(an.frequencyBinCount); } }catch(e){/* play unprocessed */} }
     const rip=setInterval(()=>{if(clonedAudio!==a){clearInterval(rip);return;}voiceKick=1;ripples.push({r:R*0.16,life:1});},200);
     a.onplay=onSpeakStart;
-    a.onended=()=>{clearInterval(rip);if(clonedAudio===a)clonedAudio=null;onSpeakEnd();};
-    a.onerror=()=>{clearInterval(rip);if(clonedAudio===a)clonedAudio=null;onSpeakEnd();};
+    a.onended=()=>{clearInterval(rip);outAnalyser=null;if(clonedAudio===a)clonedAudio=null;onSpeakEnd();};
+    a.onerror=()=>{clearInterval(rip);outAnalyser=null;if(clonedAudio===a)clonedAudio=null;onSpeakEnd();};
     await a.play();
     return true;
   }catch(e){return false;}
