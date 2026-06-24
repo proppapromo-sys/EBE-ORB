@@ -65,6 +65,9 @@ import { PERSPECTIVE_QUERY, PERSPECTIVE_DIRECTIVE } from '../services/perspectiv
 import { METAPURPOSE_QUERY, METAPURPOSE_DIRECTIVE } from '../services/metapurpose.js';
 import { LEARNING_QUERY, LEARNING_DIRECTIVE } from '../services/learning.js';
 import { FRONTIER_QUERY, FRONTIER_DIRECTIVE } from '../services/frontier.js';
+import { CREATION_QUERY, CREATION_DIRECTIVE } from '../services/creation.js';
+import { SELECTION_QUERY, SELECTION_DIRECTIVE } from '../services/selection.js';
+import { CIVEVOLUTION_QUERY, CIVEVOLUTION_DIRECTIVE } from '../services/civevolution.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -514,6 +517,23 @@ test('frontier (#52): scans the edge for undiscovered opportunity, excludes plai
   assert.ok(FRONTIER_QUERY.test('what hasn\'t been tried here'));
   assert.match(FRONTIER_DIRECTIVE, /frontier|white space|unexplored|cheapest probe|edge/i);
   assert.equal(FRONTIER_QUERY.test('what time is my meeting'), false);
+});
+
+test('create/select/civ-evolve (#53-#55): build it, choose among futures, advance civilization', () => {
+  // #53 reality creation — build bias
+  assert.ok(CREATION_QUERY.test('how do we actually build this'));
+  assert.ok(CREATION_QUERY.test('turn this idea into a reality'));
+  assert.match(CREATION_DIRECTIVE, /build|desired future|execution|first build step|confirm-first/i);
+  // #54 possibility selection — choose among options
+  assert.ok(SELECTION_QUERY.test('which option should we pursue'));
+  assert.ok(SELECTION_QUERY.test('how do I prioritize between these projects'));
+  assert.match(SELECTION_DIRECTIVE, /opportunity cost|portfolio|recommendation|leverage|alignment/i);
+  // #55 civilization evolution — developmental lens
+  assert.ok(CIVEVOLUTION_QUERY.test('what is the next stage of civilization'));
+  assert.ok(CIVEVOLUTION_QUERY.test('how should our institutions evolve'));
+  assert.match(CIVEVOLUTION_DIRECTIVE, /stage|complexity outpac|preserved|institutions|sovereign/i);
+  // Plain task triggers none.
+  assert.equal([CREATION_QUERY, SELECTION_QUERY, CIVEVOLUTION_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
