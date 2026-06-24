@@ -267,6 +267,15 @@ test('voice: ORB adapts its delivery to the user state', () => {
   }
 });
 
+test('support: appreciation style persists (encouraging / direct / reassuring)', async () => {
+  const u = 'test-support@example.com';
+  assert.equal((await getPrefs(u)).support, 'standard');   // balanced default
+  await setPrefs(u, { support: 'direct' });
+  assert.equal((await getPrefs(u)).support, 'direct');
+  await setPrefs(u, { support: 'encouraging' });
+  assert.equal((await getPrefs(u)).support, 'encouraging');
+});
+
 test('humor: graduated levels persist and stay in lockstep with the legacy flag', async () => {
   const u = 'test-humor@example.com';
   assert.equal((await getPrefs(u)).humor, 'executive');   // default

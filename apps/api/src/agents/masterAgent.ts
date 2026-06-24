@@ -19,7 +19,7 @@ import { searchFlights, searchHotels, travelConfigured, duffelConfigured } from 
 import { calculate, convertUnits } from '../services/calc.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
-import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type ConvoStyle, type HumorLevel } from '../services/convoPrefs.js';
+import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type ConvoStyle, type HumorLevel, type SupportStyle } from '../services/convoPrefs.js';
 import { profileDirective, describeProfile } from '../services/personality.js';
 import { analyzeComms, postureDirective, voiceFor, sceneDirective, sceneVoice, isUrgent, type Prosody, type Scene } from '../services/comms.js';
 import { detectLang } from '../services/lang.js';
@@ -43,6 +43,12 @@ const HUMOR_PROFESSIONAL = /\b(professional mode|no humor|be serious|all busines
 const HUMOR_PLAYFUL = /\b(be playful|playful mode|be more playful|more conversational|joke around|banter|be fun|loosen up)\b/i;
 const HUMOR_FRIENDLY = /\b(be friendly|friendly mode|friendly tone|light humor|lighten up|be more personable|be warmer)\b/i;
 const HUMOR_EXECUTIVE = /\b(executive wit|turn on (?:the )?wit|be witty|some wit|dry humor|bring (?:back )?the wit)\b/i;
+
+// Support style — the user's "appreciation language": how they like to be acknowledged and supported.
+const SUPPORT_ENCOURAGE = /\b(encourage me|cheer me on|be (?:more )?encouraging|motivate me|hype me up|i need (?:some )?encouragement)\b/i;
+const SUPPORT_DIRECT = /\b(skip the pep talk|no pep talk|just handle it|no cheerleading|spare me the (?:praise|encouragement)|don'?t (?:coddle|baby) me|just the facts and action)\b/i;
+const SUPPORT_REASSURE = /\b(reassure me|i need reassurance|tell me it'?s (?:handled|under control|okay)|walk me through it so i feel|put my mind at ease)\b/i;
+const SUPPORT_STANDARD = /\b(balanced support|normal support|default support)\b/i;
 
 // Personality Engine — the user can read back what ORB has learned, or reset it (transparency + control).
 const DESCRIBE_PROFILE = /\b(what (?:have|did|do) you (?:learn(?:ed)?|know) about me|what'?s my (?:profile|personality|communication style)|how (?:do|would) you describe me|describe my (?:profile|style)|my personality profile)\b/i;
@@ -432,6 +438,23 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: acks[humorLevel], route: 'fast' as const, model: 'prefs' };
   }
 
+  // Support style: how the user likes to be acknowledged (their "appreciation language").
+  const supportStyle: SupportStyle | null =
+    SUPPORT_DIRECT.test(message) ? 'direct'
+    : SUPPORT_ENCOURAGE.test(message) ? 'encouraging'
+    : SUPPORT_REASSURE.test(message) ? 'reassuring'
+    : SUPPORT_STANDARD.test(message) ? 'standard' : null;
+  if (supportStyle) {
+    await setPrefs(userId, { support: supportStyle });
+    const acks: Record<SupportStyle, string> = {
+      standard: "Got it — I'll keep my support balanced.",
+      encouraging: "You've got it — I'll have your back and cheer the wins, not just the to-dos.",
+      direct: "Understood — no pep talk. I'll just handle things and tell you what's next.",
+      reassuring: "Okay — I'll make sure you always know it's handled and how, so you can breathe easy."
+    };
+    return { mode: 'fast' as const, answer: acks[supportStyle], route: 'fast' as const, model: 'prefs' };
+  }
+
   // Action mode: ORB *does* things — reminders/tasks now, email confirm-first. Nothing outward
   // goes without a "confirm". Checked before build so "remind me to build X" stays a reminder.
   const action = await handleAction(userId, message, { tz: opts.tz });
@@ -484,7 +507,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const [mems, toolCtx, prefs, faves] = await Promise.all([
       recall(userId, message, 4).catch(() => []),
       toolContext(message, userId, { lat: opts.lat, lon: opts.lon }),
-      getPrefs(userId).catch(() => ({ style: 'short' as ConvoStyle, pauseMs: 1600, commands: {}, wit: true, humor: 'executive' as HumorLevel, traits: {} })),
+      getPrefs(userId).catch(() => ({ style: 'short' as ConvoStyle, pauseMs: 1600, commands: {}, wit: true, humor: 'executive' as HumorLevel, support: 'standard' as SupportStyle, traits: {} })),
       topCommands(userId, 5).catch(() => [] as string[])
     ]);
     const savedStyle = prefs.style;
@@ -511,7 +534,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // Cache: only when no live/personal data was pulled (so cached answers can't go stale).
     // Key includes style + tone + humor so calm/rushed/frustrated/playful/sarcastic answers don't collide.
     const cacheable = !liveCtx && !mems.length;
-    const key = `${userId}|${style}|${urgent ? 'u' : 'n'}|${comms.emotion[0]}|${comms.sarcasm ? comms.sarcasmType[0] : 'x'}|${humor[0]}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
+    const key = `${userId}|${style}|${urgent ? 'u' : 'n'}|${comms.emotion[0]}|${comms.sarcasm ? comms.sarcasmType[0] : 'x'}|${humor[0]}|${prefs.support[0]}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
     // Language: detect what the user wrote in, so ORB replies in-kind and speaks it in that voice.
     const lang = detectLang(message);
     // Adaptive voice: how ORB should SOUND this turn (register from humor, delivery from the state read,
@@ -528,7 +551,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const posture = postureDirective(comms) + sceneDirective(opts.scene);
     const profile = urgent ? '' : profileDirective(prefs.traits);
     const replyLang = lang.code === 'en' ? undefined : lang.name;
-    const routed = await routedAnswer(message, { images: opts.images, context, style, urgent, humor, profile, posture, replyLang });
+    const routed = await routedAnswer(message, { images: opts.images, context, style, urgent, humor, support: prefs.support, profile, posture, replyLang });
     if (cacheable && routed.ok && routed.answer) cacheSet(key, routed.answer);
     // Situational awareness: the first time a loud place is detected, ORB says so once (then drops it).
     const envNote = (noisy && lang.code === 'en' && shouldNoteEnv(userId)) ? "Sounds loud where you are — I'll keep this short. " : '';

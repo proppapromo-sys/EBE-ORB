@@ -157,6 +157,7 @@ create table if not exists orb_convo_prefs (
   commands   jsonb not null default '{}'::jsonb,   -- frequency of the user's short, repeated commands
   wit        boolean not null default true,         -- legacy flag, kept in lockstep with humor level
   humor      text not null default 'executive',     -- Humor Level: professional | executive | friendly | playful
+  support    text not null default 'standard',      -- Support style: standard | encouraging | direct | reassuring
   traits     jsonb not null default '{}'::jsonb,    -- Personality Engine: learned communication tendencies
   updated_at timestamptz default now()
 );
@@ -164,6 +165,7 @@ create table if not exists orb_convo_prefs (
 alter table orb_convo_prefs add column if not exists commands jsonb not null default '{}'::jsonb;
 alter table orb_convo_prefs add column if not exists wit boolean not null default true;
 alter table orb_convo_prefs add column if not exists humor text not null default 'executive';
+alter table orb_convo_prefs add column if not exists support text not null default 'standard';
 alter table orb_convo_prefs add column if not exists traits jsonb not null default '{}'::jsonb;
 
 -- Traveler profiles — details ORB needs to book flights for a user.

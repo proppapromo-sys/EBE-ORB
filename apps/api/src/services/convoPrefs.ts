@@ -16,8 +16,13 @@ export type ConvoStyle = 'short' | 'detailed';
 // Humor Levels — graduated, the way a chief of staff dials their register to the relationship.
 export type HumorLevel = 'professional' | 'executive' | 'friendly' | 'playful';
 export const HUMOR_LEVELS: HumorLevel[] = ['professional', 'executive', 'friendly', 'playful'];
-export type ConvoPrefs = { style: ConvoStyle; pauseMs: number; commands: Record<string, number>; wit: boolean; humor: HumorLevel; traits: Traits };
-const DEFAULTS: ConvoPrefs = { style: 'short', pauseMs: 1600, commands: {}, wit: true, humor: 'executive', traits: {} };
+// Support style — your "appreciation language": how you like to be acknowledged and supported.
+// encouraging = warmth + affirmation; direct = acts of service, skip the pep talk; reassuring = make
+// it clear it's handled and how; standard = balanced default.
+export type SupportStyle = 'standard' | 'encouraging' | 'direct' | 'reassuring';
+export const SUPPORT_STYLES: SupportStyle[] = ['standard', 'encouraging', 'direct', 'reassuring'];
+export type ConvoPrefs = { style: ConvoStyle; pauseMs: number; commands: Record<string, number>; wit: boolean; humor: HumorLevel; support: SupportStyle; traits: Traits };
+const DEFAULTS: ConvoPrefs = { style: 'short', pauseMs: 1600, commands: {}, wit: true, humor: 'executive', support: 'standard', traits: {} };
 
 function levelToWit(h: HumorLevel): boolean { return h !== 'professional'; }
 function witToLevel(w: boolean): HumorLevel { return w ? 'executive' : 'professional'; }
@@ -29,14 +34,14 @@ const MAX_COMMANDS = 24;            // keep only the user's most-used phrasings
 const MAX_CMD_WORDS = 8;            // a "command" is short; longer text is private speech — never stored
 
 function clone(p: ConvoPrefs): ConvoPrefs {
-  return { style: p.style, pauseMs: p.pauseMs, commands: { ...p.commands }, wit: p.wit, humor: p.humor, traits: { ...p.traits } };
+  return { style: p.style, pauseMs: p.pauseMs, commands: { ...p.commands }, wit: p.wit, humor: p.humor, support: p.support, traits: { ...p.traits } };
 }
 
 export async function getPrefs(userId: string): Promise<ConvoPrefs> {
   if (cache.has(userId)) return clone(cache.get(userId)!);
   if (supabase) {
     try {
-      const { data } = await supabase.from(TABLE).select('style,pause_ms,commands,wit,humor,traits').eq('user_id', userId).maybeSingle();
+      const { data } = await supabase.from(TABLE).select('style,pause_ms,commands,wit,humor,support,traits').eq('user_id', userId).maybeSingle();
       if (data) {
         const wit = data.wit !== false;   // on by default
         const humor: HumorLevel = HUMOR_LEVELS.includes(data.humor) ? data.humor : witToLevel(wit);   // migrate legacy
@@ -45,6 +50,7 @@ export async function getPrefs(userId: string): Promise<ConvoPrefs> {
           pauseMs: Number(data.pause_ms) || DEFAULTS.pauseMs,
           commands: (data.commands && typeof data.commands === 'object') ? data.commands as Record<string, number> : {},
           wit: levelToWit(humor), humor,
+          support: SUPPORT_STYLES.includes(data.support) ? data.support : 'standard',
           traits: (data.traits && typeof data.traits === 'object') ? data.traits as Traits : {}
         };
         cache.set(userId, p); return clone(p);
@@ -133,7 +139,7 @@ async function persist(userId: string, cur: ConvoPrefs): Promise<void> {
   if (!supabase) return;
   try {
     await supabase.from(TABLE).upsert(
-      { user_id: userId, style: cur.style, pause_ms: cur.pauseMs, commands: cur.commands, wit: cur.wit, humor: cur.humor, traits: cur.traits, updated_at: new Date().toISOString() },
+      { user_id: userId, style: cur.style, pause_ms: cur.pauseMs, commands: cur.commands, wit: cur.wit, humor: cur.humor, support: cur.support, traits: cur.traits, updated_at: new Date().toISOString() },
       { onConflict: 'user_id' }
     );
   } catch { /* keep in-memory */ }
