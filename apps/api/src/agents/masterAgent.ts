@@ -45,7 +45,7 @@ import { PLAN_QUERY, ORCHESTRATION_DIRECTIVE } from '../services/orchestration.j
 import { EVOLUTION_QUERY, EVOLUTION_DIRECTIVE, STEWARDSHIP_QUERY, STEWARDSHIP_DIRECTIVE, LEGACY_QUERY, LEGACY_DIRECTIVE } from '../services/stewardship.js';
 import { COSMIC_QUERY, COSMIC_DIRECTIVE, UNIFIED_QUERY, UNIFIED_DIRECTIVE, REALITY_QUERY, REALITY_DIRECTIVE, IMPROVEMENT_QUERY, INFINITE_PRINCIPLE } from '../services/unified.js';
 import { GENESIS_QUERY, GENESIS_DIRECTIVE } from '../services/genesis.js';
-import { EMERGENCE_QUERY, EMERGENCE_DIRECTIVE } from '../services/emergence.js';
+import { EMERGENCE_QUERY, EMERGENCE_DIRECTIVE, CULTIVATE_QUERY, CULTIVATE_DIRECTIVE } from '../services/emergence.js';
 import { SYNTHESIS_QUERY, SYNTHESIS_DIRECTIVE } from '../services/synthesis.js';
 import { COHERENCE_QUERY, COHERENCE_DIRECTIVE, detectCoherenceGaps, formatCoherence } from '../services/coherence.js';
 import { RESONANCE_QUERY, RESONANCE_DIRECTIVE } from '../services/resonance.js';
@@ -87,6 +87,9 @@ import { ARCH_QUERY, ARCH_DIRECTIVE, UNIFY_QUERY, UNIFY_DIRECTIVE } from '../ser
 import { OPT_QUERY, OPT_DIRECTIVE, ACCEL_QUERY, ACCEL_DIRECTIVE } from '../services/optimize.js';
 import { METAREALITY_QUERY, METAREALITY_DIRECTIVE, EXIST_QUERY, EXIST_DIRECTIVE, QUESTION_QUERY, QUESTION_DIRECTIVE } from '../services/metareality.js';
 import { HORIZON_QUERY, HORIZON_DIRECTIVE } from '../services/horizon.js';
+import { PROGRESS_QUERY, PROGRESS_DIRECTIVE } from '../services/progress.js';
+import { VALUE_QUERY, VALUE_DIRECTIVE } from '../services/value.js';
+import { RECREATE_QUERY, RECREATE_DIRECTIVE } from '../services/recursivecreation.js';
 import { parseReliability, recordReliability, reliabilityOf, roster } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -905,9 +908,13 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const optimizing = OPT_QUERY.test(message), accelerating = ACCEL_QUERY.test(message);   // #73 fix the bottleneck, #74 shorten the loop / rate of progress
     const metaReal = METAREALITY_QUERY.test(message), existential2 = EXIST_QUERY.test(message), questioning = QUESTION_QUERY.test(message);   // #78 reality generators, #79 why anything exists, #80 the better question
     const horizon = HORIZON_QUERY.test(message);   // #81 + #82 explore without end / every frontier reveals another
+    const progress = PROGRESS_QUERY.test(message);   // #85 + #86 progress never stops / never stagnates
+    const valuing = VALUE_QUERY.test(message);   // #91 intrinsic value: what is worth pursuing
+    const recreating = RECREATE_QUERY.test(message);   // #96 build the thing that builds more things
+    const cultivating = CULTIVATE_QUERY.test(message);   // #98 cultivate conditions for emergence (vs #26 detect)
     // #40 Prime Directive: the constitutional test rides along on the most consequential calls (not chit-chat).
     const constitutional = !urgent && (decision || strategic || governing || aligned || steward || flourish);
-    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish || conscEvolve || antifragile || wisdomAccum || discovering || governing || civscale || coordinating || preserving || continuity || cosmicMem || possible || sourcing || unifying || recursive || awakening || perspectival || metaPurpose || learning || frontier || creating || selecting || civEvolve || potential || collective || principled || futureMem || destiny || infCoord || planetary || species || existential || intergen || meaningful || inventing || designing || archStruct || unifying2 || optimizing || accelerating || metaReal || existential2 || questioning || horizon;
+    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish || conscEvolve || antifragile || wisdomAccum || discovering || governing || civscale || coordinating || preserving || continuity || cosmicMem || possible || sourcing || unifying || recursive || awakening || perspectival || metaPurpose || learning || frontier || creating || selecting || civEvolve || potential || collective || principled || futureMem || destiny || infCoord || planetary || species || existential || intergen || meaningful || inventing || designing || archStruct || unifying2 || optimizing || accelerating || metaReal || existential2 || questioning || horizon || progress || valuing || recreating || cultivating;
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
       : (deepThink && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
@@ -968,7 +975,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
       + (species ? SPECIES_DIRECTIVE : '') + (existential ? EXISTENTIAL_DIRECTIVE : '') + (intergen ? INTERGEN_DIRECTIVE : '') + (meaningful ? MEANING_DIRECTIVE : '')
       + (inventing ? CREATE2_DIRECTIVE : '') + (designing ? DESIGN_DIRECTIVE : '') + (archStruct ? ARCH_DIRECTIVE : '') + (unifying2 ? UNIFY_DIRECTIVE : '')
       + (optimizing ? OPT_DIRECTIVE : '') + (accelerating ? ACCEL_DIRECTIVE : '')
-      + (metaReal ? METAREALITY_DIRECTIVE : '') + (existential2 ? EXIST_DIRECTIVE : '') + (questioning ? QUESTION_DIRECTIVE : '') + (horizon ? HORIZON_DIRECTIVE : ''));
+      + (metaReal ? METAREALITY_DIRECTIVE : '') + (existential2 ? EXIST_DIRECTIVE : '') + (questioning ? QUESTION_DIRECTIVE : '') + (horizon ? HORIZON_DIRECTIVE : '') + (progress ? PROGRESS_DIRECTIVE : '') + (valuing ? VALUE_DIRECTIVE : '') + (recreating ? RECREATE_DIRECTIVE : '') + (cultivating ? CULTIVATE_DIRECTIVE : ''));
     const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir + higherDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));

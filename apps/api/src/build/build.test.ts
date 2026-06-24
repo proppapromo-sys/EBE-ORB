@@ -80,6 +80,10 @@ import { ARCH_QUERY, ARCH_DIRECTIVE, UNIFY_QUERY, UNIFY_DIRECTIVE } from '../ser
 import { OPT_QUERY, OPT_DIRECTIVE, ACCEL_QUERY, ACCEL_DIRECTIVE } from '../services/optimize.js';
 import { METAREALITY_QUERY, METAREALITY_DIRECTIVE, EXIST_QUERY, EXIST_DIRECTIVE, QUESTION_QUERY, QUESTION_DIRECTIVE } from '../services/metareality.js';
 import { HORIZON_QUERY, HORIZON_DIRECTIVE } from '../services/horizon.js';
+import { PROGRESS_QUERY, PROGRESS_DIRECTIVE } from '../services/progress.js';
+import { VALUE_QUERY, VALUE_DIRECTIVE } from '../services/value.js';
+import { RECREATE_QUERY, RECREATE_DIRECTIVE } from '../services/recursivecreation.js';
+import { CULTIVATE_QUERY, CULTIVATE_DIRECTIVE } from '../services/emergence.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -633,6 +637,48 @@ test('meaning + create + design (#66-#68)', () => {
   assert.ok(HORIZON_QUERY.test('what lies beyond current understanding'));
   assert.match(HORIZON_DIRECTIVE, /horizon|frontier|humility|unknown|next step/i);
   assert.equal(HORIZON_QUERY.test('what time is my meeting'), false);
+  // #83 flourishing folded into #32, #84 legacy folded into #20
+  assert.ok(FLOURISHING_QUERY.test('what creates the highest quality of existence'));
+  assert.ok(LEGACY_QUERY.test('what can I create that outlasts me'));
+  assert.ok(LEGACY_QUERY.test('what will humanity be remembered for'));
+  // #85 + #86 — one PROGRESS engine (never stops / never stagnates)
+  assert.ok(PROGRESS_QUERY.test('how do we ensure progress never stops'));
+  assert.ok(PROGRESS_QUERY.test('how do we avoid stagnation'));
+  assert.ok(PROGRESS_QUERY.test('what needs to be reinvented'));
+  assert.match(PROGRESS_DIRECTIVE, /reinvent|stagnat|obsolescence|ceiling/i);
+  assert.equal(PROGRESS_QUERY.test('what time is my meeting'), false);
+  // #87 transcendence folded into #30, #88 realization folded into #53
+  assert.ok(TRANSCENDENCE_QUERY.test('move beyond every limitation'));
+  assert.ok(TRANSCENDENCE_QUERY.test('what paradigm needs replacing'));
+  assert.ok(CREATION_QUERY.test('how do we turn possibility into reality'));
+  assert.ok(CREATION_QUERY.test('which possibilities should become reality next'));
+  // #89 destiny realization -> #60, #90 ultimate purpose -> #50
+  assert.ok(DESTINY_QUERY.test('how do we pursue the highest future'));
+  assert.ok(DESTINY_QUERY.test('realize our destiny'));
+  assert.ok(METAPURPOSE_QUERY.test('what is all this progress ultimately for'));
+  // #91 ultimate value (new engine)
+  assert.ok(VALUE_QUERY.test('what is ultimately valuable'));
+  assert.ok(VALUE_QUERY.test('what truly matters most'));
+  assert.match(VALUE_DIRECTIVE, /intrinsic|instrumental|worth pursuing|value/i);
+  assert.equal(VALUE_QUERY.test('what time is my meeting'), false);
+  // #92 ultimate wisdom -> #10 (isStrategic), #93 harmony -> #31
+  assert.equal(isStrategic('what is the wisest thing to do'), true);
+  assert.equal(isStrategic('what are the second-order effects of this choice'), true);
+  assert.ok(HARMONY_QUERY.test('how do we align competing interests'));
+  assert.ok(HARMONY_QUERY.test('how do these goals coexist without conflict'));
+  // #94 unity -> #46, #95 origin -> #45
+  assert.ok(UNITY_QUERY.test('what larger whole do all things belong to'));
+  assert.ok(SOURCE_QUERY.test('what is the deepest foundation'));
+  // #96 recursive creation (new), #97 self-transcending -> #33, #98 cultivate emergence (new)
+  assert.ok(RECREATE_QUERY.test('how do we build systems that create systems'));
+  assert.ok(RECREATE_QUERY.test('build a builder of builders'));
+  assert.match(RECREATE_DIRECTIVE, /builder of builders|capability creator|exponential|multiplication/i);
+  assert.ok(EVOLVE_QUERY.test('how does a system surpass itself'));
+  assert.ok(EVOLVE_QUERY.test('what architecture must we outgrow'));
+  assert.ok(CULTIVATE_QUERY.test('how do we create conditions for emergence'));
+  assert.ok(CULTIVATE_QUERY.test('how do we generate novelty'));
+  assert.match(CULTIVATE_DIRECTIVE, /cultivate|diversity|connection|surprise|conditions/i);
+  assert.equal([RECREATE_QUERY, CULTIVATE_QUERY].some((re) => re.test('what time is my meeting')), false);
   // Plain task triggers none of the batch.
   assert.equal([POTENTIAL_QUERY, COLLECTIVE_QUERY, PRINCIPLE_QUERY, FUTUREMEM_QUERY, DESTINY_QUERY, MEANING_QUERY, DESIGN_QUERY, CREATE2_QUERY, ARCH_QUERY, UNIFY_QUERY, OPT_QUERY, ACCEL_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
