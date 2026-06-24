@@ -36,6 +36,7 @@ import { selfRegulation } from '../services/selfreg.js';
 import { parseOutcome, recordOutcome, whatWorks, formatAdaptation } from '../services/adaptation.js';
 import { CREATIVE_QUERY, CREATIVE_DIRECTIVE } from '../services/creativity.js';
 import { isStrategic, WISDOM_DIRECTIVE, getValues, setValues, parseValues, valuesDirective } from '../services/wisdom.js';
+import { selfModel, userIdentity } from '../services/identity.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -569,6 +570,14 @@ export async function askOrb(
   }
   if (/\b(what are my goals|my (?:goals|objectives|targets)|show (?:me )?my goals|how am i (?:doing|tracking) (?:on|against) my goals|what am i (?:working toward|trying to (?:become|achieve)))\b/i.test(message)) {
     return { mode: 'fast' as const, answer: formatObjectives(await listObjectives(userId).catch(() => [])), route: 'fast' as const, model: 'goals' };
+  }
+
+  // Self-Identity: ORB's model of itself (mission, boundaries, continuity) and its living model of you.
+  if (/\bwho are you\b|\bwhat'?s your (?:mission|purpose)\b|\bare you conscious\b|\bwhat are you, really\b/i.test(message)) {
+    return { mode: 'fast' as const, answer: selfModel(), route: 'fast' as const, model: 'identity' };
+  }
+  if (/\bwho am i(?: to you)?\b|\bwhat do you know about me\b|\bhow (?:do|would) you (?:see|describe) me\b|\bdescribe me\b|\bmy identity\b|\bpaint a picture of (?:me|who i am)\b/i.test(message)) {
+    return { mode: 'fast' as const, answer: await userIdentity(userId).catch(() => "I'm still forming a picture of who you are."), route: 'fast' as const, model: 'identity' };
   }
 
   // Wisdom & Judgment: set or read the values ORB weighs major decisions against.

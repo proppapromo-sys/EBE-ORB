@@ -28,6 +28,7 @@ import { buildSelfReg } from '../services/selfreg.js';
 import { parseOutcome, recommendFrom } from '../services/adaptation.js';
 import { CREATIVE_QUERY, CREATIVE_DIRECTIVE } from '../services/creativity.js';
 import { isStrategic, WISDOM_DIRECTIVE, parseValues, valuesDirective } from '../services/wisdom.js';
+import { selfModel, buildIdentity } from '../services/identity.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -227,6 +228,24 @@ test('decision: detects a choice and frames trade-offs, bias-guards, goals + dri
   // Decision profile is derived from learned tendencies.
   assert.equal(decisionProfile({ risk: { s: 0.5, n: 3 }, analytical: { s: 0.4, n: 3 } }).risk, 'high');
   assert.equal(decisionProfile({}).risk, 'medium');        // unknown → balanced default
+});
+
+test('identity: ORB holds a self-model and a living, connected model of the user', () => {
+  // Self-model: mission, boundaries (confirm-first), continuity — and honest about not being conscious.
+  const self = selfModel();
+  assert.match(self, /mission|chief of staff/i);
+  assert.match(self, /confirm-first|high-risk/i);
+  assert.match(self, /continuity|same chief of staff/i);
+  assert.match(self, /not conscious/i);
+
+  // User identity weaves the layers (drivers + values + goals + track record) into one picture.
+  const id = buildIdentity({ persona: 'you prefer direct, concise answers', drivers: ['freedom'], values: 'long-term thinking', objectives: ['grow revenue to 50k'], done: 3, open: 2 });
+  assert.match(id, /freedom/);
+  assert.match(id, /long-term thinking/);
+  assert.match(id, /grow revenue/);
+  assert.match(id, /3 of 5/);
+  // Nothing known yet → honest, and names continuity as the point.
+  assert.match(buildIdentity({ persona: '', drivers: [], values: '', objectives: [], done: 0, open: 0 }), /still forming|continuity/i);
 });
 
 test('creativity + wisdom: generative framing and judgment on weighty calls', () => {
