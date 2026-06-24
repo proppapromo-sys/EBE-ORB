@@ -27,6 +27,7 @@ import { relate, aboutEntity, formatAbout, ingestItems, type IngestItem } from '
 import { noteIntent, completeIntent, pendingGoals, formatPending, nudgeFor } from '../services/goals.js';
 import { focusList, formatFocus } from '../services/attention.js';
 import { parseObjective, setObjective, updateProgress, listObjectives, formatObjectives, progressOf, goalsContext } from '../services/objectives.js';
+import { observeMotivation, motivationDirective, describeMotivation, parseDriver, setDriver } from '../services/motivation.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -532,6 +533,15 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: acks[supportStyle], route: 'fast' as const, model: 'prefs' };
   }
 
+  // Motivation: set or read back what drives the user (the "why" behind the goals).
+  {
+    const drv = parseDriver(message);
+    if (drv) { await setDriver(userId, drv); return { mode: 'fast' as const, answer: `Got it — I'll remember you're driven by ${drv}, and frame things around that.`, route: 'fast' as const, model: 'motivation' }; }
+  }
+  if (/\bwhat (?:drives|motivates) me\b|\bwhat'?s my motivation\b|\bwhat am i driven by\b/i.test(message)) {
+    return { mode: 'fast' as const, answer: await describeMotivation(userId).catch(() => "I'm still learning what drives you."), route: 'fast' as const, model: 'motivation' };
+  }
+
   // Goal Systems: set an objective, log progress on one, or review the goal hierarchy.
   if (/\bmy (?:goal|objective|target) (?:is|was)\b|\b(?:goal is to|i want to|i'?m trying to|i aim to|i plan to|working toward)\b/i.test(message)) {
     const o = await setObjective(userId, parseObjective(message)).catch(() => null);
@@ -643,8 +653,9 @@ Flag every action whose requiresApproval is true — never imply it can run on i
       topCommands(userId, 5).catch(() => [] as string[])
     ]);
     const savedStyle = prefs.style;
-    // Learn in the background — favorite phrasing + communication tendencies. Never blocks the answer.
+    // Learn in the background — favorite phrasing + communication tendencies + motivation drivers.
     void observeMessage(userId, message).catch(() => {});
+    void observeMotivation(userId, message).catch(() => {});
     // Attention & Goals: track stated intentions and completions. If the user is re-raising something
     // important they keep putting off, surface a gentle nudge on this turn.
     const intent = await noteIntent(userId, message).catch(() => null);
@@ -688,7 +699,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // shaping HOW ORB answers. Personality is skipped when rushed (speed wins); wit is dropped when
     // the user is frustrated (a chief of staff reads the room).
     const posture = postureDirective(comms) + sceneDirective(opts.scene);
-    const profile = urgent ? '' : profileDirective(prefs.traits);
+    // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
+    const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));
     const replyLang = lang.code === 'en' ? undefined : lang.name;
     const routed = await routedAnswer(message, { images: opts.images, context, style, urgent, humor, support: prefs.support, profile, posture, replyLang });
     if (cacheable && routed.ok && routed.answer) cacheSet(key, routed.answer);

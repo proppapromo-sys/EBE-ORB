@@ -18,6 +18,7 @@ import { avatarAllowedFor, avatarConfigured } from '../services/avatar.js';
 import { noteIntent, completeIntent, pendingGoals, nudgeFor } from '../services/goals.js';
 import { priorityScore, classifyTier, focusList } from '../services/attention.js';
 import { parseObjective, setObjective, updateProgress, progressOf, listObjectives, detectConflicts, classifyLevel, classifyType } from '../services/objectives.js';
+import { observeMotivation, topDrivers, motivationDirective, parseDriver, setDriver } from '../services/motivation.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -198,6 +199,23 @@ test('avatar: gated to top tiers, off by default, always disclosed', () => {
   assert.equal(avatarAllowedFor('pro'), false);
   assert.equal(avatarAllowedFor('free'), false);
   assert.equal(avatarConfigured(), false);   // no DID_API_KEY in test env → off, degrades gracefully
+});
+
+test('motivation: learns the drivers behind goals and frames around them', async () => {
+  const u = 'test-motiv@example.com';
+  // Repeated freedom cues → ORB learns the driver.
+  await observeMotivation(u, 'I want to be my own boss and have freedom');
+  await observeMotivation(u, 'I just want independence and to call my own shots');
+  const top = await topDrivers(u);
+  assert.ok(top.includes('freedom'));
+  assert.match(await motivationDirective(u), /freedom/i);   // it frames answers around the driver
+
+  // Explicit statement is parsed and set immediately.
+  assert.equal(parseDriver("honestly what motivates me is legacy and impact"), 'legacy');
+  assert.equal(parseDriver('what time is the meeting?'), null);
+  const u2 = 'test-motiv2@example.com';
+  await setDriver(u2, 'security');
+  assert.ok((await topDrivers(u2)).includes('security'));
 });
 
 test('objectives: tracks the goal hierarchy, the current→target gap, progress, and conflicts', async () => {

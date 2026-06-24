@@ -168,6 +168,14 @@ alter table orb_convo_prefs add column if not exists humor text not null default
 alter table orb_convo_prefs add column if not exists support text not null default 'standard';
 alter table orb_convo_prefs add column if not exists traits jsonb not null default '{}'::jsonb;
 
+-- Motivation — the drivers behind a user's goals (Achievement / Freedom / Security / Legacy). Learned
+-- from the words they use; persists even as goals change. ORB frames why-it-matters around these.
+create table if not exists orb_motivation (
+  user_id    text primary key,
+  drivers    jsonb not null default '{}'::jsonb,
+  updated_at timestamptz default now()
+);
+
 -- Goal Systems — the hierarchy above daily tasks: Identity / Strategic / Tactical objectives, with
 -- the current→target gap, type, and progress. What the user is trying to BECOME, not just do.
 create table if not exists orb_objectives (
