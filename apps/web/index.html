@@ -202,6 +202,9 @@ let bargeFrames=0; // barge-in: how many recent frames the user has been talking
 // Prosody-in: read tone/energy/tempo from the user's own voice → a hint the server uses to tell
 // emotionally-flat words apart ("Great." said four ways). Measured here, never recorded or uploaded.
 let micRate=44100,tdata=null,proAcc=null,lastProsody=null,proTimer=null;
+// Spatial audio: read the ENVIRONMENT (ambient noise level + whether other voices are around) so ORB
+// can adapt — short & clear in a loud place, privacy-aware in a crowd. Summary only ever leaves the device.
+let sceneAcc=null,lastScene=null;
 const setState=s=>{const e=document.getElementById('st-state');if(e)e.textContent=s;};
 function setPhase(p){phase=p;setState(p.toUpperCase());}
 
@@ -830,7 +833,8 @@ async function convene(q){
   try{askBody.tz=Intl.DateTimeFormat().resolvedOptions().timeZone;}catch(e){}
   if(ORB_GEO){askBody.lat=ORB_GEO.lat;askBody.lon=ORB_GEO.lon;}
   if(lastProsody&&lastProsody!=='neutral')askBody.prosody=lastProsody;  // voice-tone hint (spoken turns only)
-  lastProsody=null;                                                     // consume it — never reuse on the next turn
+  if(lastScene)askBody.scene=lastScene;                                 // acoustic environment hint
+  lastProsody=null;lastScene=null;                                      // consume both — never reuse next turn
   try{const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(askBody)});
     const d=await r.json();
     if(d.mode==='skill'){box.classList.add('show');box.innerHTML=mdToHtml(d.answer||'');speak(d.answer||'');
@@ -869,17 +873,36 @@ async function startMicAnalyser(){
 }
 // ── Prosody analysis: sample the mic while the user speaks, derive pitch (autocorrelation), energy,
 // and tempo, then collapse to one tone hint. Defensive: silence frames are skipped; never persisted.
-function startProsody(){ if(!proTimer) proTimer=setInterval(proSample,100); }       // ~10 Hz
+function startProsody(){ if(!proTimer) proTimer=setInterval(audioTick,100); }        // ~10 Hz
 function proReset(){ proAcc={n:0,eSum:0,pSum:0,pN:0,t0:Date.now()}; }
-function proSample(){
+function sceneReset(){ sceneAcc={ambSum:0,ambN:0,babble:0,bandN:0}; }
+// One sampling pass: separate the user's VOICE (voiced, pitched) from the ENVIRONMENT (everything
+// else), feeding prosody from the former and the spatial/noise read from the latter.
+function audioTick(){
   if(!analyser||!listening||speaking)return;
   const N=analyser.fftSize; if(!tdata||tdata.length!==N)tdata=new Float32Array(N);
   try{analyser.getFloatTimeDomainData(tdata);}catch(e){return;}
   let s=0;for(let i=0;i<N;i++)s+=tdata[i]*tdata[i];
-  const rms=Math.sqrt(s/N); if(rms<0.012)return;                                    // ignore near-silence
-  if(!proAcc)proReset();
-  proAcc.n++;proAcc.eSum+=rms;
-  const f0=estimatePitch(tdata,micRate); if(f0>70&&f0<400){proAcc.pSum+=f0;proAcc.pN++;}
+  const rms=Math.sqrt(s/N);
+  const f0=rms>0.012?estimatePitch(tdata,micRate):-1;
+  const voiced=rms>0.02&&f0>70&&f0<400;                                             // the user actually speaking
+  if(rms>=0.012){ if(!proAcc)proReset(); proAcc.n++;proAcc.eSum+=rms; if(f0>70&&f0<400){proAcc.pSum+=f0;proAcc.pN++;} }
+  if(!sceneAcc)sceneReset();
+  if(!voiced){                                                                       // ambient frame → environment
+    sceneAcc.ambSum+=rms;sceneAcc.ambN++;
+    try{analyser.getByteFrequencyData(freq);
+      let band=0,tot=0;const binHz=micRate/N;
+      for(let i=0;i<freq.length;i++){const f=i*binHz,v=freq[i];tot+=v;if(f>=300&&f<=3400)band+=v;}
+      if(tot>0){sceneAcc.bandN++;if(rms>0.01&&band/tot>0.55)sceneAcc.babble++;}      // speech-band ambient = other voices
+    }catch(e){}
+  }
+}
+function sceneSnapshot(){
+  if(!sceneAcc||sceneAcc.ambN<3)return null;
+  const amb=sceneAcc.ambSum/sceneAcc.ambN;
+  const noise=amb<0.02?'quiet':amb<0.06?'moderate':'loud';
+  const crowd=noise!=='quiet' && (sceneAcc.babble/Math.max(1,sceneAcc.ambN))>0.25;
+  return {noise,crowd};
 }
 function estimatePitch(buf,rate){                                                    // ACF2+ autocorrelation
   let size=buf.length,rms=0; for(let i=0;i<size;i++)rms+=buf[i]*buf[i];
@@ -915,12 +938,13 @@ function prosodySnapshot(wordCount){
 function buildRecog(){
   if(!SR)return null;
   const r=new SR();r.lang='en-US';r.interimResults=true;r.continuous=false;
-  r.onstart=()=>{recogActive=true;proReset();if(convoMode||wakeMode)setPhase('listening');};
+  r.onstart=()=>{recogActive=true;proReset();sceneReset();if(convoMode||wakeMode)setPhase('listening');};
   r.onresult=ev=>{let txt='';for(let i=ev.resultIndex;i<ev.results.length;i++)txt+=ev.results[i][0].transcript;
     document.getElementById('q').value=txt;
     if(!ev.results[ev.results.length-1].isFinal)return;
     const q=txt.trim();if(!q)return;
     lastProsody=prosodySnapshot(q.split(/\s+/).length);proReset();   // read the voice tone of this utterance
+    lastScene=sceneSnapshot();sceneReset();                          // read the acoustic environment
     if(convoMode){handleUtterance(q);return;}
     if(wakeMode){
       if(WAKE.test(q)){const cmd=afterWake(q);

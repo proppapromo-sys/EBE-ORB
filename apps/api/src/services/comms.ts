@@ -108,6 +108,31 @@ export function voiceFor(read: CommRead, humor: HumorLevel = 'executive'): Voice
   return { tone, rate: clampRate(rate), pitch: clampPitch(pitch), volume: clampVol(volume) };
 }
 
+// ── Spatial Audio Intelligence: the read of the ENVIRONMENT the conversation is happening in.
+// Humans infer room, distance, and occupancy from reverb and background sound; ORB infers the basics
+// it can act on — how loud the place is and whether other people seem to be around — and adapts:
+// short & clear in noise, privacy-aware in a crowd. Measured in-browser; only the summary is sent.
+export type Scene = { noise: 'quiet' | 'moderate' | 'loud'; crowd?: boolean };
+const NOISE_LEVELS = ['quiet', 'moderate', 'loud'];
+export function asScene(v: any): Scene | undefined {
+  if (!v || typeof v !== 'object' || !NOISE_LEVELS.includes(v.noise)) return undefined;
+  return { noise: v.noise, crowd: v.crowd === true };
+}
+
+/** Environment-driven delivery directive — silent guidance, layered on top of the emotional posture. */
+export function sceneDirective(scene?: Scene): string {
+  if (!scene) return '';
+  if (scene.noise === 'loud') return ' The user is in a loud, noisy place — keep it short and clear, and lead with the answer so it lands.';
+  if (scene.crowd) return ' The user may be around other people — stay concise and do not read out anything sensitive unprompted.';
+  return '';
+}
+
+/** In a noisy place, ORB favors clarity: the emergency register cuts through, at full, steady volume. */
+export function sceneVoice(base: VoiceSpec, scene?: Scene): VoiceSpec {
+  if (scene && scene.noise === 'loud') return { tone: 'emergency', rate: Math.min(base.rate, 1.0), pitch: base.pitch, volume: 1.0 };
+  return base;
+}
+
 export function postureDirective(read: CommRead): string {
   let d = '';
   if (read.urgent) d += ' The user is in a hurry — give the answer first, no preamble.';

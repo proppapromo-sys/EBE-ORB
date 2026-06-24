@@ -21,7 +21,7 @@ import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type ConvoStyle, type HumorLevel } from '../services/convoPrefs.js';
 import { profileDirective, describeProfile } from '../services/personality.js';
-import { analyzeComms, postureDirective, voiceFor, isUrgent, type Prosody } from '../services/comms.js';
+import { analyzeComms, postureDirective, voiceFor, sceneDirective, sceneVoice, isUrgent, type Prosody, type Scene } from '../services/comms.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -338,6 +338,17 @@ const pendingClarify = new Map<string, { partial: string; at: number }>();
 const CLARIFY_TTL = 45_000;
 const FOLLOWUP_QUESTION = /^(?:\s*orb[,!.]?\s*)?(what|when|how|why|who|where|which|can|could|should|is|are|do|does|tell me|explain)\b/i;
 
+// Spatial awareness: when ORB first notices a loud environment, it mentions once that it'll keep
+// things short — then stays quiet about it. Rate-limited per user so it never nags.
+const envNoted = new Map<string, number>();
+const ENV_NOTE_TTL = 20 * 60_000;
+function shouldNoteEnv(userId: string): boolean {
+  const last = envNoted.get(userId) || 0;
+  if (Date.now() - last < ENV_NOTE_TTL) return false;
+  envNoted.set(userId, Date.now());
+  return true;
+}
+
 /**
  * Ask ORB. By default this convenes the full Multi-Model Council and returns the
  * ORB-Finalizer's single clean answer; `approvalRequired` stays code-computed from the cycle.
@@ -346,7 +357,7 @@ const FOLLOWUP_QUESTION = /^(?:\s*orb[,!.]?\s*)?(what|when|how|why|who|where|whi
 export async function askOrb(
   userId: string,
   message: string,
-  opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string; personality?: string; customPersona?: string; lat?: number; lon?: number; tz?: string; prosody?: Prosody } = {}
+  opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string; personality?: string; customPersona?: string; lat?: number; lon?: number; tz?: string; prosody?: Prosody; scene?: Scene } = {}
 ) {
   // Anticipation follow-through: if ORB just asked for a missing slot, fold this short reply back
   // into the command it was completing. Survives exactly one turn (consumed here, fresh window only).
@@ -486,8 +497,9 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // detailed once; an urgent or frustrated tone forces short and a faster, no-fluff delivery.
     const comms = analyzeComms(message, opts.prosody);
     const urgent = comms.urgent;
+    const noisy = opts.scene?.noise === 'loud';   // a loud place → favor brevity and clarity
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
-      : (WANT_SHORT.test(message) || urgent || comms.emotion === 'frustrated') ? 'short' : savedStyle;
+      : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
 
     // Humor: the user's level, downgraded to professional this turn if they're rushed, frustrated, or
     // being sarcastic — a chief of staff doesn't crack wise when the meeting just bombed.
@@ -497,8 +509,9 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // Key includes style + tone + humor so calm/rushed/frustrated/playful/sarcastic answers don't collide.
     const cacheable = !liveCtx && !mems.length;
     const key = `${userId}|${style}|${urgent ? 'u' : 'n'}|${comms.emotion[0]}|${comms.sarcasm ? 's' : 'x'}|${humor[0]}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
-    // Adaptive voice: how ORB should SOUND this turn (register from humor, delivery from the state read).
-    const voice = voiceFor(comms, prefs.humor);
+    // Adaptive voice: how ORB should SOUND this turn (register from humor, delivery from the state read,
+    // then shifted toward clarity if the environment is loud).
+    const voice = sceneVoice(voiceFor(comms, prefs.humor), opts.scene);
     if (cacheable) { const hit = cacheGet(key); if (hit) return { mode: 'fast' as const, answer: hit, route: 'fast' as const, model: 'cache', voice }; }
 
     const memCtx = mems.length ? `What I remember about you (use if relevant):\n${mems.map((m) => `- ${m.title}: ${m.content}`).join('\n')}` : '';
@@ -507,11 +520,13 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // Communication posture (urgency/emotion) + learned personality tendencies → quiet directives
     // shaping HOW ORB answers. Personality is skipped when rushed (speed wins); wit is dropped when
     // the user is frustrated (a chief of staff reads the room).
-    const posture = postureDirective(comms);
+    const posture = postureDirective(comms) + sceneDirective(opts.scene);
     const profile = urgent ? '' : profileDirective(prefs.traits);
     const routed = await routedAnswer(message, { images: opts.images, context, style, urgent, humor, profile, posture });
     if (cacheable && routed.ok && routed.answer) cacheSet(key, routed.answer);
-    return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label, voice };
+    // Situational awareness: the first time a loud place is detected, ORB says so once (then drops it).
+    const envNote = (noisy && shouldNoteEnv(userId)) ? "Sounds loud where you are — I'll keep this short. " : '';
+    return { mode: 'fast' as const, answer: envNote + routed.answer, route: routed.route, model: routed.label, voice };
   }
 
   const council = await runCouncil(userId, message, {

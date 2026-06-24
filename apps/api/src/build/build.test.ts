@@ -10,7 +10,7 @@ import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
 import { looksLikeBuildRequest, looksLikeVideoRequest, needsContext, isUrgent } from '../agents/masterAgent.js';
 import { recordCommand, topCommands, getPrefs, setPrefs, observeMessage, resetProfile } from '../services/convoPrefs.js';
 import { applySignals, profileDirective, describeProfile, confident, type Traits } from '../services/personality.js';
-import { analyzeComms, readEmotion, readSarcasm, postureDirective, voiceFor, asProsody } from '../services/comms.js';
+import { analyzeComms, readEmotion, readSarcasm, postureDirective, voiceFor, asProsody, asScene, sceneDirective, sceneVoice } from '../services/comms.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -156,6 +156,25 @@ test('comms: detects likely sarcasm and tells ORB not to take it literally', () 
   const read = analyzeComms('Well that went perfectly.');
   assert.equal(read.sarcasm, true);
   assert.match(postureDirective(read), /sarcastic/i);
+});
+
+test('scene: spatial read drives brevity, clarity voice, and privacy awareness', () => {
+  // A loud place → short & clear directive, and the emergency register to cut through.
+  assert.match(sceneDirective({ noise: 'loud' }), /short and clear/i);
+  const v = sceneVoice({ tone: 'executive', rate: 1.0, pitch: 0.97, volume: 1.0 }, { noise: 'loud' });
+  assert.equal(v.tone, 'emergency');
+  assert.equal(v.volume, 1.0);
+
+  // A crowd (even if not loud) → privacy-aware, don't read sensitive things unprompted.
+  assert.match(sceneDirective({ noise: 'moderate', crowd: true }), /sensitive/i);
+
+  // Quiet → no special handling; unchanged voice.
+  assert.equal(sceneDirective({ noise: 'quiet' }), '');
+  assert.equal(sceneVoice({ tone: 'friendly', rate: 1.03, pitch: 1.0, volume: 1.0 }, { noise: 'quiet' }).tone, 'friendly');
+
+  // Validation: only well-formed scenes are trusted.
+  assert.equal(asScene({ noise: 'loud', crowd: true })?.noise, 'loud');
+  assert.equal(asScene({ noise: 'jet-engine' }), undefined);
 });
 
 test('prosody: voice tone disambiguates flat words, but text always wins', () => {

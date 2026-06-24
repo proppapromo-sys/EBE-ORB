@@ -86,7 +86,8 @@ const AskSchema = z.object({
   lat: z.number().optional(),       // optional location for weather, etc.
   lon: z.number().optional(),
   tz: z.string().optional(),        // IANA timezone for calendar events
-  prosody: z.enum(['urgent', 'frustrated', 'excited', 'calm', 'neutral']).optional()  // voice-tone hint from the browser
+  prosody: z.enum(['urgent', 'frustrated', 'excited', 'calm', 'neutral']).optional(),  // voice-tone hint from the browser
+  scene: z.object({ noise: z.enum(['quiet', 'moderate', 'loud']), crowd: z.boolean().optional() }).optional()  // acoustic environment
 });
 
 orbRouter.get('/health', (_req, res) => {
@@ -370,7 +371,8 @@ orbRouter.post('/ask', async (req, res, next) => {
       lat: parsed.lat,
       lon: parsed.lon,
       tz: parsed.tz,
-      prosody: parsed.prosody
+      prosody: parsed.prosody,
+      scene: parsed.scene
     });
     res.json(result);
   } catch (error) { next(error); }
