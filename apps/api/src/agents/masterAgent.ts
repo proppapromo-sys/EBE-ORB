@@ -62,6 +62,7 @@ import { COORDINATION_QUERY, COORDINATION_DIRECTIVE } from '../services/coordina
 import { PRIME_QUERY, CONSTITUTION_DIRECTIVE, constitutionStatement } from '../services/constitution.js';
 import { PRESERVATION_QUERY, PRESERVATION_DIRECTIVE } from '../services/preservation.js';
 import { CONTINUITY_QUERY, CONTINUITY_DIRECTIVE } from '../services/continuity.js';
+import { RECALL_QUERY, COSMIC_MEMORY_DIRECTIVE } from '../services/recall.js';
 import { parseReliability, recordReliability, reliabilityOf, roster } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -668,6 +669,16 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: formatLessons(await recallLessons(userId, topic, 5).catch(() => [])), route: 'fast' as const, model: 'lessons' };
   }
 
+  // Cosmic Memory (#43): "have we seen this before?" — retrieve relevant earned lessons over ORB's memory.
+  if (RECALL_QUERY.test(message)) {
+    const topic = message.replace(RECALL_QUERY, ' ');
+    const hits = await recallLessons(userId, topic, 4).catch(() => []);
+    const answer = hits.length
+      ? `Yes — here's what we've learned that looks relevant:\n${formatLessons(hits).split('\n').slice(1).join('\n')}`
+      : "Nothing in what I've kept lines up with this yet — but as we go, I'll remember how it plays out so next time I can tell you whether we've been here before.";
+    return { mode: 'fast' as const, answer, route: 'fast' as const, model: 'memory' };
+  }
+
   // Adaptation & Learning: learn from reported outcomes, and surface what's working vs what to rethink.
   if (/\bwhat(?:'s| is| has been) working\b|\bwhat should i (?:do more of|double down on|change|stop doing)\b|\bwhat'?s working and what'?s not\b/i.test(message)) {
     return { mode: 'fast' as const, answer: formatAdaptation(await whatWorks(userId).catch(() => ({ keep: [], rethink: [] }))), route: 'fast' as const, model: 'adapt' };
@@ -851,9 +862,10 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const civscale = CIVILIZATION_QUERY.test(message);   // #38 reason at civilization scale
     const coordinating = COORDINATION_QUERY.test(message);   // #39 synchronize independent actors
     const preserving = PRESERVATION_QUERY.test(message), continuity = CONTINUITY_QUERY.test(message);   // #41 preserve across generations, #42 hold the thread
+    const cosmicMem = /\b(what should (?:we|i) never forget|never be forgotten|too valuable to (?:lose|forget)|worth remembering (?:long[- ]term|forever)|what'?s worth remembering|memory hierarchy|what (?:learning|knowledge) (?:should|must) (?:we|i) keep)\b/i.test(message);   // #43 memory hierarchy posture
     // #40 Prime Directive: the constitutional test rides along on the most consequential calls (not chit-chat).
     const constitutional = !urgent && (decision || strategic || governing || aligned || steward || flourish);
-    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish || conscEvolve || antifragile || wisdomAccum || discovering || governing || civscale || coordinating || preserving || continuity;
+    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish || conscEvolve || antifragile || wisdomAccum || discovering || governing || civscale || coordinating || preserving || continuity || cosmicMem;
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
       : (deepThink && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
@@ -905,7 +917,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
       + (conscEvolve ? EVOLVE_DIRECTIVE : '') + (antifragile ? ANTIFRAGILE_DIRECTIVE : '') + (wisdomAccum ? WISDOM_ACCUM_DIRECTIVE : '')
       + (discovering ? DISCOVERY_DIRECTIVE : '') + (governing ? GOVERNANCE_DIRECTIVE : '') + (civscale ? CIVILIZATION_DIRECTIVE : '')
       + (coordinating ? COORDINATION_DIRECTIVE : '') + (constitutional ? CONSTITUTION_DIRECTIVE : '')
-      + (preserving ? PRESERVATION_DIRECTIVE : '') + (continuity ? CONTINUITY_DIRECTIVE : ''));
+      + (preserving ? PRESERVATION_DIRECTIVE : '') + (continuity ? CONTINUITY_DIRECTIVE : '') + (cosmicMem ? COSMIC_MEMORY_DIRECTIVE : ''));
     const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir + higherDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));

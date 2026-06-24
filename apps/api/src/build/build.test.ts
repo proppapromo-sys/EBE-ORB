@@ -55,6 +55,7 @@ import { COORDINATION_QUERY, COORDINATION_DIRECTIVE } from '../services/coordina
 import { PRIME_QUERY, CONSTITUTION_DIRECTIVE, constitutionStatement, PRIME_DIRECTIVE, PILLARS, CONSTITUTIONAL_TEST } from '../services/constitution.js';
 import { PRESERVATION_QUERY, PRESERVATION_DIRECTIVE } from '../services/preservation.js';
 import { CONTINUITY_QUERY, CONTINUITY_DIRECTIVE } from '../services/continuity.js';
+import { RECALL_QUERY, COSMIC_MEMORY_DIRECTIVE } from '../services/recall.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -430,6 +431,14 @@ test('legacy/continuity (#41-#42): preservation across generations + holding the
   assert.match(CONTINUITY_DIRECTIVE, /thread|context|original|identity|through-line/i);
   // Plain task triggers neither.
   assert.equal([PRESERVATION_QUERY, CONTINUITY_QUERY].some((re) => re.test('what time is my meeting')), false);
+});
+
+test('cosmic memory (#43): "have we seen this before" retrieval + memory-hierarchy frame', () => {
+  assert.ok(RECALL_QUERY.test('have we seen this before'));
+  assert.ok(RECALL_QUERY.test('does this remind you of anything'));
+  assert.ok(RECALL_QUERY.test('what did we learn from last time'));
+  assert.match(COSMIC_MEMORY_DIRECTIVE, /hierarchy|event|lesson|principle|seen before|integrity/i);
+  assert.equal(RECALL_QUERY.test('what time is my meeting'), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
