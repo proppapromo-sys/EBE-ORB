@@ -34,6 +34,8 @@ import { reflect, META_DIRECTIVE, AUDIT_DIRECTIVE, META_QUERY, AUDIT_QUERY } fro
 import { logEvent, habitPredictions, formatPatterns } from '../services/events.js';
 import { selfRegulation } from '../services/selfreg.js';
 import { parseOutcome, recordOutcome, whatWorks, formatAdaptation } from '../services/adaptation.js';
+import { CREATIVE_QUERY, CREATIVE_DIRECTIVE } from '../services/creativity.js';
+import { isStrategic, WISDOM_DIRECTIVE, getValues, setValues, parseValues, valuesDirective } from '../services/wisdom.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -569,6 +571,16 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: formatObjectives(await listObjectives(userId).catch(() => [])), route: 'fast' as const, model: 'goals' };
   }
 
+  // Wisdom & Judgment: set or read the values ORB weighs major decisions against.
+  {
+    const vals = parseValues(message);
+    if (vals) { await setValues(userId, vals).catch(() => {}); return { mode: 'fast' as const, answer: `Noted — I'll weigh the big calls against your values: ${vals}.`, route: 'fast' as const, model: 'wisdom' }; }
+  }
+  if (/\bwhat are my values\b|\bwhat do i (?:value|stand for)\b/i.test(message)) {
+    const v = await getValues(userId).catch(() => '');
+    return { mode: 'fast' as const, answer: v ? `The values you've told me to weigh decisions against: ${v}.` : "You haven't told me your core values yet — say \"my values are …\" and I'll weigh big decisions against them.", route: 'fast' as const, model: 'wisdom' };
+  }
+
   // Adaptation & Learning: learn from reported outcomes, and surface what's working vs what to rethink.
   if (/\bwhat(?:'s| is| has been) working\b|\bwhat should i (?:do more of|double down on|change|stop doing)\b|\bwhat'?s working and what'?s not\b/i.test(message)) {
     return { mode: 'fast' as const, answer: formatAdaptation(await whatWorks(userId).catch(() => ({ keep: [], rethink: [] }))), route: 'fast' as const, model: 'adapt' };
@@ -712,11 +724,13 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const comms = analyzeComms(message, opts.prosody);
     const urgent = comms.urgent;
     const noisy = opts.scene?.noise === 'loud';   // a loud place → favor brevity and clarity
-    // Decision Engine: is the user choosing between options? If so, give it room and a structured frame.
+    // Decision Engine / Creativity / Wisdom: weighty or generative turns get room and a structured frame.
     const decision = parseDecision(message);
     const auditing = AUDIT_QUERY.test(message);   // reviewing a past decision (process vs outcome)
+    const creative = CREATIVE_QUERY.test(message);
+    const strategic = isStrategic(message);
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
-      : ((decision || auditing) && !urgent) ? 'detailed'
+      : ((decision || auditing || creative || strategic) && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
 
     // Humor: the user's level, downgraded to professional this turn if they're rushed, frustrated, or
@@ -748,7 +762,10 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // decision audit judges process over outcome.
     const decisionDir = (decision && !urgent) ? decisionDirective(decision, await topDrivers(userId).catch(() => []), decisionProfile(prefs.traits)) + META_DIRECTIVE : '';
     const auditDir = (auditing && !urgent) ? AUDIT_DIRECTIVE + META_DIRECTIVE : '';
-    const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir;
+    // Creativity: push past the obvious. Wisdom: weigh strategic calls through consequences + values.
+    const creativeDir = (creative && !urgent) ? CREATIVE_DIRECTIVE : '';
+    const wisdomDir = (strategic && !urgent) ? WISDOM_DIRECTIVE + valuesDirective(await getValues(userId).catch(() => '')) : '';
+    const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));
     const replyLang = lang.code === 'en' ? undefined : lang.name;

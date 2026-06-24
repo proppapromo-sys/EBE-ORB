@@ -26,6 +26,8 @@ import { buildReflection, META_DIRECTIVE, AUDIT_DIRECTIVE, META_QUERY, AUDIT_QUE
 import { analyzePatterns } from '../services/events.js';
 import { buildSelfReg } from '../services/selfreg.js';
 import { parseOutcome, recommendFrom } from '../services/adaptation.js';
+import { CREATIVE_QUERY, CREATIVE_DIRECTIVE } from '../services/creativity.js';
+import { isStrategic, WISDOM_DIRECTIVE, parseValues, valuesDirective } from '../services/wisdom.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -225,6 +227,24 @@ test('decision: detects a choice and frames trade-offs, bias-guards, goals + dri
   // Decision profile is derived from learned tendencies.
   assert.equal(decisionProfile({ risk: { s: 0.5, n: 3 }, analytical: { s: 0.4, n: 3 } }).risk, 'high');
   assert.equal(decisionProfile({}).risk, 'medium');        // unknown → balanced default
+});
+
+test('creativity + wisdom: generative framing and judgment on weighty calls', () => {
+  // Creativity triggers on idea-generation asks; the directive pushes diverge-then-converge.
+  assert.ok(CREATIVE_QUERY.test('brainstorm some ways to grow Friday traffic'));
+  assert.equal(CREATIVE_QUERY.test('what time is my meeting'), false);
+  assert.match(CREATIVE_DIRECTIVE, /diverge|unconventional|connects unrelated/i);
+
+  // Wisdom triggers on strategic decisions and applies second-order / ethics / long-term judgment.
+  assert.equal(isStrategic('should I open a second restaurant?'), true);
+  assert.equal(isStrategic('is this the right move?'), true);
+  assert.equal(isStrategic("what's the wifi password"), false);
+  assert.match(WISDOM_DIRECTIVE, /second-order|opportunity cost|ethical|long-term/i);
+
+  // Values get parsed and folded into the judgment.
+  assert.equal(parseValues('my values are honesty, long-term thinking, and family'), 'honesty, long-term thinking, and family');
+  assert.equal(parseValues('what time is it'), null);
+  assert.match(valuesDirective('family first'), /family first/);
 });
 
 test('adaptation: learns from outcomes — do more of what works, rethink what fails', () => {
