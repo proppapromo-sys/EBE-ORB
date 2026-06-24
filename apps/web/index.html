@@ -1630,6 +1630,33 @@ document.getElementById('join-submit').addEventListener('click',async()=>{
   if(API){ try{ await fetch(API+'/api/orb/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,ref:ORB_REF})}); }catch(e){} }
   closeJoin(); speak("Hey, good to meet you. I'll remember you from here on.");
 });
+
+// Proactive panel: shows what ORB's background worker surfaced on its own. Self-contained + defensive —
+// never blocks the page, only appears when something is pending. Dismissing marks it seen server-side.
+async function orbProactive(){
+  if(!API) return;
+  const uid=ORB_USER||'demo-user';
+  let data; try{ data=await (await fetch(API+'/api/orb/proactive/pending?userId='+encodeURIComponent(uid))).json(); }catch(e){ return; }
+  const items=(data&&data.insights)||[];
+  let box=document.getElementById('orb-proactive');
+  if(!items.length){ if(box) box.remove(); return; }
+  const dismiss=(key)=>{ try{ fetch(API+'/api/orb/proactive/seen',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:uid,keys:key?[key]:[]})}); }catch(e){} };
+  if(!box){ box=document.createElement('div'); box.id='orb-proactive';
+    box.style.cssText='position:fixed;right:16px;bottom:16px;max-width:320px;z-index:60;background:rgba(18,20,28,.94);border:1px solid #2b3040;border-radius:12px;padding:12px 14px;color:#dfe3ee;font:13px/1.4 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.4)';
+    document.body.appendChild(box); }
+  box.textContent='';
+  const head=document.createElement('div'); head.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px';
+  const title=document.createElement('strong'); title.textContent='ORB NOTICED'; title.style.cssText='font-size:12px;letter-spacing:.04em;color:#9fb0d0';
+  const xb=document.createElement('button'); xb.textContent='×'; xb.title='Dismiss all'; xb.style.cssText='background:none;border:0;color:#8893a8;cursor:pointer;font-size:15px';
+  xb.onclick=()=>{ dismiss(); box.remove(); };
+  head.appendChild(title); head.appendChild(xb); box.appendChild(head);
+  items.slice(0,4).forEach(it=>{ const row=document.createElement('div'); row.style.cssText='display:flex;gap:8px;align-items:flex-start;margin:6px 0';
+    const t=document.createElement('div'); t.textContent=it.message; t.style.flex='1';
+    const b=document.createElement('button'); b.textContent='✓'; b.title='Got it'; b.style.cssText='background:none;border:0;color:#6fcf97;cursor:pointer';
+    b.onclick=()=>{ dismiss(it.key); row.remove(); if(box.querySelectorAll('div').length<=1) box.remove(); };
+    row.appendChild(t); row.appendChild(b); box.appendChild(row); });
+}
+if(API){ setTimeout(orbProactive,2500); setInterval(orbProactive,180000); }
 </script>
 </body>
 </html>

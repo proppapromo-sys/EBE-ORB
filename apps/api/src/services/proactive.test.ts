@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildInsights, formatDigest, freshInsights, type Insight } from './proactive.js';
+import { buildInsights, formatDigest, freshInsights, persistInsights, pendingInsights, markSeen, _resetStore, type Insight } from './proactive.js';
 import type { Goal } from './goals.js';
 import type { Objective } from './objectives.js';
 
@@ -53,6 +53,29 @@ test('buildInsights: dedupes by key and caps the list', () => {
   // Empty input → nothing, and the digest is blank.
   assert.equal(buildInsights({ goals: [], gaps: [], objectives: [], habits: [], now: NOW }).length, 0);
   assert.equal(formatDigest([]), '');
+});
+
+test('persist + pending + markSeen: durable queue the UI reads, then dismisses', async () => {
+  _resetStore();
+  const ins: Insight[] = [
+    { kind: 'nudge', key: 'nudge:a', priority: 120, message: 'call the lawyer' },
+    { kind: 'coherence', key: 'coh:exercise', priority: 87, message: 'you keep deferring exercise' },
+  ];
+  await persistInsights('u1', ins, NOW);
+  const pending = await pendingInsights('u1');
+  assert.equal(pending.length, 2);
+  assert.equal(pending[0].key, 'nudge:a');          // highest priority first
+  assert.equal(pending[0].seen, false);
+  // Dismiss one → only the other remains pending.
+  await markSeen('u1', ['nudge:a']);
+  const after = await pendingInsights('u1');
+  assert.equal(after.length, 1);
+  assert.equal(after[0].key, 'coh:exercise');
+  // markSeen with no keys clears the rest.
+  await markSeen('u1');
+  assert.equal((await pendingInsights('u1')).length, 0);
+  // Another user is isolated.
+  assert.equal((await pendingInsights('u2')).length, 0);
 });
 
 test('freshInsights: cooldown prevents re-surfacing the same insight, then lapses', () => {

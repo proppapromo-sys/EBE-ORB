@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { askOrb, gatherContext, createAction, dailyBriefing, proactive } from '../agents/masterAgent.js';
-import { scanUser, formatDigest } from '../services/proactive.js';
+import { scanUser, formatDigest, pendingInsights, markSeen } from '../services/proactive.js';
 import { connectors, getConnector } from '../connectors/index.js';
 import { runOrbCycle } from '../genome/orbBranch.js';
 import { createJournal, journalIsDurable } from '../services/journalStore.js';
@@ -364,6 +364,25 @@ orbRouter.get('/proactive', async (req, res, next) => {
     const userId = String(req.query.userId ?? 'demo-user');
     const insights = await scanUser(userId);
     res.json({ userId, insights, digest: formatDigest(insights) });
+  } catch (error) { next(error); }
+});
+
+// The pending queue the background worker has surfaced (durable across restarts) — what the UI shows.
+orbRouter.get('/proactive/pending', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? 'demo-user');
+    const insights = await pendingInsights(userId);
+    res.json({ userId, insights, digest: formatDigest(insights) });
+  } catch (error) { next(error); }
+});
+
+// Dismiss insights so they stop showing. Body { userId, keys?: string[] } — omit keys to clear all.
+orbRouter.post('/proactive/seen', async (req, res, next) => {
+  try {
+    const userId = String(req.body?.userId ?? 'demo-user');
+    const keys = Array.isArray(req.body?.keys) ? req.body.keys.map(String) : [];
+    await markSeen(userId, keys);
+    res.json({ userId, ok: true });
   } catch (error) { next(error); }
 });
 

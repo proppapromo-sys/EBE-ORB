@@ -14,6 +14,7 @@ import { goalScore, nudgeFor, pendingGoals } from './goals.js';
 import { detectCoherenceGaps, type CoherenceGap } from './coherence.js';
 import { listObjectives, progressOf, type Objective } from './objectives.js';
 import { habitPredictions } from './events.js';
+import { supabase } from './supabase.js';
 
 export type Insight = { kind: 'nudge' | 'coherence' | 'stalled' | 'habit'; key: string; priority: number; message: string };
 
@@ -102,7 +103,61 @@ export async function runTick(userIds: string[], now = Date.now()): Promise<{ us
   for (const userId of userIds) {
     const all = await scanUser(userId, now);
     const fresh = freshInsights(userId, all, now);
-    if (fresh.length) results.push({ userId, insights: fresh });
+    if (fresh.length) { await persistInsights(userId, fresh, now); results.push({ userId, insights: fresh }); }
   }
   return results;
 }
+
+// ── Durable read model ────────────────────────────────────────────────────────────────────────────
+// What the worker surfaced, so it survives a restart and the web app / next session can show it. Keyed
+// by (userId, key); re-surfacing an existing key refreshes it without clobbering a 'seen' the user set,
+// unless the cooldown lapsed (handled upstream by freshInsights). Supabase-backed (orb_insights) with an
+// in-memory fallback. Never throws.
+export type StoredInsight = Insight & { surfaced: number; seen: boolean };
+const store = new Map<string, Map<string, StoredInsight>>();
+function umap(userId: string): Map<string, StoredInsight> { let m = store.get(userId); if (!m) { m = new Map(); store.set(userId, m); } return m; }
+
+/** Record surfaced insights as pending (unseen). Idempotent per key. Never throws. */
+export async function persistInsights(userId: string, insights: Insight[], now = Date.now()): Promise<void> {
+  const m = umap(userId);
+  for (const i of insights) {
+    m.set(i.key, { ...i, surfaced: now, seen: false });
+    if (supabase) {
+      try {
+        await supabase.from('orb_insights').upsert(
+          { user_id: userId, key: i.key, kind: i.kind, message: i.message, priority: i.priority, surfaced: new Date(now).toISOString(), seen: false },
+          { onConflict: 'user_id,key' },
+        );
+      } catch { /* in-memory */ }
+    }
+  }
+}
+
+async function loadStore(userId: string): Promise<Map<string, StoredInsight>> {
+  const m = umap(userId);
+  if (m.size || !supabase) return m;
+  try {
+    const { data } = await supabase.from('orb_insights').select('key,kind,message,priority,surfaced,seen').eq('user_id', userId);
+    for (const r of data ?? []) m.set(r.key, { kind: r.kind, key: r.key, message: r.message, priority: r.priority || 0, surfaced: Date.parse(r.surfaced) || Date.now(), seen: !!r.seen });
+  } catch { /* in-memory */ }
+  return m;
+}
+
+/** The pending (unseen) insights for a user, highest priority first — what the UI shows. */
+export async function pendingInsights(userId: string): Promise<StoredInsight[]> {
+  const m = await loadStore(userId);
+  return [...m.values()].filter((x) => !x.seen).sort((a, b) => b.priority - a.priority);
+}
+
+/** Mark insights seen so they stop showing. Empty keys → marks all pending. Never throws. */
+export async function markSeen(userId: string, keys: string[] = []): Promise<void> {
+  const m = await loadStore(userId);
+  const targets = keys.length ? keys : [...m.values()].filter((x) => !x.seen).map((x) => x.key);
+  for (const k of targets) { const x = m.get(k); if (x) x.seen = true; }
+  if (supabase && targets.length) {
+    try { await supabase.from('orb_insights').update({ seen: true }).eq('user_id', userId).in('key', targets); } catch { /* in-memory */ }
+  }
+}
+
+/** Test-only: reset the in-memory store. */
+export function _resetStore(): void { store.clear(); }
