@@ -146,6 +146,7 @@ test('comms: emotion read is conservative and maps to a posture', () => {
   assert.equal(readEmotion('haha nice one, thanks'), 'playful');
   assert.equal(readEmotion('what time is my meeting?'), 'neutral');   // plain question, not an outburst
   assert.match(postureDirective({ urgent: false, emotion: 'frustrated' }), /frustrated/i);
+  assert.match(postureDirective({ urgent: false, emotion: 'frustrated' }), /reflect back|feel heard/i);   // active listening
   assert.match(postureDirective({ urgent: true, emotion: 'neutral' }), /hurry/i);
   assert.equal(postureDirective({ urgent: false, emotion: 'neutral' }), '');   // calm → no special posture
 });

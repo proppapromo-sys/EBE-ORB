@@ -139,9 +139,11 @@
 <form class="cmd" id="cmd">
   <input id="q" placeholder="Ask ORB —  what needs my attention today?" autocomplete="off" />
   <button type="button" class="icon" id="wake" title="hands-free: say &quot;Hey ORB&quot; anytime">📡</button>
+  <button type="button" class="icon" id="cam" title="show ORB something — point your camera or pick a photo">📷</button>
   <button type="button" class="icon" id="mic" title="push to talk">🎤</button>
   <button type="submit">ASK</button>
 </form>
+<input id="camfile" type="file" accept="image/*" capture="environment" style="display:none" />
 <div class="hint">● GO LIVE = just the orb, always listening — say "Hey ORB" anytime · (tap EXIT to bring controls back)</div>
 
 <button id="live">● GO LIVE</button>
@@ -859,6 +861,7 @@ async function convene(q){
   if(ORB_GEO){askBody.lat=ORB_GEO.lat;askBody.lon=ORB_GEO.lon;}
   if(lastProsody&&lastProsody!=='neutral')askBody.prosody=lastProsody;  // voice-tone hint (spoken turns only)
   if(lastScene)askBody.scene=lastScene;                                 // acoustic environment hint
+  if(pendingImage){askBody.images=[pendingImage];pendingImage=null;}    // ORB sees what you showed it
   lastProsody=null;lastScene=null;                                      // consume both — never reuse next turn
   try{const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(askBody)});
     const d=await r.json();
@@ -1062,6 +1065,27 @@ document.getElementById('mic').addEventListener('click',async()=>{
   if(!SR && !API){alert('Voice input needs Chrome/Edge, or a connected ORB API.');return;}
   if(convoMode){stopConversation();return;}
   await startConversation("Okay, I'm listening.");
+});
+
+// ── Vision: show ORB something. Point the camera (mobile) or pick a photo; ORB's vision model reads
+// documents, screens, and objects. The image is downscaled in-browser, then sent with your question.
+let pendingImage=null;
+document.getElementById('cam').addEventListener('click',()=>{ if(!API){alert('Connect ORB to use vision.');return;} document.getElementById('camfile').click(); });
+document.getElementById('camfile').addEventListener('change',ev=>{
+  const f=ev.target.files&&ev.target.files[0]; ev.target.value=''; if(!f)return;
+  const img=new Image();
+  img.onload=()=>{
+    const max=1024, sc=Math.min(1,max/Math.max(img.width,img.height));
+    const c=document.createElement('canvas'); c.width=Math.round(img.width*sc); c.height=Math.round(img.height*sc);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    pendingImage=c.toDataURL('image/jpeg',0.82);
+    const box=document.getElementById('answer'); box.classList.add('show');
+    box.innerHTML='<img src="'+pendingImage+'" style="max-width:160px;border-radius:10px;margin-bottom:8px;display:block"><span class="m">Got it — what would you like to know? (or I\'ll just tell you what I see)</span>';
+    const typed=document.getElementById('q').value.trim();
+    if(typed) convene(typed); else convene('What am I looking at? Describe it.');
+  };
+  img.onerror=()=>{const b=document.getElementById('answer');b.classList.add('show');b.innerHTML=mdToHtml("I couldn't read that image.");};
+  const r=new FileReader(); r.onload=()=>{img.src=r.result;}; r.readAsDataURL(f);
 });
 
 // 👂 always-on wake word: say "Hey EBE"

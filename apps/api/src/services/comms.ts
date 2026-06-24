@@ -186,7 +186,7 @@ export function postureDirective(read: CommRead): string {
     else if (read.sarcasmType === 'hostile') d += ' The sarcasm is pointed and critical — stay calm and professional, do NOT joke back, and address the substance directly.';
     else d += ' They sound frustrated — acknowledge that briefly and offer to help with the underlying problem (e.g. "Sounds like that\'s not great — want a hand with it?"), rather than congratulating them.';
   }
-  if (read.emotion === 'frustrated' && !read.sarcasm) d += ' The user sounds frustrated — acknowledge it in a few words, drop pleasantries and jokes, and fix the problem directly.';
+  if (read.emotion === 'frustrated' && !read.sarcasm) d += ' The user sounds frustrated — practice active listening: first reflect back, in one line, the SPECIFIC thing that seems to be bothering them so they feel heard ("Sounds like the timeline is the frustrating part — is that it?"), then help fix it. Don\'t jump straight to a solution.';
   else if (read.emotion === 'hesitant') d += ' The user sounds unsure — be reassuring and clear, and offer a gentle recommendation if they seem to be deciding.';
   else if (read.emotion === 'playful' && !read.sarcasm) d += ' The user is being light and playful — a warm, easy tone fits here.';
   // Thinking-partner mode: help them clarify their OWN thinking, don't just hand over an answer.

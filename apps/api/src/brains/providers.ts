@@ -23,14 +23,19 @@ function stub(provider: BrainProvider, envVar: string): { text: string; ok: bool
 const openaiClient: BrainProviderClient = {
   provider: 'openai',
   get configured() { return Boolean(getPlatformKey('OPENAI_API_KEY')); },
-  async complete({ model, system, user, maxTokens }: CompleteOpts) {
+  async complete({ model, system, user, images, maxTokens }: CompleteOpts) {
     const client = getOpenAI();
     if (!client) return stub('openai', 'OPENAI_API_KEY');
+    // GPT models read images too — pass them as image_url parts (data URLs work directly), so Vision
+    // works whether the configured vision model is Gemini or OpenAI.
+    const content = (images && images.length)
+      ? [{ type: 'text' as const, text: user }, ...images.map((u) => ({ type: 'image_url' as const, image_url: { url: u } }))]
+      : user;
     const res = await client.chat.completions.create({
       model,
       messages: [
         { role: 'system', content: system },
-        { role: 'user', content: user }
+        { role: 'user', content: content as never }
       ],
       temperature: 0.2,
       ...(maxTokens ? { max_tokens: maxTokens } : {})
