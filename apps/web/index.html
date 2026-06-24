@@ -876,19 +876,34 @@ async function startMicAnalyser(){
 function startProsody(){ if(!proTimer) proTimer=setInterval(audioTick,100); }        // ~10 Hz
 function proReset(){ proAcc={n:0,eSum:0,pSum:0,pN:0,t0:Date.now()}; }
 function sceneReset(){ sceneAcc={ambSum:0,ambN:0,babble:0,bandN:0}; }
-// One sampling pass: separate the user's VOICE (voiced, pitched) from the ENVIRONMENT (everything
-// else), feeding prosody from the former and the spatial/noise read from the latter.
+// Gate (VAD): the most basic question — is the user speaking, or is this just the room? It tracks the
+// quiet background level and opens only when sound rises clearly above it, with hysteresis (a lower
+// close threshold) and a short hold so brief pauses mid-word don't slam it shut. This one decision
+// cleanly separates the user's VOICE from the ENVIRONMENT for everything downstream.
+let gate={floor:0.01,open:false,holdUntil:0};
+function gateUpdate(rms,now){
+  // Learn the noise floor: drop to quiet fast, rise slowly (so a loud talker doesn't raise the floor).
+  gate.floor = rms<gate.floor ? gate.floor*0.9+rms*0.1 : gate.floor*0.995+rms*0.005;
+  gate.floor = Math.max(0.0008, Math.min(0.05, gate.floor));
+  const openThr=Math.max(0.012, gate.floor*3.2), closeThr=Math.max(0.008, gate.floor*2.0);
+  if(!gate.open){ if(rms>openThr)gate.open=true; }
+  else if(rms>closeThr){ gate.holdUntil=now+250; }   // still talking → refresh the hold window
+  else if(now>gate.holdUntil){ gate.open=false; }     // quiet past the hold → gate closes
+  return gate.open;
+}
+// One sampling pass: the gate splits the user's VOICE (→ prosody) from the ENVIRONMENT (→ spatial/noise).
 function audioTick(){
   if(!analyser||!listening||speaking)return;
   const N=analyser.fftSize; if(!tdata||tdata.length!==N)tdata=new Float32Array(N);
   try{analyser.getFloatTimeDomainData(tdata);}catch(e){return;}
   let s=0;for(let i=0;i<N;i++)s+=tdata[i]*tdata[i];
   const rms=Math.sqrt(s/N);
-  const f0=rms>0.012?estimatePitch(tdata,micRate):-1;
-  const voiced=rms>0.02&&f0>70&&f0<400;                                             // the user actually speaking
-  if(rms>=0.012){ if(!proAcc)proReset(); proAcc.n++;proAcc.eSum+=rms; if(f0>70&&f0<400){proAcc.pSum+=f0;proAcc.pN++;} }
+  const now=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+  const open=gateUpdate(rms,now);                                                   // VAD decision
+  const f0=open?estimatePitch(tdata,micRate):-1;
+  if(open){ if(!proAcc)proReset(); proAcc.n++;proAcc.eSum+=rms; if(f0>70&&f0<400){proAcc.pSum+=f0;proAcc.pN++;} }
   if(!sceneAcc)sceneReset();
-  if(!voiced){                                                                       // ambient frame → environment
+  if(!open){                                                                         // gate closed → environment
     sceneAcc.ambSum+=rms;sceneAcc.ambN++;
     try{analyser.getByteFrequencyData(freq);
       let band=0,tot=0;const binHz=micRate/N;
