@@ -462,6 +462,30 @@ function onSpeakEnd(){speaking=false;document.getElementById('speaking').classLi
 // Adaptive voice: the server reads the user's state and returns how ORB should sound (rate/pitch/
 // volume). We clamp to safe ranges and fall back to ORB's calm executive default when none is given.
 function vNum(v,key,def,lo,hi){const n=v&&typeof v[key]==='number'?v[key]:def;return Math.max(lo,Math.min(hi,n));}
+
+// ── Voice EQ: shape ORB's spoken audio by frequency band (warmth / clarity / air) + an equilibrium
+// compressor that evens out loud/soft so the voice sits in a balanced, trustworthy zone. Each voice
+// tone gets its own band gains (dB): executive = warm & controlled; emergency = mid presence to cut
+// through; calm = softened highs so it's soothing, not fatiguing. Routed via the Web Audio API.
+const EQ_PROFILES={
+  executive:{low:3,mid:1,high:-1}, friendly:{low:1,mid:2,high:1.5},
+  emergency:{low:-1,mid:3,high:1},  calm:{low:2,mid:0,high:-3}
+};
+let outCtx=null;
+function outAudioCtx(){ if(!outCtx){ const C=window.AudioContext||window.webkitAudioContext; if(!C)return null; outCtx=new C(); } return outCtx; }
+function buildEqChain(ctx,tone){
+  const p=EQ_PROFILES[tone]||EQ_PROFILES.executive;
+  const low=ctx.createBiquadFilter(); low.type='lowshelf'; low.frequency.value=200; low.gain.value=p.low;       // 80–250 Hz: warmth, authority
+  const mid=ctx.createBiquadFilter(); mid.type='peaking';  mid.frequency.value=3000; mid.Q.value=1; mid.gain.value=p.mid; // ~3 kHz: clarity, intelligibility
+  const high=ctx.createBiquadFilter();high.type='highshelf';high.frequency.value=8000;high.gain.value=p.high;   // 4–12 kHz: presence, air
+  const comp=ctx.createDynamicsCompressor(); comp.threshold.value=-24; comp.knee.value=24; comp.ratio.value=3; comp.attack.value=0.003; comp.release.value=0.25; // equilibrium
+  const out=ctx.createGain(); out.gain.value=1.0;
+  low.connect(mid); mid.connect(high); high.connect(comp); comp.connect(out);
+  return {input:low,output:out};
+}
+// EQ uses Web Audio, which can only process audio it's allowed to read — same-origin or data: URLs.
+// For anything cross-origin we skip EQ (and just play it) so the voice never goes silent on a CORS taint.
+function canEq(url){ return /^data:/i.test(url) || url.startsWith('/') || (typeof location!=='undefined' && url.startsWith(location.origin)); }
 function speakBrowser(text,lang,voice){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(speakable(text).slice(0,800));
   u.lang=lang||'en-US';
@@ -480,6 +504,10 @@ async function speakCloned(text,voice){
     try{speechSynthesis.cancel();}catch(e){} stopCloned();
     const a=new Audio(d.audioUrl); clonedAudio=a;
     a.playbackRate=vNum(voice,'rate',1.0,0.8,1.3);a.volume=vNum(voice,'volume',1.0,0.7,1.0); // adapt delivery to state
+    // EQ: shape the cloned voice by frequency band for the current tone (warmth/clarity/air + leveling).
+    if(canEq(d.audioUrl)){ try{ const ctx=outAudioCtx(); if(ctx){ if(ctx.state==='suspended')ctx.resume();
+      const srcN=ctx.createMediaElementSource(a); const chain=buildEqChain(ctx,voice&&voice.tone);
+      srcN.connect(chain.input); chain.output.connect(ctx.destination); } }catch(e){/* play unprocessed */} }
     const rip=setInterval(()=>{if(clonedAudio!==a){clearInterval(rip);return;}voiceKick=1;ripples.push({r:R*0.16,life:1});},200);
     a.onplay=onSpeakStart;
     a.onended=()=>{clearInterval(rip);if(clonedAudio===a)clonedAudio=null;onSpeakEnd();};
