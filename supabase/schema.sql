@@ -147,6 +147,16 @@ create table if not exists orb_user_plans (
   updated_at timestamptz default now()
 );
 
+-- Adaptive Conversation Memory — how each user likes to talk with ORB (NOT what they say).
+-- Stores only small preference signals: answer-length style and their natural pause length.
+-- No raw audio, no transcripts of background speech — ORB only ever receives finished text.
+create table if not exists orb_convo_prefs (
+  user_id    text primary key,
+  style      text not null default 'short',
+  pause_ms   integer not null default 1600,
+  updated_at timestamptz default now()
+);
+
 -- Traveler profiles — details ORB needs to book flights for a user.
 create table if not exists orb_profiles (
   user_id     text primary key,

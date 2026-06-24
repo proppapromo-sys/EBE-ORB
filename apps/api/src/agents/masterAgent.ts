@@ -19,7 +19,16 @@ import { searchFlights, searchHotels, travelConfigured, duffelConfigured } from 
 import { calculate, convertUnits } from '../services/calc.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
+import { getStyle, setPrefs, type ConvoStyle } from '../services/convoPrefs.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
+
+// Adaptive Conversation Memory — answer-length intent.
+// Persistent ("from now on, keep it short") sets the saved preference; a per-turn cue
+// ("break it down") overrides just this answer. Privacy: only this preference signal is stored.
+const SET_SHORT = /\b(keep it short|be brief|short answers?|keep it brief|less detail|stop being so wordy|shorter answers?)\b/i;
+const SET_DETAILED = /\b(detailed answers?|be (?:more )?detailed|more detail( from now on)?|always (?:explain|elaborate)|long(er)? answers?)\b/i;
+const WANT_DETAIL = /\b(break it down|in detail|explain (?:it|that|this) (?:more|fully|in detail)|elaborate|go deeper|tell me more|the long version|full breakdown|walk me through)\b/i;
+const WANT_SHORT = /\b(quick(?:ly)?|in short|short version|just the gist|tl;?dr|one line|keep it short here)\b/i;
 
 // ORB runs on the Universal Genome. The five laws are not advice — they are the gate.
 const SYSTEM_PROMPT = `You are ORB, the user's Digital Chief of Staff, running on the Universal Genome.
@@ -339,6 +348,17 @@ export async function askOrb(
     return { mode: 'skill' as const, skill: skill.id, action: 'record', answer };
   }
 
+  // Adaptive Conversation Memory: a persistent style command teaches ORB how you like answers.
+  // It saves the preference (no raw audio, just this one signal) and confirms — nothing else runs.
+  if (SET_SHORT.test(message) || SET_DETAILED.test(message)) {
+    const style: ConvoStyle = SET_DETAILED.test(message) ? 'detailed' : 'short';
+    await setPrefs(userId, { style });
+    const answer = style === 'detailed'
+      ? "Got it — I'll give you fuller answers from now on. Say \"keep it short\" anytime to switch back."
+      : "Done — I'll keep my answers short from now on. Say \"break it down\" anytime you want the full version.";
+    return { mode: 'fast' as const, answer, route: 'fast' as const, model: 'prefs' };
+  }
+
   // Action mode: ORB *does* things — reminders/tasks now, email confirm-first. Nothing outward
   // goes without a "confirm". Checked before build so "remind me to build X" stays a reminder.
   const action = await handleAction(userId, message, { tz: opts.tz });
@@ -379,21 +399,27 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // (calendar/email/tasks/money). Plain questions answer straight from the model — no fetching.
     // Router → memory search + parallel agents (knowledge + Calendar/Email/File), all at once →
     // Finalizer → one fast answer. Cache reuses stable answers; live/personal data is never cached.
-    const [mems, toolCtx] = await Promise.all([
+    const [mems, toolCtx, savedStyle] = await Promise.all([
       recall(userId, message, 4).catch(() => []),
-      toolContext(message, userId, { lat: opts.lat, lon: opts.lon })
+      toolContext(message, userId, { lat: opts.lat, lon: opts.lon }),
+      getStyle(userId).catch(() => 'short' as ConvoStyle)
     ]);
     let liveCtx = toolCtx;
     if (!liveCtx && needsContext(message)) liveCtx = JSON.stringify(await gatherContext(userId)).slice(0, 4000);
 
+    // Adaptive Conversation Memory: start from the user's saved length preference, but let a
+    // per-turn cue win — "break it down" goes detailed once, "quick version" goes short once.
+    const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed' : WANT_SHORT.test(message) ? 'short' : savedStyle;
+
     // Cache: only when no live/personal data was pulled (so cached answers can't go stale).
+    // Key includes style so a short and a detailed answer to the same question don't collide.
     const cacheable = !liveCtx && !mems.length;
-    const key = `${userId}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
+    const key = `${userId}|${style}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
     if (cacheable) { const hit = cacheGet(key); if (hit) return { mode: 'fast' as const, answer: hit, route: 'fast' as const, model: 'cache' }; }
 
     const memCtx = mems.length ? `What I remember about you (use if relevant):\n${mems.map((m) => `- ${m.title}: ${m.content}`).join('\n')}` : '';
     const context = [memCtx, liveCtx].filter(Boolean).join('\n\n') || undefined;
-    const routed = await routedAnswer(message, { images: opts.images, context });
+    const routed = await routedAnswer(message, { images: opts.images, context, style });
     if (cacheable && routed.ok && routed.answer) cacheSet(key, routed.answer);
     return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label };
   }

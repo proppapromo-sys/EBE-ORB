@@ -77,10 +77,11 @@ test('classifyTask: routes for speed', () => {
   assert.equal(classifyTask('help me plan my business operations for Q3'), 'medium');
   assert.equal(classifyTask('analyze this contract and flag legal risks'), 'heavy');
   assert.equal(classifyTask('describe this', true), 'visual'); // has images
-  // Speed map points each tier at the intended engine.
-  assert.equal(ROUTES.fast.provider, 'gemini');
+  // Speed map points each tier at the intended engine (chat/voice runs on GPT — fastest).
+  assert.equal(ROUTES.fast.provider, 'openai');
   assert.equal(ROUTES.medium.provider, 'openai');
   assert.equal(ROUTES.heavy.provider, 'anthropic');
+  assert.equal(ROUTES.visual.provider, 'gemini');
 });
 
 test('skills: voice cloning/recognition are owner-only and talk-triggered', () => {

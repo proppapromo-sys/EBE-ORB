@@ -54,13 +54,20 @@ function providerChain(cls: TaskClass): { provider: BrainProvider; model: string
 /** Answer a request with one routed model, speaking as ORB. Falls back across providers on failure. */
 export async function routedAnswer(
   message: string,
-  opts: { images?: string[]; context?: string } = {}
+  opts: { images?: string[]; context?: string; style?: 'short' | 'detailed' } = {}
 ): Promise<{ answer: string; route: TaskClass; model: string; label: string; ok: boolean }> {
   const cls = classifyTask(message, Boolean(opts.images && opts.images.length));
-  const user = opts.context ? `Context (use silently, never read aloud):\n${opts.context}\n\nUser: ${message}` : message;
+  // Adaptive Conversation Memory: honor the user's learned answer-length preference. "short" keeps
+  // ORB crisp (the default — feels fast and human); "detailed" unlocks a fuller answer for this turn.
+  const detailed = opts.style === 'detailed';
+  const styleDirective = detailed
+    ? 'Give a thorough, well-structured answer — the user asked you to break it down.'
+    : 'Answer briefly and directly — one or two sentences unless more is truly needed.';
+  const base = opts.context ? `Context (use silently, never read aloud):\n${opts.context}\n\nUser: ${message}` : message;
+  const user = `${styleDirective}\n\n${base}`;
   const chain = providerChain(cls);
   // Keep spoken/chat answers short → far faster to generate. Heavy work goes through the council instead.
-  const maxTokens = cls === 'fast' ? 320 : 700;
+  const maxTokens = detailed ? 900 : cls === 'fast' ? 240 : 700;
   for (const route of chain) {
     try {
       const { text, ok } = await getProviderClient(route.provider).complete({ model: route.model, system: BRAINS.finalizer.system, user, images: opts.images, maxTokens });

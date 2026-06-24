@@ -552,18 +552,37 @@ function gatedConvene(q){
 
 // ── Turn-taking: wait for a complete thought, then answer; follow-ups need no wake word ──
 const FOLLOWUP_MS=12000;                                  // mic stays open this long after an answer
-let utterBuf='', flushTimer=null;
+let utterBuf='', flushTimer=null, holdStart=0;
 // trailing words that mean "I'm not done" → hold and keep listening
 const INCOMPLETE=/(?:^|\s)(?:to|for|with|and|the|a|an|at|on|in|about|of|from|into|that|my|your|please|so|but|or|um|uh|like|gonna|wanna|because|if|when|then)\s*$/i;
+// "hold on" family — the user wants ORB to wait, not answer. Acknowledged, never acted on.
+const HOLD_ON=/^\s*(?:hold on|hold up|wait(?: a (?:sec|second|minute|moment))?|one (?:sec|second|moment)|give me (?:a )?(?:sec|second|minute|moment)|hang on|just a (?:sec|second|moment)|let me think)\s*[.!]*\s*$/i;
+// Adaptive Conversation Memory (client side): learn the user's natural pause before they finish a
+// thought, so ORB waits exactly as long as THEY do — no cutting off, no awkward lag. We store only
+// this one number (milliseconds) in this browser; no audio, no transcript ever leaves the device.
+let learnedPause=Math.min(3000,Math.max(1000,Number(localStorage.getItem('orb_pause'))||1700));
+function learnPause(ms){                                   // exponential moving average, clamped sane
+  if(ms<300||ms>6000)return;                               // ignore outliers (mis-fires / long silences)
+  learnedPause=Math.round(Math.min(3000,Math.max(1000,learnedPause*0.8+ms*0.2)));
+  try{localStorage.setItem('orb_pause',String(learnedPause));}catch(e){}
+}
 function handleUtterance(q){
   if(flushTimer){clearTimeout(flushTimer);flushTimer=null;}
+  // "Hold on" — ORB waits patiently instead of answering, and keeps the mic open.
+  if(HOLD_ON.test(q)){
+    if(holdStart)learnPause(Date.now()-holdStart);         // this WAS the pause — learn from it
+    holdStart=0; if(wakeMode)armedUntil=Date.now()+FOLLOWUP_MS;
+    setPhase('listening'); speak("Sure, take your time."); return;
+  }
+  // A follow-up arrived while we were holding → that gap IS their natural pause. Learn it.
+  if(utterBuf&&holdStart){learnPause(Date.now()-holdStart);holdStart=0;}
   const merged=(utterBuf?utterBuf+' ':'')+q;
   if((INCOMPLETE.test(merged)||/,$/.test(merged)) && merged.split(/\s+/).length<40){
-    utterBuf=merged; setPhase('listening');               // they paused mid-sentence — wait for the rest
-    flushTimer=setTimeout(()=>{const f=utterBuf.trim();utterBuf='';if(f)gatedConvene(f);},1700);
+    utterBuf=merged; holdStart=Date.now(); setPhase('listening');  // paused mid-sentence — wait for the rest
+    flushTimer=setTimeout(()=>{const f=utterBuf.trim();utterBuf='';holdStart=0;if(f)gatedConvene(f);},learnedPause);
     return;
   }
-  utterBuf=''; gatedConvene(merged);                       // complete thought → answer now
+  utterBuf=''; holdStart=0; gatedConvene(merged);          // complete thought → answer now
 }
 if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
 // Tapping the orb: if it's talking, cut it off and listen; otherwise start a conversation.
