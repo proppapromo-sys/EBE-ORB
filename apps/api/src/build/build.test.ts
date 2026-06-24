@@ -22,6 +22,7 @@ import { observeMotivation, topDrivers, motivationDirective, parseDriver, setDri
 import { parseDecision, decisionDirective } from '../services/decision.js';
 import { synthesizePredictions } from '../services/behavior.js';
 import { decisionProfile } from '../services/personality.js';
+import { buildReflection, META_DIRECTIVE, AUDIT_DIRECTIVE, META_QUERY, AUDIT_QUERY } from '../services/metacognition.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -221,6 +222,24 @@ test('decision: detects a choice and frames trade-offs, bias-guards, goals + dri
   // Decision profile is derived from learned tendencies.
   assert.equal(decisionProfile({ risk: { s: 0.5, n: 3 }, analytical: { s: 0.4, n: 3 } }).risk, 'high');
   assert.equal(decisionProfile({}).risk, 'medium');        // unknown → balanced default
+});
+
+test('meta-cognition: reflection, confidence/assumption self-check, and process-vs-outcome audit', () => {
+  // Reflection synthesizes progress, what's slipping, and the assumption to question.
+  const r = buildReflection({
+    objectives: [{ label: 'grow revenue to 50k', progress: 50 }, { label: 'build ORB', progress: null }],
+    slipping: ['call the supplier'],
+    drivers: ['freedom']
+  });
+  assert.match(r, /50%/);
+  assert.match(r, /assuming is working|question to sit with/i);   // surfaces an assumption to check
+  assert.match(r, /call the supplier/);
+
+  // The self-check directive forces confidence + assumptions; the audit separates process from luck.
+  assert.match(META_DIRECTIVE, /how confident|assuming|could be wrong/i);
+  assert.match(AUDIT_DIRECTIVE, /process.*not the outcome|outcome luck/i);
+  assert.ok(META_QUERY.test('can we do a weekly review'));
+  assert.ok(AUDIT_QUERY.test('was that a bad decision or bad luck?'));
 });
 
 test('behavior prediction: synthesizes likely next moves from drivers, risk, goals, and deferrals', () => {

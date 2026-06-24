@@ -30,6 +30,7 @@ import { parseObjective, setObjective, updateProgress, listObjectives, formatObj
 import { observeMotivation, motivationDirective, describeMotivation, parseDriver, setDriver, topDrivers } from '../services/motivation.js';
 import { parseDecision, decisionDirective } from '../services/decision.js';
 import { predictBehavior, formatPredictions } from '../services/behavior.js';
+import { reflect, META_DIRECTIVE, AUDIT_DIRECTIVE, META_QUERY, AUDIT_QUERY } from '../services/metacognition.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -565,6 +566,11 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: formatObjectives(await listObjectives(userId).catch(() => [])), route: 'fast' as const, model: 'goals' };
   }
 
+  // Meta-Cognition: strategic reflection — step back and look at the whole picture honestly.
+  if (META_QUERY.test(message) && !AUDIT_QUERY.test(message)) {
+    return { mode: 'fast' as const, answer: await reflect(userId).catch(() => "Let's set a goal or two first, then I can reflect with you."), route: 'fast' as const, model: 'meta' };
+  }
+
   // Behavior Prediction: anticipate the user's likely next moves from their patterns.
   if (/\bwhat am i likely to (?:do|decide|choose)\b|\bpredict my (?:behavio(?:u)?r|next move|decisions?)\b|\bwhat would i (?:probably|likely) (?:do|decide)\b|\bwhat'?s my likely next move\b|\bwhat will i (?:probably )?do next\b/i.test(message)) {
     return { mode: 'fast' as const, answer: formatPredictions(await predictBehavior(userId).catch(() => [])), route: 'fast' as const, model: 'behavior' };
@@ -679,8 +685,9 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const noisy = opts.scene?.noise === 'loud';   // a loud place → favor brevity and clarity
     // Decision Engine: is the user choosing between options? If so, give it room and a structured frame.
     const decision = parseDecision(message);
+    const auditing = AUDIT_QUERY.test(message);   // reviewing a past decision (process vs outcome)
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
-      : (decision && !urgent) ? 'detailed'
+      : ((decision || auditing) && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
 
     // Humor: the user's level, downgraded to professional this turn if they're rushed, frustrated, or
@@ -708,8 +715,11 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // Communication posture (urgency/emotion) + learned personality tendencies → quiet directives
     // shaping HOW ORB answers. Personality is skipped when rushed (speed wins); wit is dropped when
     // the user is frustrated (a chief of staff reads the room).
-    const decisionDir = (decision && !urgent) ? decisionDirective(decision, await topDrivers(userId).catch(() => []), decisionProfile(prefs.traits)) : '';
-    const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir;
+    // Meta-Cognition: decisions get a structured frame + a self-check on confidence/assumptions; a
+    // decision audit judges process over outcome.
+    const decisionDir = (decision && !urgent) ? decisionDirective(decision, await topDrivers(userId).catch(() => []), decisionProfile(prefs.traits)) + META_DIRECTIVE : '';
+    const auditDir = (auditing && !urgent) ? AUDIT_DIRECTIVE + META_DIRECTIVE : '';
+    const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));
     const replyLang = lang.code === 'en' ? undefined : lang.name;
