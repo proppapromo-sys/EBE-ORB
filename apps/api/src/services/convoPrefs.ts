@@ -10,10 +10,11 @@
  * user chose to send.
  */
 import { supabase } from './supabase.js';
+import { applySignals, type Traits } from './personality.js';
 
 export type ConvoStyle = 'short' | 'detailed';
-export type ConvoPrefs = { style: ConvoStyle; pauseMs: number; commands: Record<string, number>; wit: boolean };
-const DEFAULTS: ConvoPrefs = { style: 'short', pauseMs: 1600, commands: {}, wit: true };
+export type ConvoPrefs = { style: ConvoStyle; pauseMs: number; commands: Record<string, number>; wit: boolean; traits: Traits };
+const DEFAULTS: ConvoPrefs = { style: 'short', pauseMs: 1600, commands: {}, wit: true, traits: {} };
 
 const TABLE = 'orb_convo_prefs';
 const cache = new Map<string, ConvoPrefs>();
@@ -21,19 +22,22 @@ const cache = new Map<string, ConvoPrefs>();
 const MAX_COMMANDS = 24;            // keep only the user's most-used phrasings
 const MAX_CMD_WORDS = 8;            // a "command" is short; longer text is private speech — never stored
 
-function clone(p: ConvoPrefs): ConvoPrefs { return { style: p.style, pauseMs: p.pauseMs, commands: { ...p.commands }, wit: p.wit }; }
+function clone(p: ConvoPrefs): ConvoPrefs {
+  return { style: p.style, pauseMs: p.pauseMs, commands: { ...p.commands }, wit: p.wit, traits: { ...p.traits } };
+}
 
 export async function getPrefs(userId: string): Promise<ConvoPrefs> {
   if (cache.has(userId)) return clone(cache.get(userId)!);
   if (supabase) {
     try {
-      const { data } = await supabase.from(TABLE).select('style,pause_ms,commands,wit').eq('user_id', userId).maybeSingle();
+      const { data } = await supabase.from(TABLE).select('style,pause_ms,commands,wit,traits').eq('user_id', userId).maybeSingle();
       if (data) {
         const p: ConvoPrefs = {
           style: data.style === 'detailed' ? 'detailed' : 'short',
           pauseMs: Number(data.pause_ms) || DEFAULTS.pauseMs,
           commands: (data.commands && typeof data.commands === 'object') ? data.commands as Record<string, number> : {},
-          wit: data.wit !== false   // on by default
+          wit: data.wit !== false,   // on by default
+          traits: (data.traits && typeof data.traits === 'object') ? data.traits as Traits : {}
         };
         cache.set(userId, p); return clone(p);
       }
@@ -50,9 +54,37 @@ export async function setPrefs(userId: string, patch: Partial<ConvoPrefs>): Prom
   const cur = { ...(cache.get(userId) ?? DEFAULTS), ...patch };
   cur.pauseMs = Math.max(800, Math.min(3000, cur.pauseMs));   // keep it sane
   cur.commands = cur.commands ?? {};
+  cur.traits = cur.traits ?? {};
   cache.set(userId, cur);
   await persist(userId, cur);
   return clone(cur);
+}
+
+/**
+ * One observation per message: learn the user's favorite phrasing AND nudge their communication
+ * tendencies, then persist once. Privacy: only short commands are stored; trait signals are derived
+ * from the finished text the user sent — never background speech, never raw audio.
+ */
+export async function observeMessage(userId: string, text: string): Promise<void> {
+  const cur = cache.get(userId) ? clone(cache.get(userId)!) : clone(DEFAULTS);
+  const key = normalizeCommand(text);
+  if (key) {
+    cur.commands[key] = (cur.commands[key] || 0) + 1;
+    const entries = Object.entries(cur.commands).sort((a, b) => b[1] - a[1]);
+    if (entries.length > MAX_COMMANDS) cur.commands = Object.fromEntries(entries.slice(0, MAX_COMMANDS));
+  }
+  cur.traits = applySignals(cur.traits, text);
+  cache.set(userId, cur);
+  await persist(userId, cur);
+}
+
+/** Forget the learned profile — clears tendencies and remembered commands. Explicit prefs are kept. */
+export async function resetProfile(userId: string): Promise<void> {
+  const cur = cache.get(userId) ? clone(cache.get(userId)!) : clone(DEFAULTS);
+  cur.traits = {};
+  cur.commands = {};
+  cache.set(userId, cur);
+  await persist(userId, cur);
 }
 
 /** Reduce a command to a stable, comparable form. Returns '' for anything that isn't a short command. */
@@ -90,7 +122,7 @@ async function persist(userId: string, cur: ConvoPrefs): Promise<void> {
   if (!supabase) return;
   try {
     await supabase.from(TABLE).upsert(
-      { user_id: userId, style: cur.style, pause_ms: cur.pauseMs, commands: cur.commands, wit: cur.wit, updated_at: new Date().toISOString() },
+      { user_id: userId, style: cur.style, pause_ms: cur.pauseMs, commands: cur.commands, wit: cur.wit, traits: cur.traits, updated_at: new Date().toISOString() },
       { onConflict: 'user_id' }
     );
   } catch { /* keep in-memory */ }

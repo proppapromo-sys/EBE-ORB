@@ -8,7 +8,8 @@ import { inferCategory, getBlueprint } from './blueprints.js';
 import { buildCapability } from './tiers.js';
 import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
 import { looksLikeBuildRequest, looksLikeVideoRequest, needsContext, isUrgent } from '../agents/masterAgent.js';
-import { recordCommand, topCommands, getPrefs, setPrefs } from '../services/convoPrefs.js';
+import { recordCommand, topCommands, getPrefs, setPrefs, observeMessage, resetProfile } from '../services/convoPrefs.js';
+import { applySignals, profileDirective, describeProfile, confident, type Traits } from '../services/personality.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
 import { classifyTask, ROUTES } from '../brains/router.js';
@@ -102,6 +103,38 @@ test('convoPrefs: learns short commands, ignores private-length speech', async (
   assert.ok(top.includes("what's urgent"), 'recurring short command is remembered');
   const prefs = await getPrefs(u);
   assert.equal(Object.keys(prefs.commands).some((k) => k.length > 60), false, 'long private speech never stored');
+});
+
+test('personality: tendencies need repeated evidence before they speak', () => {
+  let t: Traits = {};
+  t = applySignals(t, 'just give me the bottom line');   // one direct signal — not yet confident
+  assert.equal(confident(t.direct), false, 'one data point is not enough');
+  assert.equal(profileDirective(t), '', 'no directive until a tendency is earned');
+  t = applySignals(t, 'cut to the chase');
+  t = applySignals(t, 'no fluff, just the point');
+  assert.equal(confident(t.direct), true, 'repeated signals earn the tendency');
+  assert.match(profileDirective(t), /blunt/i, 'earned tendency shapes the directive');
+});
+
+test('personality: opposite leans are distinguished and described in plain language', () => {
+  let cautious: Traits = {};
+  for (const m of ['be careful here', 'are you sure?', 'play it safe', 'double-check that']) cautious = applySignals(cautious, m);
+  assert.equal(confident(cautious.risk), true);
+  assert.match(describeProfile(cautious), /play it safe/i);
+
+  let bold: Traits = {};
+  for (const m of ["let's do it", 'send it', 'go for it', 'full send']) bold = applySignals(bold, m);
+  assert.match(describeProfile(bold), /decisively/i);
+  assert.match(describeProfile({}), /still getting to know/i);   // honest when it knows nothing
+});
+
+test('personality: observeMessage learns tendencies, resetProfile clears them', async () => {
+  const u = 'test-personality@example.com';
+  for (const m of ['explain why that works', 'break it down', 'walk me through the reasoning']) await observeMessage(u, m);
+  const learned = (await getPrefs(u)).traits;
+  assert.equal(confident(learned.analytical), true, 'analytical tendency learned from real messages');
+  await resetProfile(u);
+  assert.deepEqual((await getPrefs(u)).traits, {}, 'reset wipes the learned profile');
 });
 
 test('convoPrefs: Executive Wit defaults on and toggles off/on', async () => {

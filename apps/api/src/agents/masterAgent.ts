@@ -19,7 +19,8 @@ import { searchFlights, searchHotels, travelConfigured, duffelConfigured } from 
 import { calculate, convertUnits } from '../services/calc.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
-import { getPrefs, setPrefs, recordCommand, topCommands, type ConvoStyle } from '../services/convoPrefs.js';
+import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type ConvoStyle } from '../services/convoPrefs.js';
+import { profileDirective, describeProfile } from '../services/personality.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
 // Adaptive Conversation Memory — answer-length intent.
@@ -43,6 +44,10 @@ export function isUrgent(message: string): boolean {
 // Executive Wit toggle — the user can switch ORB's personality on or off in plain language.
 const WIT_OFF = /\b(turn off (?:the )?wit|no jokes?|be serious|cut the (?:jokes?|humor|wit)|stop being (?:funny|witty|cute)|just the facts|no humor|all business)\b/i;
 const WIT_ON = /\b(turn on (?:the )?wit|be (?:more )?(?:witty|playful|funny|clever)|add (?:some )?wit|lighten up|some humor|bring (?:back )?the wit)\b/i;
+
+// Personality Engine — the user can read back what ORB has learned, or reset it (transparency + control).
+const DESCRIBE_PROFILE = /\b(what (?:have|did|do) you (?:learn(?:ed)?|know) about me|what'?s my (?:profile|personality|communication style)|how (?:do|would) you describe me|describe my (?:profile|style)|my personality profile)\b/i;
+const RESET_PROFILE = /\b(reset my (?:profile|personality|preferences)|forget (?:what you (?:know|learned)(?: about me)?|my (?:profile|preferences))|start (?:over|fresh) with me|wipe my profile|relearn me)\b/i;
 
 // ORB runs on the Universal Genome. The five laws are not advice — they are the gate.
 const SYSTEM_PROMPT = `You are ORB, the user's Digital Chief of Staff, running on the Universal Genome.
@@ -373,6 +378,16 @@ export async function askOrb(
     return { mode: 'fast' as const, answer, route: 'fast' as const, model: 'prefs' };
   }
 
+  // Personality Engine: read-back ("what have you learned about me") and reset — transparency first.
+  if (DESCRIBE_PROFILE.test(message)) {
+    const { traits } = await getPrefs(userId).catch(() => ({ traits: {} as Awaited<ReturnType<typeof getPrefs>>['traits'] }));
+    return { mode: 'fast' as const, answer: describeProfile(traits), route: 'fast' as const, model: 'profile' };
+  }
+  if (RESET_PROFILE.test(message)) {
+    await resetProfile(userId);
+    return { mode: 'fast' as const, answer: "Done — I've cleared what I'd learned about your style and we'll start fresh. I'll pick your rhythm back up as we talk.", route: 'fast' as const, model: 'profile' };
+  }
+
   // Executive Wit toggle: turn ORB's personality on or off. WIT_OFF wins if the message hits both.
   if (WIT_OFF.test(message) || WIT_ON.test(message)) {
     const wit = !WIT_OFF.test(message);
@@ -426,12 +441,12 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const [mems, toolCtx, prefs, faves] = await Promise.all([
       recall(userId, message, 4).catch(() => []),
       toolContext(message, userId, { lat: opts.lat, lon: opts.lon }),
-      getPrefs(userId).catch(() => ({ style: 'short' as ConvoStyle, pauseMs: 1600, commands: {}, wit: true })),
+      getPrefs(userId).catch(() => ({ style: 'short' as ConvoStyle, pauseMs: 1600, commands: {}, wit: true, traits: {} })),
       topCommands(userId, 5).catch(() => [] as string[])
     ]);
     const savedStyle = prefs.style;
-    // Learn this phrasing in the background (short commands only) — never blocks the answer.
-    void recordCommand(userId, message).catch(() => {});
+    // Learn in the background — favorite phrasing + communication tendencies. Never blocks the answer.
+    void observeMessage(userId, message).catch(() => {});
     let liveCtx = toolCtx;
     if (!liveCtx && needsContext(message)) liveCtx = JSON.stringify(await gatherContext(userId)).slice(0, 4000);
 
@@ -451,7 +466,9 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const memCtx = mems.length ? `What I remember about you (use if relevant):\n${mems.map((m) => `- ${m.title}: ${m.content}`).join('\n')}` : '';
     const faveCtx = faves.length ? `Commands this user reaches for often (recognize these shortcuts, act on intent fast): ${faves.map((c) => `"${c}"`).join(', ')}.` : '';
     const context = [memCtx, faveCtx, liveCtx].filter(Boolean).join('\n\n') || undefined;
-    const routed = await routedAnswer(message, { images: opts.images, context, style, urgent, wit: prefs.wit });
+    // Personality Engine: a quiet directive shaping HOW ORB answers. Skipped when rushed (speed wins).
+    const profile = urgent ? '' : profileDirective(prefs.traits);
+    const routed = await routedAnswer(message, { images: opts.images, context, style, urgent, wit: prefs.wit, profile });
     if (cacheable && routed.ok && routed.answer) cacheSet(key, routed.answer);
     return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label };
   }
