@@ -227,6 +227,21 @@ create table if not exists orb_lessons (
 );
 create index if not exists orb_lessons_user_created on orb_lessons (user_id, created desc);
 
+-- Proactive worker — insights ORB surfaced on its own (from goals/coherence/objectives/habits) so they
+-- persist for the next session and aren't re-raised within the cooldown. The worker (npm run worker)
+-- scans on a schedule; this is the durable record of what was surfaced and whether the user has seen it.
+create table if not exists orb_insights (
+  user_id   text not null,
+  key       text not null,
+  kind      text not null,
+  message   text not null,
+  priority  int  not null default 0,
+  surfaced  timestamptz default now(),
+  seen      boolean not null default false,
+  primary key (user_id, key)
+);
+create index if not exists orb_insights_user_surfaced on orb_insights (user_id, surfaced desc);
+
 -- Motivation — the drivers behind a user's goals (Achievement / Freedom / Security / Legacy). Learned
 -- from the words they use; persists even as goals change. ORB frames why-it-matters around these.
 create table if not exists orb_motivation (

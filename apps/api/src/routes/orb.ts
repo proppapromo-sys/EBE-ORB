@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { askOrb, gatherContext, createAction, dailyBriefing, proactive } from '../agents/masterAgent.js';
+import { scanUser, formatDigest } from '../services/proactive.js';
 import { connectors, getConnector } from '../connectors/index.js';
 import { runOrbCycle } from '../genome/orbBranch.js';
 import { createJournal, journalIsDurable } from '../services/journalStore.js';
@@ -353,6 +354,16 @@ orbRouter.post('/context', async (req, res, next) => {
     const userId = String(req.body?.userId ?? 'demo-user');
     const context = await gatherContext(userId);
     res.json({ userId, context });
+  } catch (error) { next(error); }
+});
+
+// Proactive scan: what ORB would raise on its own from stored goals/coherence/objectives/habits.
+// Read-only and never-throws; the background worker (npm run worker) runs the same scan on a schedule.
+orbRouter.get('/proactive', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? 'demo-user');
+    const insights = await scanUser(userId);
+    res.json({ userId, insights, digest: formatDigest(insights) });
   } catch (error) { next(error); }
 });
 
