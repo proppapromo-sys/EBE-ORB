@@ -77,6 +77,7 @@ import { INFCOORD_QUERY, PLANETARY_QUERY, SPECIES_QUERY, EXISTENTIAL_QUERY, EXIS
 import { MEANING_QUERY, MEANING_DIRECTIVE } from '../services/meaning.js';
 import { CREATE2_QUERY, DESIGN_QUERY, DESIGN_DIRECTIVE } from '../services/design.js';
 import { ARCH_QUERY, ARCH_DIRECTIVE, UNIFY_QUERY, UNIFY_DIRECTIVE } from '../services/realityarch.js';
+import { OPT_QUERY, OPT_DIRECTIVE, ACCEL_QUERY, ACCEL_DIRECTIVE } from '../services/optimize.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -592,8 +593,25 @@ test('meaning + create + design (#66-#68)', () => {
   assert.ok(UNIFY_QUERY.test('where else does this pattern appear'));
   assert.ok(UNIFY_QUERY.test('what field has already solved this'));
   assert.match(UNIFY_DIRECTIVE, /across domains|pattern|transfer|recurring|analogy/i);
+  // #72 principle discovery — folded into #58 PRINCIPLE_QUERY (law/fundamental-truth framing)
+  assert.ok(PRINCIPLE_QUERY.test('what underlying law explains this pattern'));
+  assert.ok(PRINCIPLE_QUERY.test('what is the fundamental truth here'));
+  assert.ok(PRINCIPLE_QUERY.test('does this pattern appear repeatedly across domains'));
+  // #73 optimization — bottleneck/continuous improvement
+  assert.ok(OPT_QUERY.test('what is the bottleneck here'));
+  assert.ok(OPT_QUERY.test('how can this work better'));
+  assert.ok(OPT_QUERY.test('where is the waste in this process'));
+  assert.match(OPT_DIRECTIVE, /bottleneck|binding constraint|throughput|highest-leverage/i);
+  // #74 acceleration — rate of progress / shorten the loop
+  assert.ok(ACCEL_QUERY.test('how do we improve faster'));
+  assert.ok(ACCEL_QUERY.test('what is slowing progress'));
+  assert.ok(ACCEL_QUERY.test('shorten the feedback loop'));
+  assert.match(ACCEL_DIRECTIVE, /rate of progress|cycle time|feedback|shorten the loop/i);
+  // #75 transcendent civilization — folded into #55 CIVEVOLUTION_QUERY (next-form framing)
+  assert.ok(CIVEVOLUTION_QUERY.test('what comes after our current civilization'));
+  assert.ok(CIVEVOLUTION_QUERY.test('what kind of civilization becomes possible'));
   // Plain task triggers none of the batch.
-  assert.equal([POTENTIAL_QUERY, COLLECTIVE_QUERY, PRINCIPLE_QUERY, FUTUREMEM_QUERY, DESTINY_QUERY, MEANING_QUERY, DESIGN_QUERY, CREATE2_QUERY, ARCH_QUERY, UNIFY_QUERY].some((re) => re.test('what time is my meeting')), false);
+  assert.equal([POTENTIAL_QUERY, COLLECTIVE_QUERY, PRINCIPLE_QUERY, FUTUREMEM_QUERY, DESTINY_QUERY, MEANING_QUERY, DESIGN_QUERY, CREATE2_QUERY, ARCH_QUERY, UNIFY_QUERY, OPT_QUERY, ACCEL_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
