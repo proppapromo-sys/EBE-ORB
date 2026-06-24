@@ -26,6 +26,7 @@ import { detectLang } from '../services/lang.js';
 import { relate, aboutEntity, formatAbout, ingestItems, type IngestItem } from '../services/graph.js';
 import { noteIntent, completeIntent, pendingGoals, formatPending, nudgeFor } from '../services/goals.js';
 import { focusList, formatFocus } from '../services/attention.js';
+import { parseObjective, setObjective, updateProgress, listObjectives, formatObjectives, progressOf, goalsContext } from '../services/objectives.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -531,6 +532,27 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: acks[supportStyle], route: 'fast' as const, model: 'prefs' };
   }
 
+  // Goal Systems: set an objective, log progress on one, or review the goal hierarchy.
+  if (/\bmy (?:goal|objective|target) (?:is|was)\b|\b(?:goal is to|i want to|i'?m trying to|i aim to|i plan to|working toward)\b/i.test(message)) {
+    const o = await setObjective(userId, parseObjective(message)).catch(() => null);
+    if (o) {
+      const p = progressOf(o);
+      const extra = p == null ? '' : ` You're ${p}% of the way there.`;
+      return { mode: 'fast' as const, answer: `Locked in as a ${o.level} goal: "${o.label}".${extra} I'll keep it in view and connect your day to it.`, route: 'fast' as const, model: 'goals' };
+    }
+  }
+  {
+    const prog = message.match(/\b(?:we'?re|i'?m|it'?s|now|update|progress|currently)\b[^.]*?\b([a-z][a-z ]{2,30}?)\s+(?:is now|is at|hit|reached|to)\s+\$?([\d.,]+\s*[km]?)/i);
+    if (prog) {
+      const val = parseFloat(prog[2].replace(/,/g, '')) * (/k/i.test(prog[2]) ? 1000 : /m/i.test(prog[2]) ? 1e6 : 1);
+      const o = await updateProgress(userId, prog[1].trim(), val).catch(() => null);
+      if (o) { const p = progressOf(o); return { mode: 'fast' as const, answer: `Updated — "${o.label}" is now ${o.current}${o.unit || ''}${p == null ? '' : `, ${p}% to target`}. Nice progress.`, route: 'fast' as const, model: 'goals' }; }
+    }
+  }
+  if (/\b(what are my goals|my (?:goals|objectives|targets)|show (?:me )?my goals|how am i (?:doing|tracking) (?:on|against) my goals|what am i (?:working toward|trying to (?:become|achieve)))\b/i.test(message)) {
+    return { mode: 'fast' as const, answer: formatObjectives(await listObjectives(userId).catch(() => [])), route: 'fast' as const, model: 'goals' };
+  }
+
   // Attention Engine: the spotlight — what deserves focus right now, priority-scored (emergency first).
   if (/\bwhat (?:needs|deserves|should have) my attention\b|\bwhat(?:'s| is) (?:the )?most important\b|\bmy (?:top )?priorit(?:y|ies)\b|\bwhat should i focus on right now\b|\bwhat matters (?:most|right now)\b|\bprioriti[sz]e my\b/i.test(message)) {
     return { mode: 'fast' as const, answer: formatFocus(await focusList(userId).catch(() => [])), route: 'fast' as const, model: 'attention' };
@@ -659,7 +681,9 @@ Flag every action whose requiresApproval is true — never imply it can run on i
 
     const memCtx = mems.length ? `What I remember about you (use if relevant):\n${mems.map((m) => `- ${m.title}: ${m.content}`).join('\n')}` : '';
     const faveCtx = faves.length ? `Commands this user reaches for often (recognize these shortcuts, act on intent fast): ${faves.map((c) => `"${c}"`).join(', ')}.` : '';
-    const context = [memCtx, faveCtx, liveCtx].filter(Boolean).join('\n\n') || undefined;
+    // Goal Systems: hand the model the user's objectives so it frames answers around what they serve.
+    const goalCtx = await goalsContext(userId).catch(() => '');
+    const context = [memCtx, faveCtx, goalCtx, liveCtx].filter(Boolean).join('\n\n') || undefined;
     // Communication posture (urgency/emotion) + learned personality tendencies → quiet directives
     // shaping HOW ORB answers. Personality is skipped when rushed (speed wins); wit is dropped when
     // the user is frustrated (a chief of staff reads the room).

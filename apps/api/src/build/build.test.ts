@@ -17,6 +17,7 @@ import { mentionsIn, senderName } from '../agents/masterAgent.js';
 import { avatarAllowedFor, avatarConfigured } from '../services/avatar.js';
 import { noteIntent, completeIntent, pendingGoals, nudgeFor } from '../services/goals.js';
 import { priorityScore, classifyTier, focusList } from '../services/attention.js';
+import { parseObjective, setObjective, updateProgress, progressOf, listObjectives, detectConflicts, classifyLevel, classifyType } from '../services/objectives.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -197,6 +198,32 @@ test('avatar: gated to top tiers, off by default, always disclosed', () => {
   assert.equal(avatarAllowedFor('pro'), false);
   assert.equal(avatarAllowedFor('free'), false);
   assert.equal(avatarConfigured(), false);   // no DID_API_KEY in test env → off, degrades gracefully
+});
+
+test('objectives: tracks the goal hierarchy, the current→target gap, progress, and conflicts', async () => {
+  // Parse a goal with a current→target gap.
+  const p = parseObjective('My goal is to grow revenue from $30k to $50k a month');
+  assert.ok(p);
+  assert.equal(p!.level, 'strategic');
+  assert.equal(p!.start, 30000);
+  assert.equal(p!.target, 50000);
+
+  // Classification of the hierarchy + types.
+  assert.equal(classifyLevel('become an investor'), 'identity');
+  assert.equal(classifyLevel('launch the new website'), 'tactical');
+  assert.equal(classifyType('call 10 customers per day'), 'process');
+  assert.equal(classifyType('increase sales by 20%'), 'performance');
+
+  // Gap-closing progress: 30k start, 50k target, now at 40k → halfway.
+  const u = 'test-obj@example.com';
+  await setObjective(u, p);
+  const moved = await updateProgress(u, 'revenue', 40000);
+  assert.equal(progressOf(moved!), 50);
+
+  // Conflict detection between competing goals.
+  await setObjective(u, parseObjective('My goal is to scale the business and get more clients'));
+  await setObjective(u, parseObjective('My goal is to spend more time with family'));
+  assert.ok(detectConflicts(await listObjectives(u)).length >= 1);
 });
 
 test('attention: priority score follows the survival → goals → novelty → reward → routine hierarchy', () => {

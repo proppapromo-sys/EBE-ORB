@@ -168,6 +168,23 @@ alter table orb_convo_prefs add column if not exists humor text not null default
 alter table orb_convo_prefs add column if not exists support text not null default 'standard';
 alter table orb_convo_prefs add column if not exists traits jsonb not null default '{}'::jsonb;
 
+-- Goal Systems — the hierarchy above daily tasks: Identity / Strategic / Tactical objectives, with
+-- the current→target gap, type, and progress. What the user is trying to BECOME, not just do.
+create table if not exists orb_objectives (
+  user_id text not null,
+  id      text not null,
+  label   text not null,
+  level   text not null default 'strategic',
+  type    text not null default 'outcome',
+  start   double precision,
+  current double precision,
+  target  double precision,
+  unit    text,
+  created timestamptz default now(),
+  updated timestamptz default now(),
+  primary key (user_id, id)
+);
+
 -- Attention & Goals — open commitments ORB tracks so it can notice what you keep putting off.
 create table if not exists orb_goals (
   user_id    text not null,
