@@ -31,6 +31,8 @@ import { isStrategic, WISDOM_DIRECTIVE, parseValues, valuesDirective } from '../
 import { selfModel, buildIdentity } from '../services/identity.js';
 import { parseReliability, reliability } from '../services/relationships.js';
 import { SYSTEMS_QUERY, SYSTEMS_DIRECTIVE, parseCausal } from '../services/systems.js';
+import { PURPOSE_QUERY, ALIGN_QUERY, ALIGNMENT_DIRECTIVE, parsePurpose } from '../services/purpose.js';
+import { FORESIGHT_QUERY, FORESIGHT_DIRECTIVE } from '../services/foresight.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -231,6 +233,21 @@ test('decision: detects a choice and frames trade-offs, bias-guards, goals + dri
   // Decision profile is derived from learned tendencies.
   assert.equal(decisionProfile({ risk: { s: 0.5, n: 3 }, analytical: { s: 0.4, n: 3 } }).risk, 'high');
   assert.equal(decisionProfile({}).risk, 'medium');        // unknown → balanced default
+});
+
+test('purpose + foresight: aligns to what matters and positions for possible futures', () => {
+  // Purpose is captured and used to align recommendations.
+  assert.equal(parsePurpose('my mission is to build ORB and give people their time back'), 'build ORB and give people their time back');
+  assert.equal(parsePurpose('what time is it'), null);
+  assert.ok(PURPOSE_QUERY.test('why am I doing all this'));
+  assert.ok(ALIGN_QUERY.test('does this serve my mission?'));
+  assert.match(ALIGNMENT_DIRECTIVE, /align|values|mission|significance/i);
+
+  // Foresight triggers on forward-looking questions and frames best/likely/worst + positioning.
+  assert.ok(FORESIGHT_QUERY.test('where is this market heading'));
+  assert.ok(FORESIGHT_QUERY.test('what should I prepare for next year'));
+  assert.equal(FORESIGHT_QUERY.test('what did I do yesterday'), false);
+  assert.match(FORESIGHT_DIRECTIVE, /best case|most-likely|worst case|position/i);
 });
 
 test('systems thinking: records causal links and traces the chain through the system', async () => {

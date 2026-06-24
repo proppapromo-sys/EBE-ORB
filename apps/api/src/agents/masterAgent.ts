@@ -38,6 +38,8 @@ import { parseOutcome, recordOutcome, whatWorks, formatAdaptation } from '../ser
 import { CREATIVE_QUERY, CREATIVE_DIRECTIVE } from '../services/creativity.js';
 import { isStrategic, WISDOM_DIRECTIVE, getValues, setValues, parseValues, valuesDirective } from '../services/wisdom.js';
 import { selfModel, userIdentity } from '../services/identity.js';
+import { PURPOSE_QUERY, ALIGN_QUERY, ALIGNMENT_DIRECTIVE, getPurpose, setPurpose, parsePurpose, alignmentContext } from '../services/purpose.js';
+import { FORESIGHT_QUERY, FORESIGHT_DIRECTIVE } from '../services/foresight.js';
 import { parseReliability, recordReliability, reliabilityOf, roster } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -599,6 +601,17 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: await userIdentity(userId).catch(() => "I'm still forming a picture of who you are."), route: 'fast' as const, model: 'identity' };
   }
 
+  // Purpose & Meaning: set or read the user's purpose/mission ORB aligns recommendations to.
+  {
+    const pp = parsePurpose(message);
+    if (pp) { await setPurpose(userId, pp).catch(() => {}); return { mode: 'fast' as const, answer: `That's your north star now — I'll align what I recommend to it: ${pp}.`, route: 'fast' as const, model: 'purpose' }; }
+  }
+  if (PURPOSE_QUERY.test(message)) {
+    const p = await getPurpose(userId).catch(() => '');
+    if (p) return { mode: 'fast' as const, answer: `Your stated purpose — what I align everything to: ${p}.`, route: 'fast' as const, model: 'purpose' };
+    // No purpose set → let the model engage thoughtfully (it falls through with the alignment frame).
+  }
+
   // Wisdom & Judgment: set or read the values ORB weighs major decisions against.
   {
     const vals = parseValues(message);
@@ -772,8 +785,10 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const creative = CREATIVE_QUERY.test(message);
     const strategic = isStrategic(message);
     const systemic = SYSTEMS_QUERY.test(message);
+    const aligned = ALIGN_QUERY.test(message);     // "does this serve my purpose/values?"
+    const foresight = FORESIGHT_QUERY.test(message);  // looking ahead / positioning
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
-      : ((decision || auditing || creative || strategic || systemic) && !urgent) ? 'detailed'
+      : ((decision || auditing || creative || strategic || systemic || aligned || foresight) && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
 
     // Humor: the user's level, downgraded to professional this turn if they're rushed, frustrated, or
@@ -795,9 +810,10 @@ Flag every action whose requiresApproval is true — never imply it can run on i
 
     const memCtx = mems.length ? `What I remember about you (use if relevant):\n${mems.map((m) => `- ${m.title}: ${m.content}`).join('\n')}` : '';
     const faveCtx = faves.length ? `Commands this user reaches for often (recognize these shortcuts, act on intent fast): ${faves.map((c) => `"${c}"`).join(', ')}.` : '';
-    // Goal Systems: hand the model the user's objectives so it frames answers around what they serve.
-    const goalCtx = await goalsContext(userId).catch(() => '');
-    const context = [memCtx, faveCtx, goalCtx, liveCtx].filter(Boolean).join('\n\n') || undefined;
+    // Goal Systems + Purpose: hand the model the user's objectives and what gives their work meaning,
+    // so it frames answers around what they serve and flags anything pulling against it.
+    const [goalCtx, purposeCtx] = await Promise.all([goalsContext(userId).catch(() => ''), alignmentContext(userId).catch(() => '')]);
+    const context = [memCtx, faveCtx, goalCtx, purposeCtx, liveCtx].filter(Boolean).join('\n\n') || undefined;
     // Communication posture (urgency/emotion) + learned personality tendencies → quiet directives
     // shaping HOW ORB answers. Personality is skipped when rushed (speed wins); wit is dropped when
     // the user is frustrated (a chief of staff reads the room).
@@ -809,7 +825,10 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const creativeDir = (creative && !urgent) ? CREATIVE_DIRECTIVE : '';
     const wisdomDir = (strategic && !urgent) ? WISDOM_DIRECTIVE + valuesDirective(await getValues(userId).catch(() => '')) : '';
     const systemsDir = (systemic && !urgent) ? SYSTEMS_DIRECTIVE : '';
-    const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir;
+    // Purpose alignment check + strategic-foresight framing on forward-looking turns.
+    const alignDir = ((aligned || strategic) && !urgent) ? ALIGNMENT_DIRECTIVE : '';
+    const foresightDir = (foresight && !urgent) ? FORESIGHT_DIRECTIVE : '';
+    const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));
     const replyLang = lang.code === 'en' ? undefined : lang.name;

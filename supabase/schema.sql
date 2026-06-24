@@ -177,6 +177,14 @@ create table if not exists orb_relationships (
   primary key (user_id, name)
 );
 
+-- Purpose, Meaning & Value Systems — the user's purpose/mission, so ORB aligns recommendations to
+-- what truly matters (not just what's efficient). Values live in orb_values; goals in orb_objectives.
+create table if not exists orb_purpose (
+  user_id    text primary key,
+  purpose    text not null default '',
+  updated_at timestamptz default now()
+);
+
 -- Wisdom & Judgment — the user's stated values, so ORB weighs major decisions against what they hold.
 create table if not exists orb_values (
   user_id    text primary key,
