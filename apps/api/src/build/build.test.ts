@@ -59,6 +59,7 @@ import { RECALL_QUERY, COSMIC_MEMORY_DIRECTIVE } from '../services/recall.js';
 import { POSSIBILITY_QUERY, POSSIBILITY_DIRECTIVE } from '../services/possibility.js';
 import { SOURCE_QUERY, SOURCE_DIRECTIVE } from '../services/source.js';
 import { UNITY_QUERY, UNITY_DIRECTIVE } from '../services/unity.js';
+import { RECURSION_QUERY, RECURSION_DIRECTIVE } from '../services/recursion.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -466,6 +467,14 @@ test('source + unity (#45-#46): trace to origin, and whole-system interconnectio
   assert.match(UNITY_DIRECTIVE, /whole-system|interconnected|ripple|dependencies|isolation/i);
   // Plain task triggers neither.
   assert.equal([SOURCE_QUERY, UNITY_QUERY].some((re) => re.test('what time is my meeting')), false);
+});
+
+test('recursion (#47): operating one level up on the process itself, excludes plain tasks', () => {
+  assert.ok(RECURSION_QUERY.test('how do I get better at getting better'));
+  assert.ok(RECURSION_QUERY.test('we should fix the process not just this bug'));
+  assert.ok(RECURSION_QUERY.test('how do I improve how I make decisions'));
+  assert.match(RECURSION_DIRECTIVE, /go up a level|process|next hundred|compounding|method itself/i);
+  assert.equal(RECURSION_QUERY.test('what time is my meeting'), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
