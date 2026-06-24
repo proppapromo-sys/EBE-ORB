@@ -13,8 +13,14 @@ import { supabase } from './supabase.js';
 import { applySignals, type Traits } from './personality.js';
 
 export type ConvoStyle = 'short' | 'detailed';
-export type ConvoPrefs = { style: ConvoStyle; pauseMs: number; commands: Record<string, number>; wit: boolean; traits: Traits };
-const DEFAULTS: ConvoPrefs = { style: 'short', pauseMs: 1600, commands: {}, wit: true, traits: {} };
+// Humor Levels — graduated, the way a chief of staff dials their register to the relationship.
+export type HumorLevel = 'professional' | 'executive' | 'friendly' | 'playful';
+export const HUMOR_LEVELS: HumorLevel[] = ['professional', 'executive', 'friendly', 'playful'];
+export type ConvoPrefs = { style: ConvoStyle; pauseMs: number; commands: Record<string, number>; wit: boolean; humor: HumorLevel; traits: Traits };
+const DEFAULTS: ConvoPrefs = { style: 'short', pauseMs: 1600, commands: {}, wit: true, humor: 'executive', traits: {} };
+
+function levelToWit(h: HumorLevel): boolean { return h !== 'professional'; }
+function witToLevel(w: boolean): HumorLevel { return w ? 'executive' : 'professional'; }
 
 const TABLE = 'orb_convo_prefs';
 const cache = new Map<string, ConvoPrefs>();
@@ -23,20 +29,22 @@ const MAX_COMMANDS = 24;            // keep only the user's most-used phrasings
 const MAX_CMD_WORDS = 8;            // a "command" is short; longer text is private speech — never stored
 
 function clone(p: ConvoPrefs): ConvoPrefs {
-  return { style: p.style, pauseMs: p.pauseMs, commands: { ...p.commands }, wit: p.wit, traits: { ...p.traits } };
+  return { style: p.style, pauseMs: p.pauseMs, commands: { ...p.commands }, wit: p.wit, humor: p.humor, traits: { ...p.traits } };
 }
 
 export async function getPrefs(userId: string): Promise<ConvoPrefs> {
   if (cache.has(userId)) return clone(cache.get(userId)!);
   if (supabase) {
     try {
-      const { data } = await supabase.from(TABLE).select('style,pause_ms,commands,wit,traits').eq('user_id', userId).maybeSingle();
+      const { data } = await supabase.from(TABLE).select('style,pause_ms,commands,wit,humor,traits').eq('user_id', userId).maybeSingle();
       if (data) {
+        const wit = data.wit !== false;   // on by default
+        const humor: HumorLevel = HUMOR_LEVELS.includes(data.humor) ? data.humor : witToLevel(wit);   // migrate legacy
         const p: ConvoPrefs = {
           style: data.style === 'detailed' ? 'detailed' : 'short',
           pauseMs: Number(data.pause_ms) || DEFAULTS.pauseMs,
           commands: (data.commands && typeof data.commands === 'object') ? data.commands as Record<string, number> : {},
-          wit: data.wit !== false,   // on by default
+          wit: levelToWit(humor), humor,
           traits: (data.traits && typeof data.traits === 'object') ? data.traits as Traits : {}
         };
         cache.set(userId, p); return clone(p);
@@ -55,6 +63,9 @@ export async function setPrefs(userId: string, patch: Partial<ConvoPrefs>): Prom
   cur.pauseMs = Math.max(800, Math.min(3000, cur.pauseMs));   // keep it sane
   cur.commands = cur.commands ?? {};
   cur.traits = cur.traits ?? {};
+  // Keep the graduated humor level and the legacy wit flag in lockstep, whichever side was set.
+  if (patch.humor !== undefined) cur.wit = levelToWit(cur.humor);
+  else if (patch.wit !== undefined) cur.humor = witToLevel(cur.wit);
   cache.set(userId, cur);
   await persist(userId, cur);
   return clone(cur);
@@ -122,7 +133,7 @@ async function persist(userId: string, cur: ConvoPrefs): Promise<void> {
   if (!supabase) return;
   try {
     await supabase.from(TABLE).upsert(
-      { user_id: userId, style: cur.style, pause_ms: cur.pauseMs, commands: cur.commands, wit: cur.wit, traits: cur.traits, updated_at: new Date().toISOString() },
+      { user_id: userId, style: cur.style, pause_ms: cur.pauseMs, commands: cur.commands, wit: cur.wit, humor: cur.humor, traits: cur.traits, updated_at: new Date().toISOString() },
       { onConflict: 'user_id' }
     );
   } catch { /* keep in-memory */ }

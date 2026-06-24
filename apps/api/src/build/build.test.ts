@@ -10,7 +10,7 @@ import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
 import { looksLikeBuildRequest, looksLikeVideoRequest, needsContext, isUrgent } from '../agents/masterAgent.js';
 import { recordCommand, topCommands, getPrefs, setPrefs, observeMessage, resetProfile } from '../services/convoPrefs.js';
 import { applySignals, profileDirective, describeProfile, confident, type Traits } from '../services/personality.js';
-import { analyzeComms, readEmotion, postureDirective } from '../services/comms.js';
+import { analyzeComms, readEmotion, readSarcasm, postureDirective } from '../services/comms.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -135,7 +135,7 @@ test('predict: ignores questions and idioms, fires only on real commands', () =>
 
 test('comms: the same words read differently by delivery', () => {
   // "call John" three ways — the Communication Layer reads tone, not just words.
-  assert.deepEqual(analyzeComms('ORB call John.'), { urgent: false, emotion: 'neutral' });   // calm task
+  assert.deepEqual(analyzeComms('ORB call John.'), { urgent: false, emotion: 'neutral', sarcasm: false });   // calm task
   assert.equal(analyzeComms('ORB CALL JOHN!!').urgent, true);                                  // shouting + !! → urgent
   assert.equal(readEmotion('ORB call John…'), 'hesitant');                                     // trailing … → unsure
 });
@@ -147,6 +147,28 @@ test('comms: emotion read is conservative and maps to a posture', () => {
   assert.match(postureDirective({ urgent: false, emotion: 'frustrated' }), /frustrated/i);
   assert.match(postureDirective({ urgent: true, emotion: 'neutral' }), /hurry/i);
   assert.equal(postureDirective({ urgent: false, emotion: 'neutral' }), '');   // calm → no special posture
+});
+
+test('comms: detects likely sarcasm and tells ORB not to take it literally', () => {
+  assert.equal(readSarcasm('Well that city meeting went wonderfully.'), true);
+  assert.equal(readSarcasm('oh great, another delay'), true);
+  assert.equal(readSarcasm('the meeting went well and we closed the deal'), false);   // genuine praise
+  const read = analyzeComms('Well that went perfectly.');
+  assert.equal(read.sarcasm, true);
+  assert.match(postureDirective(read), /sarcastic/i);
+});
+
+test('humor: graduated levels persist and stay in lockstep with the legacy flag', async () => {
+  const u = 'test-humor@example.com';
+  assert.equal((await getPrefs(u)).humor, 'executive');   // default
+  await setPrefs(u, { humor: 'professional' });
+  let p = await getPrefs(u);
+  assert.equal(p.humor, 'professional');
+  assert.equal(p.wit, false, 'professional turns the legacy wit flag off');
+  await setPrefs(u, { humor: 'playful' });
+  p = await getPrefs(u);
+  assert.equal(p.humor, 'playful');
+  assert.equal(p.wit, true, 'any humor level keeps the legacy flag on');
 });
 
 test('personality: tendencies need repeated evidence before they speak', () => {

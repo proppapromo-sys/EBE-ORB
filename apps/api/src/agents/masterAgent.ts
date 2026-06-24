@@ -19,7 +19,7 @@ import { searchFlights, searchHotels, travelConfigured, duffelConfigured } from 
 import { calculate, convertUnits } from '../services/calc.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
-import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type ConvoStyle } from '../services/convoPrefs.js';
+import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type ConvoStyle, type HumorLevel } from '../services/convoPrefs.js';
 import { profileDirective, describeProfile } from '../services/personality.js';
 import { analyzeComms, postureDirective, isUrgent } from '../services/comms.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
@@ -37,9 +37,11 @@ const WANT_SHORT = /\b(quick(?:ly)?|in short|short version|just the gist|tl;?dr|
 // and tests keep one import surface.
 export { isUrgent };
 
-// Executive Wit toggle — the user can switch ORB's personality on or off in plain language.
-const WIT_OFF = /\b(turn off (?:the )?wit|no jokes?|be serious|cut the (?:jokes?|humor|wit)|stop being (?:funny|witty|cute)|just the facts|no humor|all business)\b/i;
-const WIT_ON = /\b(turn on (?:the )?wit|be (?:more )?(?:witty|playful|funny|clever)|add (?:some )?wit|lighten up|some humor|bring (?:back )?the wit)\b/i;
+// Humor Levels — the user dials ORB's register in plain language. Checked most-specific first.
+const HUMOR_PROFESSIONAL = /\b(professional mode|no humor|be serious|all business|just the facts|cut the (?:jokes?|humor|wit)|no jokes?|turn off (?:the )?(?:wit|humor)|stop being (?:funny|witty|cute))\b/i;
+const HUMOR_PLAYFUL = /\b(be playful|playful mode|be more playful|more conversational|joke around|banter|be fun|loosen up)\b/i;
+const HUMOR_FRIENDLY = /\b(be friendly|friendly mode|friendly tone|light humor|lighten up|be more personable|be warmer)\b/i;
+const HUMOR_EXECUTIVE = /\b(executive wit|turn on (?:the )?wit|be witty|some wit|dry humor|bring (?:back )?the wit)\b/i;
 
 // Personality Engine — the user can read back what ORB has learned, or reset it (transparency + control).
 const DESCRIBE_PROFILE = /\b(what (?:have|did|do) you (?:learn(?:ed)?|know) about me|what'?s my (?:profile|personality|communication style)|how (?:do|would) you describe me|describe my (?:profile|style)|my personality profile)\b/i;
@@ -401,14 +403,21 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: "Done — I've cleared what I'd learned about your style and we'll start fresh. I'll pick your rhythm back up as we talk.", route: 'fast' as const, model: 'profile' };
   }
 
-  // Executive Wit toggle: turn ORB's personality on or off. WIT_OFF wins if the message hits both.
-  if (WIT_OFF.test(message) || WIT_ON.test(message)) {
-    const wit = !WIT_OFF.test(message);
-    await setPrefs(userId, { wit });
-    const answer = wit
-      ? "Wit's back on. I'll keep it sharp and rare — you won't even see most of them coming."
-      : "Understood — all business from here. I'll keep my observations to myself.";
-    return { mode: 'fast' as const, answer, route: 'fast' as const, model: 'prefs' };
+  // Humor Levels: set ORB's register. Most-specific intent wins; "all business" beats "be playful".
+  const humorLevel: HumorLevel | null =
+    HUMOR_PROFESSIONAL.test(message) ? 'professional'
+    : HUMOR_PLAYFUL.test(message) ? 'playful'
+    : HUMOR_FRIENDLY.test(message) ? 'friendly'
+    : HUMOR_EXECUTIVE.test(message) ? 'executive' : null;
+  if (humorLevel) {
+    await setPrefs(userId, { humor: humorLevel });
+    const acks: Record<HumorLevel, string> = {
+      professional: "Understood — all business from here. I'll keep my observations to myself.",
+      executive: "Executive wit it is — I'll land the occasional sharp observation, and keep it rare.",
+      friendly: "Sounds good — warm and friendly, with the odd light quip.",
+      playful: "Love it — I'll loosen up and keep it playful. Still get you what you need, just with more personality."
+    };
+    return { mode: 'fast' as const, answer: acks[humorLevel], route: 'fast' as const, model: 'prefs' };
   }
 
   // Action mode: ORB *does* things — reminders/tasks now, email confirm-first. Nothing outward
@@ -463,7 +472,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const [mems, toolCtx, prefs, faves] = await Promise.all([
       recall(userId, message, 4).catch(() => []),
       toolContext(message, userId, { lat: opts.lat, lon: opts.lon }),
-      getPrefs(userId).catch(() => ({ style: 'short' as ConvoStyle, pauseMs: 1600, commands: {}, wit: true, traits: {} })),
+      getPrefs(userId).catch(() => ({ style: 'short' as ConvoStyle, pauseMs: 1600, commands: {}, wit: true, humor: 'executive' as HumorLevel, traits: {} })),
       topCommands(userId, 5).catch(() => [] as string[])
     ]);
     const savedStyle = prefs.style;
@@ -480,10 +489,14 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || comms.emotion === 'frustrated') ? 'short' : savedStyle;
 
+    // Humor: the user's level, downgraded to professional this turn if they're rushed, frustrated, or
+    // being sarcastic — a chief of staff doesn't crack wise when the meeting just bombed.
+    const humor: HumorLevel = (urgent || comms.emotion === 'frustrated' || comms.sarcasm) ? 'professional' : prefs.humor;
+
     // Cache: only when no live/personal data was pulled (so cached answers can't go stale).
-    // Key includes style + tone so calm/rushed/frustrated/playful answers don't collide.
+    // Key includes style + tone + humor so calm/rushed/frustrated/playful/sarcastic answers don't collide.
     const cacheable = !liveCtx && !mems.length;
-    const key = `${userId}|${style}|${urgent ? 'u' : 'n'}|${comms.emotion[0]}|${prefs.wit ? 'w' : 'p'}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
+    const key = `${userId}|${style}|${urgent ? 'u' : 'n'}|${comms.emotion[0]}|${comms.sarcasm ? 's' : 'x'}|${humor[0]}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
     if (cacheable) { const hit = cacheGet(key); if (hit) return { mode: 'fast' as const, answer: hit, route: 'fast' as const, model: 'cache' }; }
 
     const memCtx = mems.length ? `What I remember about you (use if relevant):\n${mems.map((m) => `- ${m.title}: ${m.content}`).join('\n')}` : '';
@@ -494,8 +507,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // the user is frustrated (a chief of staff reads the room).
     const posture = postureDirective(comms);
     const profile = urgent ? '' : profileDirective(prefs.traits);
-    const witEffective = prefs.wit && comms.emotion !== 'frustrated';
-    const routed = await routedAnswer(message, { images: opts.images, context, style, urgent, wit: witEffective, profile, posture });
+    const routed = await routedAnswer(message, { images: opts.images, context, style, urgent, humor, profile, posture });
     if (cacheable && routed.ok && routed.answer) cacheSet(key, routed.answer);
     return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label };
   }

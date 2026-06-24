@@ -56,18 +56,24 @@ function providerChain(cls: TaskClass): { provider: BrainProvider; model: string
 // memorable observation (Observation + Truth + Unexpected Twist), then gets out of the way. The
 // guardrails matter more than the joke: sparingly, never distracting, never at the user's expense,
 // and silenced completely when the moment is wrong (handled by the caller via the `wit` flag).
-const WIT_DIRECTIVE =
-  ' Executive Wit: you are a sharp chief of staff with a dry, intelligent sense of humor. Occasionally — ' +
-  'not most turns — land ONE brief, clever observation: something true about the situation with an unexpected ' +
-  'twist (e.g. "You scheduled 12 hours of work into a 10-hour day — even physics has concerns."). Keep it ' +
-  'professional, warm, and under one sentence; never goofy, never at the user\'s expense, never a pun for its ' +
-  'own sake. If nothing genuinely clever fits, stay plain — forced wit is worse than none. The quip never ' +
-  'delays, replaces, or buries the actual answer or any important detail. Skip wit entirely for anything ' +
-  'sensitive, serious, or bad news (money trouble, health, conflict, errors, grief).';
+const WIT_GUARDS =
+  ' Keep it under one sentence; never goofy, never at the user\'s expense, never a pun for its own sake. ' +
+  'If nothing genuinely clever fits, stay plain — forced humor is worse than none. It never delays, ' +
+  'replaces, or buries the actual answer. Skip humor entirely for anything sensitive, serious, or bad ' +
+  'news (money trouble, health, conflict, errors, grief).';
+
+// Humor Levels — a chief of staff dials their register to the relationship. Each builds on the same guards.
+export type HumorLevel = 'professional' | 'executive' | 'friendly' | 'playful';
+const HUMOR_DIRECTIVE: Record<HumorLevel, string> = {
+  professional: '',
+  executive: ' Executive Wit: you are a sharp chief of staff with a dry, intelligent sense of humor. Occasionally — not most turns — land ONE brief, clever observation: something true about the situation with an unexpected twist (e.g. "You scheduled 12 hours of work into a 10-hour day — even physics has concerns.").' + WIT_GUARDS,
+  friendly: ' Friendly tone: warm and personable, with the occasional light, good-natured quip when it fits naturally.' + WIT_GUARDS,
+  playful: ' Playful tone: relaxed and conversational; banter lightly and enjoy the back-and-forth when it fits.' + WIT_GUARDS
+};
 
 export async function routedAnswer(
   message: string,
-  opts: { images?: string[]; context?: string; style?: 'short' | 'detailed'; urgent?: boolean; wit?: boolean; profile?: string; posture?: string } = {}
+  opts: { images?: string[]; context?: string; style?: 'short' | 'detailed'; urgent?: boolean; humor?: HumorLevel; profile?: string; posture?: string } = {}
 ): Promise<{ answer: string; route: TaskClass; model: string; label: string; ok: boolean }> {
   const cls = classifyTask(message, Boolean(opts.images && opts.images.length));
   // Adaptive Conversation Memory: honor the user's learned answer-length preference. "short" keeps
@@ -78,8 +84,8 @@ export async function routedAnswer(
     : 'Answer briefly and directly — one or two sentences unless more is truly needed.';
   // Communication Layer posture: how the user sounds this turn (rushed/frustrated/unsure/playful).
   const postureDirective = opts.posture || '';
-  // Executive Wit: only when enabled AND the user isn't rushed (speed beats cleverness when urgent).
-  const witDirective = (opts.wit && !opts.urgent) ? WIT_DIRECTIVE : '';
+  // Humor: apply the user's level, but only when they're not rushed (speed beats cleverness when urgent).
+  const witDirective = (!opts.urgent && opts.humor) ? HUMOR_DIRECTIVE[opts.humor] : '';
   // Personality Engine: learned communication tendencies (already gated/empty when not yet earned).
   const profileDirective = opts.profile || '';
   const base = opts.context ? `Context (use silently, never read aloud):\n${opts.context}\n\nUser: ${message}` : message;

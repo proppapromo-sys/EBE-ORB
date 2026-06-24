@@ -37,11 +37,22 @@ export function readEmotion(message: string): Emotion {
   return 'neutral';
 }
 
-export type CommRead = { urgent: boolean; emotion: Emotion };
+// Sarcasm — the surface words are positive but the meaning is the opposite. Without prosody (pitch,
+// timing) we can't be certain from text, so this catches the strongest written tells: hyperbolic
+// praise about an event ("went wonderfully"), "oh/just great", "yeah right", "thanks a lot". The
+// point isn't to be clever — it's so ORB doesn't congratulate someone on a meeting that clearly bombed.
+const SARCASM = /\b(oh (?:great|wonderful|fantastic|perfect|good|joy)|just (?:great|perfect|wonderful|fantastic|brilliant|lovely)|thanks a lot|yeah,? right|sure it (?:is|will|does)|what could (?:possibly )?go wrong|love that for me|exactly what i needed|how wonderful|well that('?s| (?:went|was)).{0,30}\b(great|wonderful|perfect|fantastic|brilliant|swimmingly|wonderfully|perfectly|smoothly))\b/i;
+const HYPERBOLIC_ADVERB = /\bwent\s+(?:so\s+)?(?:wonderfully|great|perfectly|fantastically|brilliantly|swimmingly|smoothly|amazingly)\b/i;
+export function readSarcasm(message: string): boolean {
+  const m = message || '';
+  return SARCASM.test(m) || HYPERBOLIC_ADVERB.test(m);
+}
+
+export type CommRead = { urgent: boolean; emotion: Emotion; sarcasm: boolean };
 
 /** The full read for a turn — what the Communication Layer hands to the responder. */
 export function analyzeComms(message: string): CommRead {
-  return { urgent: isUrgent(message), emotion: readEmotion(message) };
+  return { urgent: isUrgent(message), emotion: readEmotion(message), sarcasm: readSarcasm(message) };
 }
 
 /**
@@ -52,8 +63,9 @@ export function analyzeComms(message: string): CommRead {
 export function postureDirective(read: CommRead): string {
   let d = '';
   if (read.urgent) d += ' The user is in a hurry — give the answer first, no preamble.';
+  if (read.sarcasm) d += ' The user is likely being sarcastic — read the intended meaning (probably the opposite of the literal words). Do NOT take the praise at face value; acknowledge the real (likely negative) sentiment and respond to that.';
   if (read.emotion === 'frustrated') d += ' The user sounds frustrated — acknowledge it in a few words, drop pleasantries and jokes, and fix the problem directly.';
   else if (read.emotion === 'hesitant') d += ' The user sounds unsure — be reassuring and clear, and offer a gentle recommendation if they seem to be deciding.';
-  else if (read.emotion === 'playful') d += ' The user is being light and playful — a warm, easy tone fits here.';
+  else if (read.emotion === 'playful' && !read.sarcasm) d += ' The user is being light and playful — a warm, easy tone fits here.';
   return d;
 }
