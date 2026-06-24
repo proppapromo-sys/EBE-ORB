@@ -503,13 +503,15 @@ Flag every action whose requiresApproval is true — never imply it can run on i
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
 
     // Humor: the user's level, downgraded to professional this turn if they're rushed, frustrated, or
-    // being sarcastic — a chief of staff doesn't crack wise when the meeting just bombed.
-    const humor: HumorLevel = (urgent || comms.emotion === 'frustrated' || comms.sarcasm) ? 'professional' : prefs.humor;
+    // being sarcastic — a chief of staff doesn't crack wise when the meeting just bombed. Friendly
+    // teasing is the exception: matching it lightly is the right read.
+    const pointedSarcasm = comms.sarcasm && comms.sarcasmType !== 'friendly';
+    const humor: HumorLevel = (urgent || comms.emotion === 'frustrated' || pointedSarcasm) ? 'professional' : prefs.humor;
 
     // Cache: only when no live/personal data was pulled (so cached answers can't go stale).
     // Key includes style + tone + humor so calm/rushed/frustrated/playful/sarcastic answers don't collide.
     const cacheable = !liveCtx && !mems.length;
-    const key = `${userId}|${style}|${urgent ? 'u' : 'n'}|${comms.emotion[0]}|${comms.sarcasm ? 's' : 'x'}|${humor[0]}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
+    const key = `${userId}|${style}|${urgent ? 'u' : 'n'}|${comms.emotion[0]}|${comms.sarcasm ? comms.sarcasmType[0] : 'x'}|${humor[0]}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
     // Language: detect what the user wrote in, so ORB replies in-kind and speaks it in that voice.
     const lang = detectLang(message);
     // Adaptive voice: how ORB should SOUND this turn (register from humor, delivery from the state read,

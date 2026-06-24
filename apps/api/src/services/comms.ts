@@ -38,18 +38,46 @@ export function readEmotion(message: string): Emotion {
   return 'neutral';
 }
 
-// Sarcasm — the surface words are positive but the meaning is the opposite. Without prosody (pitch,
-// timing) we can't be certain from text, so this catches the strongest written tells: hyperbolic
-// praise about an event ("went wonderfully"), "oh/just great", "yeah right", "thanks a lot". The
-// point isn't to be clever — it's so ORB doesn't congratulate someone on a meeting that clearly bombed.
-const SARCASM = /\b(oh (?:great|wonderful|fantastic|perfect|good|joy)|just (?:great|perfect|wonderful|fantastic|brilliant|lovely)|thanks a lot|yeah,? right|sure it (?:is|will|does)|what could (?:possibly )?go wrong|love that for me|exactly what i needed|how wonderful|well that('?s| (?:went|was)).{0,30}\b(great|wonderful|perfect|fantastic|brilliant|swimmingly|wonderfully|perfectly|smoothly))\b/i;
+// Sarcasm — the surface words are positive but the meaning is the opposite. Humans read it from words
+// + tone + CONTEXT (a positive word about a bad event) + history. ORB combines what it can from text
+// and voice. The point isn't cleverness — it's that ORB never congratulates someone on a meeting that
+// clearly bombed, and instead responds to how they actually feel.
+const SARCASM = /\b(oh (?:great|wonderful|fantastic|perfect|good|joy)|just (?:great|perfect|wonderful|fantastic|brilliant|lovely)|thanks a lot|yeah,? right|sure it (?:is|will|does)|what could (?:possibly )?go wrong|love that for me|how wonderful|well that('?s| (?:went|was)).{0,30}\b(great|wonderful|perfect|fantastic|brilliant|swimmingly|wonderfully|perfectly|smoothly))\b/i;
 const HYPERBOLIC_ADVERB = /\bwent\s+(?:so\s+)?(?:wonderfully|great|perfectly|fantastically|brilliantly|swimmingly|smoothly|amazingly)\b/i;
-export function readSarcasm(message: string): boolean {
+// Structural sarcasm — the shape gives it away regardless of tone.
+const SARCASM_STRUCT = /\b(just what i needed|exactly what i needed|needed another|(?:like|as if) i needed|because .{0,40}wasn'?t .{0,25}enough)\b/i;
+// A positive-affect word + a clearly negative event in the same breath = almost certainly sarcasm.
+const POSITIVE = /\b(great|fantastic|wonderful|perfect(?:ly)?|brilliant(?:ly)?|awesome|amazing|lovely|excellent|terrific|fabulous|genius|splendid|marvel(?:ous|lous)|love (?:it|this|that))\b/i;
+const STRONG_NEG = /\b(another|again|broke|broken|problem|issue|bug|crash(?:ed)?|delay(?:ed)?|deadline|due (?:today|tomorrow|tonight|now|this)|late|cancel(?:led|ed)?|flat tire|traffic|overtime|audit|fired|stuck|stranded|paperwork|more work)\b/i;
+// Friendly teasing has its own reliable shape, even with no positive word.
+const FRIENDLY_TEASE = /\b(look at you|well well|aren'?t you|nice of you|about time|showing up (?:on time|early)|finally (?:decided|showed|here)|showing up on time)\b/i;
+
+export type SarcasmType = 'none' | 'friendly' | 'frustration' | 'self' | 'hostile';
+
+/** Read whether a message is sarcastic, combining lexical tells, structure, context, and voice tone. */
+export function sarcasmRead(message: string, prosody?: Prosody): { sarcastic: boolean; type: SarcasmType } {
   const m = message || '';
-  return SARCASM.test(m) || HYPERBOLIC_ADVERB.test(m);
+  const hasPos = POSITIVE.test(m);
+  const sarcastic = SARCASM.test(m) || HYPERBOLIC_ADVERB.test(m) || SARCASM_STRUCT.test(m) || FRIENDLY_TEASE.test(m)
+    || (hasPos && STRONG_NEG.test(m))                                   // context: praise about a bad event
+    || (hasPos && (prosody === 'frustrated' || prosody === 'urgent'));  // tone: praise said tensely (e.g. "Brilliant idea.")
+  return sarcastic ? { sarcastic: true, type: classifySarcasm(m) } : { sarcastic: false, type: 'none' };
 }
 
-export type CommRead = { urgent: boolean; emotion: Emotion; sarcasm: boolean };
+// Four flavors carry different emotional weight, so ORB should respond to each differently.
+function classifySarcasm(m: string): SarcasmType {
+  if (FRIENDLY_TEASE.test(m)) return 'friendly';
+  if (/\b(?:as if|because)\b[^.]*\b(?:i|my)\b/i.test(m) || /\bmy\b[^.]*\bwasn'?t\b[^.]*\benough\b/i.test(m)) return 'self';
+  if (/\b(brilliant|genius|great|wonderful|fantastic|nice|smart|clever)\s+(idea|job|plan|move|thinking|work|one)\b/i.test(m) || /\byour\b/i.test(m)) return 'hostile';
+  return 'frustration';
+}
+
+/** Back-compat boolean read. */
+export function readSarcasm(message: string): boolean {
+  return sarcasmRead(message).sarcastic;
+}
+
+export type CommRead = { urgent: boolean; emotion: Emotion; sarcasm: boolean; sarcasmType: SarcasmType };
 
 // Prosody — the read from the user's VOICE (pitch, energy, tempo), measured in the browser and sent
 // as a single hint. This is what lets "Great." said four ways mean four things: the words are flat,
@@ -64,15 +92,18 @@ export function asProsody(v: unknown): Prosody | undefined {
 export function analyzeComms(message: string, prosody?: Prosody): CommRead {
   let urgent = isUrgent(message);
   let emotion = readEmotion(message);
-  const sarcasm = readSarcasm(message);
+  const sr = sarcasmRead(message, prosody);
   // Voice fills the gap only when the words give nothing away (no explicit cue, no sarcasm).
-  if (prosody && emotion === 'neutral' && !urgent && !sarcasm) {
+  if (prosody && emotion === 'neutral' && !urgent && !sr.sarcastic) {
     if (prosody === 'urgent') urgent = true;
     else if (prosody === 'frustrated') emotion = 'frustrated';
     else if (prosody === 'excited') emotion = 'playful';
     // 'calm'/'neutral' leave the neutral read as-is.
   }
-  return { urgent, emotion, sarcasm };
+  // Sarcasm shapes the underlying feeling: friendly teasing is playful; the rest is real frustration,
+  // so ORB de-escalates and offers help instead of taking the praise at face value.
+  if (sr.sarcastic && emotion === 'neutral') emotion = sr.type === 'friendly' ? 'playful' : 'frustrated';
+  return { urgent, emotion, sarcasm: sr.sarcastic, sarcasmType: sr.type };
 }
 
 /**
@@ -137,8 +168,14 @@ export function sceneVoice(base: VoiceSpec, scene?: Scene): VoiceSpec {
 export function postureDirective(read: CommRead): string {
   let d = '';
   if (read.urgent) d += ' The user is in a hurry — give the answer first, no preamble.';
-  if (read.sarcasm) d += ' The user is likely being sarcastic — read the intended meaning (probably the opposite of the literal words). Do NOT take the praise at face value; acknowledge the real (likely negative) sentiment and respond to that.';
-  if (read.emotion === 'frustrated') d += ' The user sounds frustrated — acknowledge it in a few words, drop pleasantries and jokes, and fix the problem directly.';
+  if (read.sarcasm) {
+    d += ' The user is likely being sarcastic — read the intended meaning, not the literal words; never take the praise at face value.';
+    if (read.sarcasmType === 'friendly') d += ' This is friendly, playful teasing — take it in good humor and keep your reply light and warm.';
+    else if (read.sarcasmType === 'self') d += ' They are being self-deprecating about their own situation — be warm and reassuring, do not pile on, and offer to lighten the load.';
+    else if (read.sarcasmType === 'hostile') d += ' The sarcasm is pointed and critical — stay calm and professional, do NOT joke back, and address the substance directly.';
+    else d += ' They sound frustrated — acknowledge that briefly and offer to help with the underlying problem (e.g. "Sounds like that\'s not great — want a hand with it?"), rather than congratulating them.';
+  }
+  if (read.emotion === 'frustrated' && !read.sarcasm) d += ' The user sounds frustrated — acknowledge it in a few words, drop pleasantries and jokes, and fix the problem directly.';
   else if (read.emotion === 'hesitant') d += ' The user sounds unsure — be reassuring and clear, and offer a gentle recommendation if they seem to be deciding.';
   else if (read.emotion === 'playful' && !read.sarcasm) d += ' The user is being light and playful — a warm, easy tone fits here.';
   return d;

@@ -10,7 +10,7 @@ import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
 import { looksLikeBuildRequest, looksLikeVideoRequest, needsContext, isUrgent } from '../agents/masterAgent.js';
 import { recordCommand, topCommands, getPrefs, setPrefs, observeMessage, resetProfile } from '../services/convoPrefs.js';
 import { applySignals, profileDirective, describeProfile, confident, type Traits } from '../services/personality.js';
-import { analyzeComms, readEmotion, readSarcasm, postureDirective, voiceFor, asProsody, asScene, sceneDirective, sceneVoice } from '../services/comms.js';
+import { analyzeComms, readEmotion, readSarcasm, sarcasmRead, postureDirective, voiceFor, asProsody, asScene, sceneDirective, sceneVoice } from '../services/comms.js';
 import { detectLang } from '../services/lang.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -136,7 +136,7 @@ test('predict: ignores questions and idioms, fires only on real commands', () =>
 
 test('comms: the same words read differently by delivery', () => {
   // "call John" three ways — the Communication Layer reads tone, not just words.
-  assert.deepEqual(analyzeComms('ORB call John.'), { urgent: false, emotion: 'neutral', sarcasm: false });   // calm task
+  assert.deepEqual(analyzeComms('ORB call John.'), { urgent: false, emotion: 'neutral', sarcasm: false, sarcasmType: 'none' });   // calm task
   assert.equal(analyzeComms('ORB CALL JOHN!!').urgent, true);                                  // shouting + !! → urgent
   assert.equal(readEmotion('ORB call John…'), 'hesitant');                                     // trailing … → unsure
 });
@@ -148,6 +148,31 @@ test('comms: emotion read is conservative and maps to a posture', () => {
   assert.match(postureDirective({ urgent: false, emotion: 'frustrated' }), /frustrated/i);
   assert.match(postureDirective({ urgent: true, emotion: 'neutral' }), /hurry/i);
   assert.equal(postureDirective({ urgent: false, emotion: 'neutral' }), '');   // calm → no special posture
+});
+
+test('sarcasm engine: context, prosody, and the four types each get the right response', () => {
+  // Context: a positive word about a clearly bad event → sarcasm even with no lexical marker.
+  assert.equal(sarcasmRead('Wonderful. Payroll is due tomorrow.').sarcastic, true);
+  assert.equal(sarcasmRead('Oh great, another city permit meeting.').sarcastic, true);
+  // Tone: flat-positive words said in a frustrated voice → sarcasm.
+  assert.equal(sarcasmRead('perfect', 'frustrated').sarcastic, true);
+  assert.equal(sarcasmRead('perfect', 'calm').sarcastic, false);   // same words, genuine
+
+  // Types route to different responses.
+  assert.equal(sarcasmRead('Look at you, showing up on time.').type, 'friendly');
+  assert.equal(sarcasmRead("Yeah, because my schedule wasn't busy enough.").type, 'self');
+  assert.equal(sarcasmRead('Brilliant idea.', 'frustrated').type, 'hostile');   // standalone praise needs tone
+  assert.equal(sarcasmRead('Great. Another software update.').type, 'frustration');
+
+  // Frustration sarcasm → ORB offers help, doesn't congratulate.
+  const fr = analyzeComms('Looks like I needed another problem today.');
+  assert.equal(fr.sarcasm, true);
+  assert.match(postureDirective(fr), /offer to (help|lighten)/i);
+  // Hostile sarcasm → stay professional, don't joke back.
+  assert.match(postureDirective(analyzeComms('Brilliant idea.', 'frustrated')), /do not joke back/i);
+  // Genuine praise is left alone — text alone can't flip it, and the tone says calm.
+  assert.equal(sarcasmRead('The meeting went well and we closed the deal.').sarcastic, false);
+  assert.equal(sarcasmRead('Brilliant idea.').sarcastic, false);   // no tone, no context → real praise
 });
 
 test('comms: detects likely sarcasm and tells ORB not to take it literally', () => {
