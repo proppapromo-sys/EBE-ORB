@@ -1003,7 +1003,7 @@ async function renderConnections(){
   const gb=document.getElementById('connect-google');
   if(gb) gb.addEventListener('click',async()=>{ gb.textContent='Opening Google…';
     try{ const d=await (await fetch(API+'/api/orb/connectors/google/auth?userId='+uid)).json();
-      if(d.url) location.href=d.url; else { gb.textContent='🔗 Connect Google (Gmail + Calendar)'; alert(d.error||'Google sign-in isn\\'t set up yet (add Google OAuth keys).'); }
+      if(d.url) location.href=d.url; else { gb.textContent='🔗 Connect Google (Gmail + Calendar)'; alert(d.error||"Google sign-in isn't set up yet (add Google OAuth keys)."); }
     }catch(e){ gb.textContent='🔗 Connect Google (Gmail + Calendar)'; alert(e.message); } });
   // Traveler details — needed for ORB to book flights for you.
   let prof={}; try{ prof=await (await fetch(API+'/api/orb/profile?userId='+uid)).json(); }catch(e){}
