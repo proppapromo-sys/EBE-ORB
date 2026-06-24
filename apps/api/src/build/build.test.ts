@@ -29,6 +29,7 @@ import { parseOutcome, recommendFrom } from '../services/adaptation.js';
 import { CREATIVE_QUERY, CREATIVE_DIRECTIVE } from '../services/creativity.js';
 import { isStrategic, WISDOM_DIRECTIVE, parseValues, valuesDirective } from '../services/wisdom.js';
 import { selfModel, buildIdentity } from '../services/identity.js';
+import { parseReliability, reliability } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -228,6 +229,17 @@ test('decision: detects a choice and frames trade-offs, bias-guards, goals + dri
   // Decision profile is derived from learned tendencies.
   assert.equal(decisionProfile({ risk: { s: 0.5, n: 3 }, analytical: { s: 0.4, n: 3 } }).risk, 'high');
   assert.equal(decisionProfile({}).risk, 'medium');        // unknown → balanced default
+});
+
+test('relationships: tracks trust across people — who delivers vs who flakes', () => {
+  assert.deepEqual(parseReliability('Dana delivered on the deck'), { name: 'Dana', kind: 'delivered' });
+  assert.deepEqual(parseReliability('John flaked again'), { name: 'John', kind: 'missed' });
+  assert.equal(parseReliability('he dropped the ball'), null);   // pronoun, not a named person
+  assert.equal(parseReliability('the vendor came through'), null); // lowercase, not a name
+
+  assert.equal(reliability({ name: 'Dana', delivered: 4, missed: 0 }).label, 'someone you can count on');
+  assert.match(reliability({ name: 'John', delivered: 0, missed: 4 }).label, /unreliable|backup/i);
+  assert.equal(reliability({ name: 'New', delivered: 1, missed: 0 }).label, 'too early to say');
 });
 
 test('identity: ORB holds a self-model and a living, connected model of the user', () => {

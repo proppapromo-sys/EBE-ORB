@@ -168,6 +168,15 @@ alter table orb_convo_prefs add column if not exists humor text not null default
 alter table orb_convo_prefs add column if not exists support text not null default 'standard';
 alter table orb_convo_prefs add column if not exists traits jsonb not null default '{}'::jsonb;
 
+-- Social Intelligence / Trust — reliability across the user's relationships (who delivers, who flakes).
+create table if not exists orb_relationships (
+  user_id   text not null,
+  name      text not null,
+  delivered integer not null default 0,
+  missed    integer not null default 0,
+  primary key (user_id, name)
+);
+
 -- Wisdom & Judgment — the user's stated values, so ORB weighs major decisions against what they hold.
 create table if not exists orb_values (
   user_id    text primary key,

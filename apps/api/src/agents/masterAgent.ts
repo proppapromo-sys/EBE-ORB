@@ -37,6 +37,7 @@ import { parseOutcome, recordOutcome, whatWorks, formatAdaptation } from '../ser
 import { CREATIVE_QUERY, CREATIVE_DIRECTIVE } from '../services/creativity.js';
 import { isStrategic, WISDOM_DIRECTIVE, getValues, setValues, parseValues, valuesDirective } from '../services/wisdom.js';
 import { selfModel, userIdentity } from '../services/identity.js';
+import { parseReliability, recordReliability, reliabilityOf, roster } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -570,6 +571,23 @@ export async function askOrb(
   }
   if (/\b(what are my goals|my (?:goals|objectives|targets)|show (?:me )?my goals|how am i (?:doing|tracking) (?:on|against) my goals|what am i (?:working toward|trying to (?:become|achieve)))\b/i.test(message)) {
     return { mode: 'fast' as const, answer: formatObjectives(await listObjectives(userId).catch(() => [])), route: 'fast' as const, model: 'goals' };
+  }
+
+  // Social Intelligence / Trust: track who delivers vs flakes; answer "who can I count on?".
+  {
+    const rel = parseReliability(message);
+    if (rel) {
+      await recordReliability(userId, rel.name, rel.kind).catch(() => {});
+      const answer = rel.kind === 'delivered' ? `Noted — ${rel.name} came through. That's in their column.` : `Noted — ${rel.name} dropped that one. I'll factor it into who you lean on.`;
+      return { mode: 'fast' as const, answer, route: 'fast' as const, model: 'trust' };
+    }
+  }
+  if (/\bwho can i (?:count on|rely on|trust)\b|\bwho(?:'s| is) (?:reliable|dependable)\b|\bwho keeps (?:dropping the ball|flaking)\b|\bwho(?:'s| is) (?:unreliable|slipping)\b/i.test(message)) {
+    return { mode: 'fast' as const, answer: await roster(userId).catch(() => "I don't have a track record on people yet."), route: 'fast' as const, model: 'trust' };
+  }
+  {
+    const rm = message.match(/\b(?:how reliable is|can i (?:count on|rely on|trust)|how dependable is|what'?s my read on)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
+    if (rm) return { mode: 'fast' as const, answer: await reliabilityOf(userId, rm[1]).catch(() => `I haven't tracked ${rm[1]} yet.`), route: 'fast' as const, model: 'trust' };
   }
 
   // Self-Identity: ORB's model of itself (mission, boundaries, continuity) and its living model of you.
