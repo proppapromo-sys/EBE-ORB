@@ -87,7 +87,7 @@ const AskSchema = z.object({
   lon: z.number().optional(),
   tz: z.string().optional(),        // IANA timezone for calendar events
   prosody: z.enum(['urgent', 'frustrated', 'excited', 'calm', 'neutral']).optional(),  // voice-tone hint from the browser
-  scene: z.object({ noise: z.enum(['quiet', 'moderate', 'loud']), crowd: z.boolean().optional() }).optional()  // acoustic environment
+  scene: z.object({ noise: z.enum(['quiet', 'moderate', 'loud']), crowd: z.boolean().optional(), space: z.enum(['live', 'normal', 'damped']).optional() }).optional()  // acoustic environment
 });
 
 orbRouter.get('/health', (_req, res) => {

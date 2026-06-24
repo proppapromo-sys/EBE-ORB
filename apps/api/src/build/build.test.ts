@@ -136,7 +136,7 @@ test('predict: ignores questions and idioms, fires only on real commands', () =>
 
 test('comms: the same words read differently by delivery', () => {
   // "call John" three ways — the Communication Layer reads tone, not just words.
-  assert.deepEqual(analyzeComms('ORB call John.'), { urgent: false, emotion: 'neutral', sarcasm: false, sarcasmType: 'none' });   // calm task
+  assert.deepEqual(analyzeComms('ORB call John.'), { urgent: false, emotion: 'neutral', sarcasm: false, sarcasmType: 'none', reflect: false });   // calm task
   assert.equal(analyzeComms('ORB CALL JOHN!!').urgent, true);                                  // shouting + !! → urgent
   assert.equal(readEmotion('ORB call John…'), 'hesitant');                                     // trailing … → unsure
 });
@@ -148,6 +148,13 @@ test('comms: emotion read is conservative and maps to a posture', () => {
   assert.match(postureDirective({ urgent: false, emotion: 'frustrated' }), /frustrated/i);
   assert.match(postureDirective({ urgent: true, emotion: 'neutral' }), /hurry/i);
   assert.equal(postureDirective({ urgent: false, emotion: 'neutral' }), '');   // calm → no special posture
+});
+
+test('thinking-partner: ORB helps clarify thinking instead of just answering', () => {
+  assert.equal(analyzeComms("I'm not sure whether to hire now or wait a quarter.").reflect, true);
+  assert.equal(analyzeComms("I keep going back and forth on the office move.").reflect, true);
+  assert.equal(analyzeComms('What time is my meeting?').reflect, false);   // a plain question, just answer it
+  assert.match(postureDirective(analyzeComms("Should I take the deal or hold out for more?")), /thinking partner|clarifying question/i);
 });
 
 test('sarcasm engine: context, prosody, and the four types each get the right response', () => {

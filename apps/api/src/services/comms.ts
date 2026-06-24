@@ -77,7 +77,15 @@ export function readSarcasm(message: string): boolean {
   return sarcasmRead(message).sarcastic;
 }
 
-export type CommRead = { urgent: boolean; emotion: Emotion; sarcasm: boolean; sarcasmType: SarcasmType };
+// Thinking out loud — people often don't know what they think until they say it, so a great chief of
+// staff doesn't just answer; sometimes it helps you clarify your OWN thinking. ORB detects when the
+// user is wrestling with a decision or reasoning aloud, and shifts into thinking-partner mode.
+const REFLECT = /\b(not sure (?:whether|if|what|how)|should i\b[^?]*\bor\b|do i\b[^?]*\bor\b|going back and forth|torn between|on (?:the )?one hand|trying to (?:figure|decide|work out|wrap my head)|can'?t decide|i don'?t know (?:what|how|whether|if)\b|thinking (?:out loud|through)|wrestling with|stuck on (?:whether|what|how)|debating (?:whether|if)|weighing (?:up|whether|my options)|help me think)\b/i;
+export function readReflect(message: string): boolean {
+  return REFLECT.test(message || '');
+}
+
+export type CommRead = { urgent: boolean; emotion: Emotion; sarcasm: boolean; sarcasmType: SarcasmType; reflect: boolean };
 
 // Prosody — the read from the user's VOICE (pitch, energy, tempo), measured in the browser and sent
 // as a single hint. This is what lets "Great." said four ways mean four things: the words are flat,
@@ -103,7 +111,7 @@ export function analyzeComms(message: string, prosody?: Prosody): CommRead {
   // Sarcasm shapes the underlying feeling: friendly teasing is playful; the rest is real frustration,
   // so ORB de-escalates and offers help instead of taking the praise at face value.
   if (sr.sarcastic && emotion === 'neutral') emotion = sr.type === 'friendly' ? 'playful' : 'frustrated';
-  return { urgent, emotion, sarcasm: sr.sarcastic, sarcasmType: sr.type };
+  return { urgent, emotion, sarcasm: sr.sarcastic, sarcasmType: sr.type, reflect: readReflect(message) };
 }
 
 /**
@@ -142,13 +150,15 @@ export function voiceFor(read: CommRead, humor: HumorLevel = 'executive'): Voice
 
 // ── Spatial Audio Intelligence: the read of the ENVIRONMENT the conversation is happening in.
 // Humans infer room, distance, and occupancy from reverb and background sound; ORB infers the basics
-// it can act on — how loud the place is and whether other people seem to be around — and adapts:
-// short & clear in noise, privacy-aware in a crowd. Measured in-browser; only the summary is sent.
-export type Scene = { noise: 'quiet' | 'moderate' | 'loud'; crowd?: boolean };
+// it can act on — how loud the place is, whether other people seem to be around, and (coarsely) how
+// reverberant the room is — and adapts: short & clear in noise, privacy-aware in a crowd, well-paced
+// in an echoey space. Measured in-browser; only the summary is sent.
+export type Scene = { noise: 'quiet' | 'moderate' | 'loud'; crowd?: boolean; space?: 'live' | 'normal' | 'damped' };
 const NOISE_LEVELS = ['quiet', 'moderate', 'loud'];
+const SPACES = ['live', 'normal', 'damped'];
 export function asScene(v: any): Scene | undefined {
   if (!v || typeof v !== 'object' || !NOISE_LEVELS.includes(v.noise)) return undefined;
-  return { noise: v.noise, crowd: v.crowd === true };
+  return { noise: v.noise, crowd: v.crowd === true, space: SPACES.includes(v.space) ? v.space : undefined };
 }
 
 /** Environment-driven delivery directive — silent guidance, layered on top of the emotional posture. */
@@ -156,6 +166,7 @@ export function sceneDirective(scene?: Scene): string {
   if (!scene) return '';
   if (scene.noise === 'loud') return ' The user is in a loud, noisy place — keep it short and clear, and lead with the answer so it lands.';
   if (scene.crowd) return ' The user may be around other people — stay concise and do not read out anything sensitive unprompted.';
+  if (scene.space === 'live') return ' The user seems to be in a large or echoey space — keep replies clear and well-paced so they\'re easy to follow.';
   return '';
 }
 
@@ -178,5 +189,7 @@ export function postureDirective(read: CommRead): string {
   if (read.emotion === 'frustrated' && !read.sarcasm) d += ' The user sounds frustrated — acknowledge it in a few words, drop pleasantries and jokes, and fix the problem directly.';
   else if (read.emotion === 'hesitant') d += ' The user sounds unsure — be reassuring and clear, and offer a gentle recommendation if they seem to be deciding.';
   else if (read.emotion === 'playful' && !read.sarcasm) d += ' The user is being light and playful — a warm, easy tone fits here.';
+  // Thinking-partner mode: help them clarify their OWN thinking, don't just hand over an answer.
+  if (read.reflect) d += ' The user is thinking out loud and working through a decision — act as a thinking partner: briefly reflect back the core tension you hear, ask ONE sharp clarifying question, then offer your read. Help them reach their own clarity rather than just dumping an answer.';
   return d;
 }

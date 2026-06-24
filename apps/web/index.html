@@ -900,17 +900,18 @@ async function startMicAnalyser(){
 // and tempo, then collapse to one tone hint. Defensive: silence frames are skipped; never persisted.
 function startProsody(){ if(!proTimer) proTimer=setInterval(audioTick,100); }        // ~10 Hz
 function proReset(){ proAcc={n:0,eSum:0,pSum:0,pN:0,t0:Date.now()}; }
-function sceneReset(){ sceneAcc={ambSum:0,ambN:0,babble:0,bandN:0}; }
+function sceneReset(){ sceneAcc={ambSum:0,ambN:0,babble:0,bandN:0,decaySum:0,decayN:0}; }
 // Gate (VAD): the most basic question — is the user speaking, or is this just the room? It tracks the
 // quiet background level and opens only when sound rises clearly above it, with hysteresis (a lower
 // close threshold) and a short hold so brief pauses mid-word don't slam it shut. This one decision
 // cleanly separates the user's VOICE from the ENVIRONMENT for everything downstream.
-let gate={floor:0.01,open:false,holdUntil:0};
+let gate={floor:0.01,open:false,holdUntil:0,openThr:0.03,lastLoudAt:0};
 function gateUpdate(rms,now){
   // Learn the noise floor: drop to quiet fast, rise slowly (so a loud talker doesn't raise the floor).
   gate.floor = rms<gate.floor ? gate.floor*0.9+rms*0.1 : gate.floor*0.995+rms*0.005;
   gate.floor = Math.max(0.0008, Math.min(0.05, gate.floor));
   const openThr=Math.max(0.012, gate.floor*3.2), closeThr=Math.max(0.008, gate.floor*2.0);
+  gate.openThr=openThr;
   if(!gate.open){ if(rms>openThr)gate.open=true; }
   else if(rms>closeThr){ gate.holdUntil=now+250; }   // still talking → refresh the hold window
   else if(now>gate.holdUntil){ gate.open=false; }     // quiet past the hold → gate closes
@@ -928,6 +929,12 @@ function audioTick(){
   const f0=open?estimatePitch(tdata,micRate):-1;
   if(open){ if(!proAcc)proReset(); proAcc.n++;proAcc.eSum+=rms; if(f0>70&&f0<400){proAcc.pSum+=f0;proAcc.pN++;} }
   if(!sceneAcc)sceneReset();
+  // Reverb (coarse): time from the last loud moment down to the noise floor ≈ how the room rings out.
+  // Mid-word gaps reset on the next syllable, so this naturally captures the decay at speech offsets.
+  if(rms>gate.openThr) gate.lastLoudAt=now;
+  else if(gate.lastLoudAt && rms<=gate.floor*1.6 && now-gate.lastLoudAt<1500){
+    const dt=now-gate.lastLoudAt; if(dt>=40){sceneAcc.decaySum+=dt;sceneAcc.decayN++;} gate.lastLoudAt=0;
+  }
   if(!open){                                                                         // gate closed → environment
     sceneAcc.ambSum+=rms;sceneAcc.ambN++;
     try{analyser.getByteFrequencyData(freq);
@@ -942,7 +949,9 @@ function sceneSnapshot(){
   const amb=sceneAcc.ambSum/sceneAcc.ambN;
   const noise=amb<0.02?'quiet':amb<0.06?'moderate':'loud';
   const crowd=noise!=='quiet' && (sceneAcc.babble/Math.max(1,sceneAcc.ambN))>0.25;
-  return {noise,crowd};
+  const out={noise,crowd};
+  if(sceneAcc.decayN>=2){const d=sceneAcc.decaySum/sceneAcc.decayN; out.space=d>300?'live':d<150?'damped':'normal';} // coarse reverberance
+  return out;
 }
 // ── Server-side speech (OpenAI Whisper): record an utterance, use the GATE (VAD) to know when the
 // user finished, condition the audio, transcribe it multilingually on the server, then answer. This
