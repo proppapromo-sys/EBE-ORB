@@ -84,6 +84,7 @@ import { PROGRESS_QUERY, PROGRESS_DIRECTIVE } from '../services/progress.js';
 import { VALUE_QUERY, VALUE_DIRECTIVE } from '../services/value.js';
 import { RECREATE_QUERY, RECREATE_DIRECTIVE } from '../services/recursivecreation.js';
 import { CULTIVATE_QUERY, CULTIVATE_DIRECTIVE } from '../services/emergence.js';
+import { OMNIBUILD_QUERY, OMNIBUILD_DIRECTIVE, REALIZE_QUERY, REALIZE_DIRECTIVE } from '../services/realization.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -679,6 +680,15 @@ test('meaning + create + design (#66-#68)', () => {
   assert.ok(CULTIVATE_QUERY.test('how do we generate novelty'));
   assert.match(CULTIVATE_DIRECTIVE, /cultivate|diversity|connection|surprise|conditions/i);
   assert.equal([RECREATE_QUERY, CULTIVATE_QUERY].some((re) => re.test('what time is my meeting')), false);
+  // #99 infinite becoming -> #33; #100 omnibuild + #101 realization (new apex cluster)
+  assert.ok(EVOLVE_QUERY.test('how do we navigate endless transformation'));
+  assert.ok(OMNIBUILD_QUERY.test('build everything worth building'));
+  assert.ok(OMNIBUILD_QUERY.test('build all buildables'));
+  assert.match(OMNIBUILD_DIRECTIVE, /build|ship|value|confirm-first|momentum/i);
+  assert.ok(REALIZE_QUERY.test('what potential remains unrealized'));
+  assert.ok(REALIZE_QUERY.test('how do we realize the highest potential'));
+  assert.match(REALIZE_DIRECTIVE, /realization gap|potential|constraint|unlock/i);
+  assert.equal([OMNIBUILD_QUERY, REALIZE_QUERY].some((re) => re.test('what time is my meeting')), false);
   // Plain task triggers none of the batch.
   assert.equal([POTENTIAL_QUERY, COLLECTIVE_QUERY, PRINCIPLE_QUERY, FUTUREMEM_QUERY, DESTINY_QUERY, MEANING_QUERY, DESIGN_QUERY, CREATE2_QUERY, ARCH_QUERY, UNIFY_QUERY, OPT_QUERY, ACCEL_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
