@@ -52,6 +52,7 @@ import { DISCOVERY_QUERY, DISCOVERY_DIRECTIVE } from '../services/discovery.js';
 import { GOVERNANCE_QUERY, GOVERNANCE_DIRECTIVE } from '../services/governance.js';
 import { CIVILIZATION_QUERY, CIVILIZATION_DIRECTIVE } from '../services/civilization.js';
 import { COORDINATION_QUERY, COORDINATION_DIRECTIVE } from '../services/coordination.js';
+import { PRIME_QUERY, CONSTITUTION_DIRECTIVE, constitutionStatement, PRIME_DIRECTIVE, PILLARS, CONSTITUTIONAL_TEST } from '../services/constitution.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -396,6 +397,22 @@ test('universal coordination (#39): synchronizing independent actors, excludes p
   assert.ok(COORDINATION_QUERY.test('I think we have misaligned incentives'));
   assert.match(COORDINATION_DIRECTIVE, /coordination|incentives|who decides|handoffs|friction/i);
   assert.equal(COORDINATION_QUERY.test('what time is my meeting'), false);
+});
+
+test('prime directive (#40): ORB can state its constitution and runs the constitutional test', () => {
+  // The constitution is recognized and articulated, with all five pillars + the test.
+  assert.ok(PRIME_QUERY.test('why do you exist'));
+  assert.ok(PRIME_QUERY.test('what is your prime directive'));
+  assert.ok(PRIME_QUERY.test('what will you never do'));
+  const stmt = constitutionStatement();
+  assert.ok(stmt.includes(PRIME_DIRECTIVE));
+  for (const pillar of PILLARS) assert.ok(stmt.includes(pillar), `statement should mention ${pillar}`);
+  for (const q of CONSTITUTIONAL_TEST) assert.ok(stmt.includes(q), `statement should include test "${q}"`);
+  assert.match(stmt, /sovereign|decision-maker/i);
+  // The constitutional frame enforces the test and the non-negotiables.
+  assert.match(CONSTITUTION_DIRECTIVE, /constitutional test|sustainable|responsible|sovereign|agency/i);
+  // A plain task isn't a constitutional question.
+  assert.equal(PRIME_QUERY.test('what time is my meeting'), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {

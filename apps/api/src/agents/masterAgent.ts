@@ -59,6 +59,7 @@ import { DISCOVERY_QUERY, DISCOVERY_DIRECTIVE } from '../services/discovery.js';
 import { GOVERNANCE_QUERY, GOVERNANCE_DIRECTIVE } from '../services/governance.js';
 import { CIVILIZATION_QUERY, CIVILIZATION_DIRECTIVE } from '../services/civilization.js';
 import { COORDINATION_QUERY, COORDINATION_DIRECTIVE } from '../services/coordination.js';
+import { PRIME_QUERY, CONSTITUTION_DIRECTIVE, constitutionStatement } from '../services/constitution.js';
 import { parseReliability, recordReliability, reliabilityOf, roster } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -633,6 +634,11 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: await userIdentity(userId).catch(() => "I'm still forming a picture of who you are."), route: 'fast' as const, model: 'identity' };
   }
 
+  // Prime Directive (#40): ORB's own constitution — why it exists, the pillars, the test, the lines it won't cross.
+  if (PRIME_QUERY.test(message)) {
+    return { mode: 'fast' as const, answer: constitutionStatement(), route: 'fast' as const, model: 'constitution' };
+  }
+
   // Purpose & Meaning: set or read the user's purpose/mission ORB aligns recommendations to.
   {
     const pp = parsePurpose(message);
@@ -842,6 +848,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const governing = GOVERNANCE_QUERY.test(message);   // #37 govern intelligence: tiers, oversight, transparency
     const civscale = CIVILIZATION_QUERY.test(message);   // #38 reason at civilization scale
     const coordinating = COORDINATION_QUERY.test(message);   // #39 synchronize independent actors
+    // #40 Prime Directive: the constitutional test rides along on the most consequential calls (not chit-chat).
+    const constitutional = !urgent && (decision || strategic || governing || aligned || steward || flourish);
     const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish || conscEvolve || antifragile || wisdomAccum || discovering || governing || civscale || coordinating;
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
       : (deepThink && !urgent) ? 'detailed'
@@ -893,7 +901,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
       + (harmonic ? HARMONY_DIRECTIVE : '') + (flourish ? FLOURISHING_DIRECTIVE : '')
       + (conscEvolve ? EVOLVE_DIRECTIVE : '') + (antifragile ? ANTIFRAGILE_DIRECTIVE : '') + (wisdomAccum ? WISDOM_ACCUM_DIRECTIVE : '')
       + (discovering ? DISCOVERY_DIRECTIVE : '') + (governing ? GOVERNANCE_DIRECTIVE : '') + (civscale ? CIVILIZATION_DIRECTIVE : '')
-      + (coordinating ? COORDINATION_DIRECTIVE : ''));
+      + (coordinating ? COORDINATION_DIRECTIVE : '') + (constitutional ? CONSTITUTION_DIRECTIVE : ''));
     const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir + higherDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));
