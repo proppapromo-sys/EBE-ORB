@@ -64,6 +64,7 @@ import { AWAKENING_QUERY, AWAKENING_DIRECTIVE } from '../services/awakening.js';
 import { PERSPECTIVE_QUERY, PERSPECTIVE_DIRECTIVE } from '../services/perspectives.js';
 import { METAPURPOSE_QUERY, METAPURPOSE_DIRECTIVE } from '../services/metapurpose.js';
 import { LEARNING_QUERY, LEARNING_DIRECTIVE } from '../services/learning.js';
+import { FRONTIER_QUERY, FRONTIER_DIRECTIVE } from '../services/frontier.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -505,6 +506,14 @@ test('apex layers (#49-#51): perspectives, deeper purpose, infinite learning', (
   assert.match(LEARNING_DIRECTIVE, /more to know|what failed|update|remains unknown|next step/i);
   // Plain task triggers none.
   assert.equal([PERSPECTIVE_QUERY, METAPURPOSE_QUERY, LEARNING_QUERY].some((re) => re.test('what time is my meeting')), false);
+});
+
+test('frontier (#52): scans the edge for undiscovered opportunity, excludes plain tasks', () => {
+  assert.ok(FRONTIER_QUERY.test('what opportunity am I not seeing'));
+  assert.ok(FRONTIER_QUERY.test('where\'s the white space in this market'));
+  assert.ok(FRONTIER_QUERY.test('what hasn\'t been tried here'));
+  assert.match(FRONTIER_DIRECTIVE, /frontier|white space|unexplored|cheapest probe|edge/i);
+  assert.equal(FRONTIER_QUERY.test('what time is my meeting'), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
