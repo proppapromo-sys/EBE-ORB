@@ -120,6 +120,29 @@ export async function driveSearch(token: string, query: string): Promise<{ name:
   return (d.files ?? []).map((f) => ({ name: f.name ?? '(untitled)', link: f.webViewLink, type: f.mimeType }));
 }
 
+/** Recently-modified Drive files (for mapping documents into the knowledge graph). */
+export async function driveRecent(token: string): Promise<{ name: string; link?: string; type?: string }[]> {
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent('trashed=false')}&pageSize=10&fields=files(name,webViewLink,mimeType)&orderBy=modifiedTime desc`;
+  const d = (await gget(url, token)) as { files?: { name?: string; webViewLink?: string; mimeType?: string }[] };
+  return (d.files ?? []).map((f) => ({ name: f.name ?? '(untitled)', link: f.webViewLink, type: f.mimeType }));
+}
+
+/** Recent inbox messages' sender + subject (for mapping people/topics into the knowledge graph). */
+export async function gmailRecent(token: string): Promise<{ from: string; subject: string }[]> {
+  const list = (await gget('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10&q=in:inbox', token)) as { messages?: { id: string }[] };
+  const out: { from: string; subject: string }[] = [];
+  for (const m of (list.messages ?? []).slice(0, 10)) {
+    try {
+      const msg = (await gget(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`, token)) as { payload?: { headers?: { name: string; value: string }[] } };
+      const hs = msg.payload?.headers ?? [];
+      const from = hs.find((h) => h.name === 'From')?.value ?? '';
+      const subject = hs.find((h) => h.name === 'Subject')?.value ?? '';
+      if (from || subject) out.push({ from, subject });
+    } catch { /* skip this message */ }
+  }
+  return out;
+}
+
 /** Upcoming events over the next `days` (default 2 → today + tomorrow). */
 export async function calendarUpcoming(token: string, days = 2): Promise<{ summary: string; start?: string }[]> {
   const now = new Date();

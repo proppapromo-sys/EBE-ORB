@@ -13,7 +13,7 @@ import { applySignals, profileDirective, describeProfile, confident, type Traits
 import { analyzeComms, readEmotion, readSarcasm, sarcasmRead, postureDirective, voiceFor, asProsody, asScene, sceneDirective, sceneVoice } from '../services/comms.js';
 import { detectLang } from '../services/lang.js';
 import { relate, aboutEntity, formatAbout, ingestItems } from '../services/graph.js';
-import { mentionsIn } from '../agents/masterAgent.js';
+import { mentionsIn, senderName } from '../agents/masterAgent.js';
 import { avatarAllowedFor, avatarConfigured } from '../services/avatar.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -183,6 +183,10 @@ test('graph: auto-ingestion maps calendar events and links the people/topics the
   assert.equal(n, 1);
   const dana = await aboutEntity(u, 'Dana');
   assert.ok(dana && dana.neighbors.some((x) => /Kickoff/.test(x.label)));   // navigable from the person
+  // Email sender names are parsed for the map; junk/emails are rejected.
+  assert.equal(senderName('Jane Doe <jane@acme.com>'), 'Jane Doe');
+  assert.equal(senderName('"Bob Smith" <bob@x.io>'), 'Bob Smith');
+  assert.equal(senderName('noreply@notifications.example.com'), '');
 });
 
 test('avatar: gated to top tiers, off by default, always disclosed', () => {

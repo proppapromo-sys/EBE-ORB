@@ -31,6 +31,27 @@ function authHeader(key: string): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Upload a captured selfie (data URL) to the provider and get back a hosted image URL usable as an
+ * avatar source — so an in-app "take a selfie" flow works without the user hosting the image anywhere.
+ */
+export async function uploadFace(dataUrl: string): Promise<{ url?: string; note?: string }> {
+  const key = getPlatformKey('DID_API_KEY');
+  if (!key) return { note: 'Add a D-ID API key to use a captured selfie as your avatar.' };
+  const m = /^data:(.+);base64,(.*)$/.exec(dataUrl || '');
+  if (!m) return { note: 'Expected an inline image (data URL).' };
+  try {
+    const fd = new FormData();
+    fd.append('image', new Blob([Buffer.from(m[2], 'base64')], { type: m[1] }), 'face.jpg');
+    const r = await fetch('https://api.d-id.com/images', { method: 'POST', headers: { authorization: authHeader(key) }, body: fd });
+    if (!r.ok) return { note: `avatar upload ${r.status}: ${(await r.text()).slice(0, 150)}` };
+    const d = (await r.json()) as { url?: string };
+    return d.url ? { url: d.url } : { note: 'Upload returned no URL.' };
+  } catch (e) {
+    return { note: e instanceof Error ? e.message : 'avatar upload error' };
+  }
+}
+
 /** Generate a lip-synced talking-head clip of `text` spoken by the face at `imageUrl`. */
 export async function generateAvatar(text: string, imageUrl?: string): Promise<AvatarResult> {
   const key = getPlatformKey('DID_API_KEY');

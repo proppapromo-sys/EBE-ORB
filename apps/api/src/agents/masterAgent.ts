@@ -12,7 +12,7 @@ import { getQuote } from '../services/stocks.js';
 import { defineWord, wikiSummary, countryInfo, convertCurrency, timeIn } from '../services/reference.js';
 import { govRegulations } from '../services/civics.js';
 import { handleAction } from '../services/actions.js';
-import { getAccessToken, calendarUpcoming, gmailUnreadImportant, driveSearch } from '../connectors/google.js';
+import { getAccessToken, calendarUpcoming, gmailUnreadImportant, driveSearch, driveRecent, gmailRecent } from '../connectors/google.js';
 import { recall } from '../services/memoryStore.js';
 import { cacheGet, cacheSet } from '../services/cache.js';
 import { searchFlights, searchHotels, travelConfigured, duffelConfigured } from '../services/travel.js';
@@ -79,15 +79,35 @@ export function mentionsIn(title: string): string[] {
   if (topic) out.push(topic[1].trim());
   return [...new Set(out)];
 }
+// Pull the human name out of a "Jane Doe <jane@x.com>" From header; '' if it doesn't look like a name.
+export function senderName(from: string): string {
+  const m = (from || '').match(/^\s*"?([^"<]+?)"?\s*</);   // only trust an explicit display name
+  if (!m) return '';                                        // bare email (noreply@…) → not a person
+  const n = m[1].trim();
+  return /^[A-Za-z][A-Za-z .'-]{1,40}$/.test(n) ? n : '';
+}
 async function mapMyWorld(userId: string): Promise<{ added: number; note?: string }> {
   const token = await getAccessToken(userId);
-  if (!token) return { added: 0, note: 'Connect Google in the Connect tab first, and I can map your calendar into your knowledge graph automatically.' };
+  if (!token) return { added: 0, note: 'Connect Google in the Connect tab first, and I can map your calendar, Drive, and inbox into your knowledge graph automatically.' };
   const items: IngestItem[] = [];
   try {
     const events = await calendarUpcoming(token, 14);
     for (const e of events) if (e.summary) items.push({ label: e.summary, type: 'event', mentions: mentionsIn(e.summary) });
   } catch { /* degrade */ }
-  if (!items.length) return { added: 0, note: "I didn't find calendar events to map in the next two weeks." };
+  try {
+    const files = await driveRecent(token);
+    for (const f of files) items.push({ label: f.name, type: 'document', mentions: mentionsIn(f.name) });
+  } catch { /* degrade */ }
+  try {
+    const mails = await gmailRecent(token);
+    for (const m of mails) {
+      if (!m.subject) continue;
+      const who = senderName(m.from);
+      const mentions = [...new Set([...(who ? [who] : []), ...mentionsIn(m.subject)])];
+      items.push({ label: m.subject.slice(0, 60), type: 'email', mentions });
+    }
+  } catch { /* degrade */ }
+  if (!items.length) return { added: 0, note: "I didn't find anything to map yet — make sure Google is connected." };
   const added = await ingestItems(userId, items);
   return { added };
 }
@@ -513,7 +533,7 @@ export async function askOrb(
   if (MAP_WORLD.test(message)) {
     const r = await mapMyWorld(userId);
     const answer = r.added
-      ? `Mapped ${r.added} thing${r.added === 1 ? '' : 's'} from your calendar into your knowledge graph. Ask "what's connected to <name>?" to navigate it.`
+      ? `Mapped ${r.added} thing${r.added === 1 ? '' : 's'} from your calendar, Drive, and inbox into your knowledge graph. Ask "what's connected to <name>?" to navigate it.`
       : (r.note || 'Nothing to map yet.');
     return { mode: 'fast' as const, answer, route: 'fast' as const, model: 'graph' };
   }

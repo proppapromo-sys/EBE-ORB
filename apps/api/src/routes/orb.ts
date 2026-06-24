@@ -29,7 +29,7 @@ import { verifyAppleToken, appleConfigured, startPhone, verifyPhone, phoneConfig
 import { recordReferral, referralStats } from '../services/referrals.js';
 import { getTraveler, setTraveler } from '../services/profileStore.js';
 import { generateVideo, videoAllowedFor, videoConfigured } from '../services/video.js';
-import { generateAvatar, avatarAllowedFor, avatarConfigured } from '../services/avatar.js';
+import { generateAvatar, uploadFace, avatarAllowedFor, avatarConfigured } from '../services/avatar.js';
 import { synthesizeSpeech, ttsConfigured } from '../services/tts.js';
 import { listSkills } from '../brains/skills.js';
 import { deleteAccount } from '../services/account.js';
@@ -542,6 +542,18 @@ orbRouter.post('/avatar', async (req, res, next) => {
     if (!avatarAllowedFor(plan)) return res.json({ available: false, locked: true, note: 'The talking avatar is an Executive/Enterprise feature.' });
     if (parsed.imageUrl && !parsed.consent) return res.json({ available: false, note: 'Confirm you have permission to use this face (consent) — ORB never clones someone else without it.' });
     res.json({ configured: avatarConfigured(), ...(await generateAvatar(parsed.text, parsed.imageUrl)) });
+  } catch (error) { next(error); }
+});
+
+// Turn an in-app selfie into a hosted avatar source. Consent + top-tier gated; user controls the face.
+const FaceSchema = z.object({ userId: z.string().min(1).default('demo-user'), image: z.string().min(1), consent: z.boolean(), plan: z.string().optional() });
+orbRouter.post('/avatar/face', async (req, res, next) => {
+  try {
+    const parsed = FaceSchema.parse(req.body ?? {});
+    const plan = parsed.plan ?? await getUserPlan(parsed.userId);
+    if (!avatarAllowedFor(plan)) return res.json({ locked: true, note: 'The talking avatar is an Executive/Enterprise feature.' });
+    if (!parsed.consent) return res.json({ note: 'Please confirm this is your own face (consent) before uploading.' });
+    res.json(await uploadFace(parsed.image));
   } catch (error) { next(error); }
 });
 
