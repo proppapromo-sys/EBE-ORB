@@ -357,8 +357,8 @@ function frame(){
     amp=amp*0.6+Math.min(1,(s/freq.length)/100)*0.4;                // real audio (fast, voice-rate)
     // BARGE-IN: if you start talking while ORB is speaking, it stops and listens to you.
     if(speaking&&(convoMode||wakeMode)){
-      if(amp>0.70)bargeFrames++;else bargeFrames=Math.max(0,bargeFrames-2);   // less twitchy: louder + sustained
-      if(bargeFrames>16){bargeFrames=0;try{speechSynthesis.cancel();}catch(e){} stopCloned();} // only a clear interruption
+      if(amp>0.62)bargeFrames++;else bargeFrames=Math.max(0,bargeFrames-2);   // interrupting voice, not a blip
+      if(bargeFrames>11){bargeFrames=0;try{speechSynthesis.cancel();}catch(e){} stopCloned();setPhase('listening');} // user cut in → stop + listen
     } else bargeFrames=0;
   }
   else if(speaking){                                            // simulate a voice waveform envelope
@@ -457,6 +457,7 @@ function stopCloned(){ if(clonedAudio){try{clonedAudio.pause();}catch(e){}} clon
 function onSpeakStart(){speaking=true;setPhase('speaking');document.getElementById('speaking').classList.add('on');
   if(recogActive){try{recog.stop();}catch(e){}}}                    // don't transcribe our own voice
 function onSpeakEnd(){speaking=false;document.getElementById('speaking').classList.remove('on');
+  if(wakeMode) armedUntil=Date.now()+FOLLOWUP_MS;        // keep listening for natural follow-ups
   if(convoMode||wakeMode){setPhase('listening');startRecog();}else setPhase('idle');}
 function speakBrowser(text,lang){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(speakable(text).slice(0,800));
@@ -547,6 +548,22 @@ async function isOwnerVoice(){            // true = it's the owner (or we can't 
 function gatedConvene(q){
   if(!VOICELOCK){convene(q);return;}
   isOwnerVoice().then(ok=>{ if(ok)convene(q); else setPhase(convoMode||wakeMode?'listening':'idle'); }); // ignore non-owner
+}
+
+// ── Turn-taking: wait for a complete thought, then answer; follow-ups need no wake word ──
+const FOLLOWUP_MS=12000;                                  // mic stays open this long after an answer
+let utterBuf='', flushTimer=null;
+// trailing words that mean "I'm not done" → hold and keep listening
+const INCOMPLETE=/(?:^|\s)(?:to|for|with|and|the|a|an|at|on|in|about|of|from|into|that|my|your|please|so|but|or|um|uh|like|gonna|wanna|because|if|when|then)\s*$/i;
+function handleUtterance(q){
+  if(flushTimer){clearTimeout(flushTimer);flushTimer=null;}
+  const merged=(utterBuf?utterBuf+' ':'')+q;
+  if((INCOMPLETE.test(merged)||/,$/.test(merged)) && merged.split(/\s+/).length<40){
+    utterBuf=merged; setPhase('listening');               // they paused mid-sentence — wait for the rest
+    flushTimer=setTimeout(()=>{const f=utterBuf.trim();utterBuf='';if(f)gatedConvene(f);},1700);
+    return;
+  }
+  utterBuf=''; gatedConvene(merged);                       // complete thought → answer now
 }
 if('speechSynthesis'in window)speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices();
 // Tapping the orb: if it's talking, cut it off and listen; otherwise start a conversation.
@@ -800,12 +817,12 @@ function buildRecog(){
     document.getElementById('q').value=txt;
     if(!ev.results[ev.results.length-1].isFinal)return;
     const q=txt.trim();if(!q)return;
-    if(convoMode){gatedConvene(q);return;}
+    if(convoMode){handleUtterance(q);return;}
     if(wakeMode){
       if(WAKE.test(q)){const cmd=afterWake(q);
-        if(cmd.length>2){gatedConvene(cmd);}                  // "Hey ORB, what's urgent?"
-        else{armedUntil=Date.now()+9000;setPhase('listening');speak("Yeah? I'm listening.");}  // just "Hey ORB"
-      } else if(armedUntil>Date.now()){armedUntil=0;gatedConvene(q);} // command right after the wake
+        if(cmd.length>2){handleUtterance(cmd);}              // "Hey ORB, what's urgent?"
+        else{armedUntil=Date.now()+FOLLOWUP_MS;setPhase('listening');speak("Yes?");}  // just "Hey ORB" → "Yes?"
+      } else if(armedUntil>Date.now()){handleUtterance(q);}  // follow-up within the window — no wake word
     }};
   r.onerror=()=>{};
   r.onend=()=>{recogActive=false;if((convoMode||wakeMode)&&!speaking)setTimeout(startRecog,400);}; // keep listening
