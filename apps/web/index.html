@@ -299,21 +299,24 @@ function drawLucidOrb(pulse){
   core.addColorStop(0,`rgba(70,255,180,${0.06+0.18*amp})`);core.addColorStop(0.6,`rgba(40,160,255,${0.04+0.08*amp})`);core.addColorStop(1,'rgba(0,30,25,0)');
   ctx.fillStyle=core;ctx.beginPath();ctx.arc(CX,CY,r*1.1,0,7);ctx.fill();
 
-  // build the helix — two strands + base-pair rungs, spinning around the vertical axis
-  const N=46, helixR=r*0.5, turns=2.3, spin=t*0.7, tilt=0.22*Math.sin(t*0.18);
-  const ct=Math.cos(tilt), st=Math.sin(tilt);
+  // CIRCULAR DNA — the double helix wraps into a ring (a glowing circle). The two strands twist
+  // around the ring's tube; base-pair rungs bridge them. Gentle 3D tilt; the twist travels around.
+  const N=150, R0=r*0.66, tube=r*0.16, twists=20, spin=t*1.3, roll=t*0.12;
+  const tilt=0.5, ct=Math.cos(tilt), st=Math.sin(tilt);
+  const maxz=R0*st+tube;
   const rungs=[];
   for(let i=0;i<N;i++){
-    const f=i/(N-1), yy=(f-0.5)*1.84*r, ang=f*turns*6.283+spin, p=[];
+    const th=(i/N)*6.283+roll, ox=Math.cos(th), oy=Math.sin(th), phi=th*twists+spin, p=[];
     for(let s=0;s<2;s++){
-      const a=ang+s*Math.PI, x=Math.cos(a)*helixR, z0=Math.sin(a)*helixR;
-      p.push({x, y:yy*ct - z0*st, z:yy*st + z0*ct});
+      const c=Math.cos(phi+s*Math.PI), sn=Math.sin(phi+s*Math.PI);
+      const x=ox*R0 + tube*ox*c, y0=oy*R0 + tube*oy*c, z0=tube*sn;
+      p.push({x, y:y0*ct - z0*st, z:y0*st + z0*ct});
     }
     rungs.push({a:p[0], b:p[1], z:(p[0].z+p[1].z)/2, hue:HUES[i%HUES.length]});
   }
   rungs.sort((u,v)=>u.z-v.z);                                 // far → near
 
-  const dep=z=>Math.max(0,Math.min(1,(z+helixR)/(2*helixR)));
+  const dep=z=>Math.max(0,Math.min(1,(z+maxz)/(2*maxz)));
   const env=0.7+0.5*amp;
   for(const ru of rungs){
     const da=dep(ru.a.z), db=dep(ru.b.z), dm=(da+db)/2;
