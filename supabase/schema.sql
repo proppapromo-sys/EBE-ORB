@@ -154,8 +154,11 @@ create table if not exists orb_convo_prefs (
   user_id    text primary key,
   style      text not null default 'short',
   pause_ms   integer not null default 1600,
+  commands   jsonb not null default '{}'::jsonb,   -- frequency of the user's short, repeated commands
   updated_at timestamptz default now()
 );
+-- Existing installs: add the commands column if the table predates it.
+alter table orb_convo_prefs add column if not exists commands jsonb not null default '{}'::jsonb;
 
 -- Traveler profiles — details ORB needs to book flights for a user.
 create table if not exists orb_profiles (

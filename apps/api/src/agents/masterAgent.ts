@@ -19,7 +19,7 @@ import { searchFlights, searchHotels, travelConfigured, duffelConfigured } from 
 import { calculate, convertUnits } from '../services/calc.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
-import { getStyle, setPrefs, type ConvoStyle } from '../services/convoPrefs.js';
+import { getStyle, setPrefs, recordCommand, topCommands, type ConvoStyle } from '../services/convoPrefs.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
 // Adaptive Conversation Memory — answer-length intent.
@@ -29,6 +29,16 @@ const SET_SHORT = /\b(keep it short|be brief|short answers?|keep it brief|less d
 const SET_DETAILED = /\b(detailed answers?|be (?:more )?detailed|more detail( from now on)?|always (?:explain|elaborate)|long(er)? answers?)\b/i;
 const WANT_DETAIL = /\b(break it down|in detail|explain (?:it|that|this) (?:more|fully|in detail)|elaborate|go deeper|tell me more|the long version|full breakdown|walk me through)\b/i;
 const WANT_SHORT = /\b(quick(?:ly)?|in short|short version|just the gist|tl;?dr|one line|keep it short here)\b/i;
+
+// Adaptive Conversation Memory — urgency/tone. When the user sounds rushed (urgent words, "now",
+// shouting, "!!"), ORB tightens up: short answer, fast and direct, no pleasantries. Read from the
+// finished text, so it works whether typed or spoken (the transcript carries the urgency cues).
+const URGENT_RE = /\b(asap|a\.s\.a\.p|urgent(?:ly)?|emergency|right now|right away|immediately|hurry|quick(?:ly)?|fast|now now|come on|no time|stat|on it now)\b|!{2,}/i;
+export function isUrgent(message: string): boolean {
+  if (URGENT_RE.test(message)) return true;
+  const letters = message.replace(/[^A-Za-z]/g, '');
+  return letters.length >= 6 && letters === letters.toUpperCase();   // SHOUTING in all-caps
+}
 
 // ORB runs on the Universal Genome. The five laws are not advice — they are the gate.
 const SYSTEM_PROMPT = `You are ORB, the user's Digital Chief of Staff, running on the Universal Genome.
@@ -399,27 +409,34 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // (calendar/email/tasks/money). Plain questions answer straight from the model — no fetching.
     // Router → memory search + parallel agents (knowledge + Calendar/Email/File), all at once →
     // Finalizer → one fast answer. Cache reuses stable answers; live/personal data is never cached.
-    const [mems, toolCtx, savedStyle] = await Promise.all([
+    const [mems, toolCtx, savedStyle, faves] = await Promise.all([
       recall(userId, message, 4).catch(() => []),
       toolContext(message, userId, { lat: opts.lat, lon: opts.lon }),
-      getStyle(userId).catch(() => 'short' as ConvoStyle)
+      getStyle(userId).catch(() => 'short' as ConvoStyle),
+      topCommands(userId, 5).catch(() => [] as string[])
     ]);
+    // Learn this phrasing in the background (short commands only) — never blocks the answer.
+    void recordCommand(userId, message).catch(() => {});
     let liveCtx = toolCtx;
     if (!liveCtx && needsContext(message)) liveCtx = JSON.stringify(await gatherContext(userId)).slice(0, 4000);
 
     // Adaptive Conversation Memory: start from the user's saved length preference, but let a
-    // per-turn cue win — "break it down" goes detailed once, "quick version" goes short once.
-    const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed' : WANT_SHORT.test(message) ? 'short' : savedStyle;
+    // per-turn cue win — "break it down" goes detailed once, "quick version" goes short once. An
+    // urgent tone forces short (unless they explicitly asked to break it down) and a faster delivery.
+    const urgent = isUrgent(message);
+    const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
+      : (WANT_SHORT.test(message) || urgent) ? 'short' : savedStyle;
 
     // Cache: only when no live/personal data was pulled (so cached answers can't go stale).
-    // Key includes style so a short and a detailed answer to the same question don't collide.
+    // Key includes style + urgency so short/detailed/rushed answers don't collide.
     const cacheable = !liveCtx && !mems.length;
-    const key = `${userId}|${style}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
+    const key = `${userId}|${style}|${urgent ? 'u' : 'n'}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
     if (cacheable) { const hit = cacheGet(key); if (hit) return { mode: 'fast' as const, answer: hit, route: 'fast' as const, model: 'cache' }; }
 
     const memCtx = mems.length ? `What I remember about you (use if relevant):\n${mems.map((m) => `- ${m.title}: ${m.content}`).join('\n')}` : '';
-    const context = [memCtx, liveCtx].filter(Boolean).join('\n\n') || undefined;
-    const routed = await routedAnswer(message, { images: opts.images, context, style });
+    const faveCtx = faves.length ? `Commands this user reaches for often (recognize these shortcuts, act on intent fast): ${faves.map((c) => `"${c}"`).join(', ')}.` : '';
+    const context = [memCtx, faveCtx, liveCtx].filter(Boolean).join('\n\n') || undefined;
+    const routed = await routedAnswer(message, { images: opts.images, context, style, urgent });
     if (cacheable && routed.ok && routed.answer) cacheSet(key, routed.answer);
     return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label };
   }

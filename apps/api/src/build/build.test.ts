@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import { inferCategory, getBlueprint } from './blueprints.js';
 import { buildCapability } from './tiers.js';
 import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
-import { looksLikeBuildRequest, looksLikeVideoRequest, needsContext } from '../agents/masterAgent.js';
+import { looksLikeBuildRequest, looksLikeVideoRequest, needsContext, isUrgent } from '../agents/masterAgent.js';
+import { recordCommand, topCommands, getPrefs } from '../services/convoPrefs.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
 import { classifyTask, ROUTES } from '../brains/router.js';
@@ -82,6 +83,25 @@ test('classifyTask: routes for speed', () => {
   assert.equal(ROUTES.medium.provider, 'openai');
   assert.equal(ROUTES.heavy.provider, 'anthropic');
   assert.equal(ROUTES.visual.provider, 'gemini');
+});
+
+test('isUrgent: reads a rushed tone, ignores a calm one', () => {
+  assert.equal(isUrgent('I need this ASAP'), true);
+  assert.equal(isUrgent('do it now now'), true);
+  assert.equal(isUrgent('STOP RIGHT THERE'), true);   // shouting
+  assert.equal(isUrgent('hurry up please'), true);
+  assert.equal(isUrgent('whenever you get a chance, summarize my day'), false);
+});
+
+test('convoPrefs: learns short commands, ignores private-length speech', async () => {
+  const u = 'test-faves@example.com';
+  await recordCommand(u, "what's urgent?");
+  await recordCommand(u, "What's urgent");          // normalizes to the same command
+  await recordCommand(u, 'remind me to call my accountant about the third quarter filing deadline next tuesday morning'); // too long → ignored
+  const top = await topCommands(u, 5);
+  assert.ok(top.includes("what's urgent"), 'recurring short command is remembered');
+  const prefs = await getPrefs(u);
+  assert.equal(Object.keys(prefs.commands).some((k) => k.length > 60), false, 'long private speech never stored');
 });
 
 test('skills: voice cloning/recognition are owner-only and talk-triggered', () => {

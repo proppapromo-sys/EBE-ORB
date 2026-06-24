@@ -1,29 +1,44 @@
 /**
  * convoPrefs.ts — Adaptive Conversation Memory. Learns *how* a user likes to talk with ORB (not
- * what they say privately): preferred answer length and their natural pause before finishing a
- * thought. Per-user, Supabase-backed (orb_convo_prefs) with an in-memory fallback. Never throws.
+ * what they say privately): preferred answer length, their natural pause before finishing a thought,
+ * and the short commands they reach for most. Per-user, Supabase-backed (orb_convo_prefs) with an
+ * in-memory fallback. Never throws.
  *
- * Privacy: this stores small preference signals only — no raw audio, no transcripts of background
- * speech. ORB only ever receives the finished text the user chose to send.
+ * Privacy: this stores small preference signals only — answer-length, a pause number, and short
+ * commands the user deliberately issued TO ORB. No raw audio, no transcripts of background speech.
+ * Long or private-looking sentences are never recorded; ORB only ever receives the finished text the
+ * user chose to send.
  */
 import { supabase } from './supabase.js';
 
 export type ConvoStyle = 'short' | 'detailed';
-export type ConvoPrefs = { style: ConvoStyle; pauseMs: number };
-const DEFAULTS: ConvoPrefs = { style: 'short', pauseMs: 1600 };
+export type ConvoPrefs = { style: ConvoStyle; pauseMs: number; commands: Record<string, number> };
+const DEFAULTS: ConvoPrefs = { style: 'short', pauseMs: 1600, commands: {} };
 
 const TABLE = 'orb_convo_prefs';
 const cache = new Map<string, ConvoPrefs>();
 
+const MAX_COMMANDS = 24;            // keep only the user's most-used phrasings
+const MAX_CMD_WORDS = 8;            // a "command" is short; longer text is private speech — never stored
+
+function clone(p: ConvoPrefs): ConvoPrefs { return { style: p.style, pauseMs: p.pauseMs, commands: { ...p.commands } }; }
+
 export async function getPrefs(userId: string): Promise<ConvoPrefs> {
-  if (cache.has(userId)) return cache.get(userId)!;
+  if (cache.has(userId)) return clone(cache.get(userId)!);
   if (supabase) {
     try {
-      const { data } = await supabase.from(TABLE).select('style,pause_ms').eq('user_id', userId).maybeSingle();
-      if (data) { const p: ConvoPrefs = { style: data.style === 'detailed' ? 'detailed' : 'short', pauseMs: Number(data.pause_ms) || DEFAULTS.pauseMs }; cache.set(userId, p); return p; }
+      const { data } = await supabase.from(TABLE).select('style,pause_ms,commands').eq('user_id', userId).maybeSingle();
+      if (data) {
+        const p: ConvoPrefs = {
+          style: data.style === 'detailed' ? 'detailed' : 'short',
+          pauseMs: Number(data.pause_ms) || DEFAULTS.pauseMs,
+          commands: (data.commands && typeof data.commands === 'object') ? data.commands as Record<string, number> : {}
+        };
+        cache.set(userId, p); return clone(p);
+      }
     } catch { /* fall back */ }
   }
-  return { ...DEFAULTS };
+  return clone(DEFAULTS);
 }
 
 export async function getStyle(userId: string): Promise<ConvoStyle> {
@@ -33,10 +48,49 @@ export async function getStyle(userId: string): Promise<ConvoStyle> {
 export async function setPrefs(userId: string, patch: Partial<ConvoPrefs>): Promise<ConvoPrefs> {
   const cur = { ...(cache.get(userId) ?? DEFAULTS), ...patch };
   cur.pauseMs = Math.max(800, Math.min(3000, cur.pauseMs));   // keep it sane
+  cur.commands = cur.commands ?? {};
   cache.set(userId, cur);
-  if (supabase) {
-    try { await supabase.from(TABLE).upsert({ user_id: userId, style: cur.style, pause_ms: cur.pauseMs, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }); }
-    catch { /* keep in-memory */ }
-  }
-  return cur;
+  await persist(userId, cur);
+  return clone(cur);
+}
+
+/** Reduce a command to a stable, comparable form. Returns '' for anything that isn't a short command. */
+function normalizeCommand(text: string): string {
+  const t = (text || '').trim().toLowerCase().replace(/[?.!,]+$/g, '').replace(/\s+/g, ' ');
+  if (!t) return '';
+  const words = t.split(' ');
+  if (words.length > MAX_CMD_WORDS) return '';   // too long to be a "command" — treat as private speech
+  return t;
+}
+
+/**
+ * Learn a favorite phrasing: bump the count for a short command the user just issued. Silently
+ * ignores anything too long (private speech) so we only ever remember deliberate, repeated commands.
+ */
+export async function recordCommand(userId: string, text: string): Promise<void> {
+  const key = normalizeCommand(text);
+  if (!key) return;
+  const cur = cache.get(userId) ? clone(cache.get(userId)!) : clone(DEFAULTS);
+  cur.commands[key] = (cur.commands[key] || 0) + 1;
+  // Cap memory: keep only the top phrasings by frequency.
+  const entries = Object.entries(cur.commands).sort((a, b) => b[1] - a[1]);
+  if (entries.length > MAX_COMMANDS) cur.commands = Object.fromEntries(entries.slice(0, MAX_COMMANDS));
+  cache.set(userId, cur);
+  await persist(userId, cur);
+}
+
+/** The user's most-used commands (count ≥ 2 — i.e. actually recurring), most frequent first. */
+export async function topCommands(userId: string, n = 5): Promise<string[]> {
+  const { commands } = await getPrefs(userId);
+  return Object.entries(commands).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k]) => k);
+}
+
+async function persist(userId: string, cur: ConvoPrefs): Promise<void> {
+  if (!supabase) return;
+  try {
+    await supabase.from(TABLE).upsert(
+      { user_id: userId, style: cur.style, pause_ms: cur.pauseMs, commands: cur.commands, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' }
+    );
+  } catch { /* keep in-memory */ }
 }
