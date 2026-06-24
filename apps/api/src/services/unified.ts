@@ -11,8 +11,9 @@
  *     within it, drawing on the user's real goals, values, and purpose already held in context.
  */
 
-// #21 — perspective.
-export const COSMIC_QUERY = /\b(bigger picture|big picture|grand scheme|in the (?:grand )?scheme of things|zoom out|larger context|step (?:way )?back|why are we here|place in the world|the long arc|deep time|across scales|cosmic|existential|what'?s it all (?:for|mean|about)|meaning of (?:it all|life))\b/i;
+// #21 — perspective. Also serves #76 Cosmic Intelligence (beyond-Earth / interplanetary / place-in-
+// the-universe framing folded in — same cosmic-perspective engine, verified-uncovered phrasings added).
+export const COSMIC_QUERY = /\b(bigger picture|big picture|grand scheme|in the (?:grand )?scheme of things|zoom out|larger context|step (?:way )?back|why are we here|place in the (?:world|universe|cosmos)|the long arc|deep time|across scales|cosmic|existential|what'?s it all (?:for|mean|about)|meaning of (?:it all|life)|beyond earth|interplanetary|interstellar|multi[- ]?planet|expand beyond (?:a single |one )?planet|intelligence beyond (?:earth|a single planet)|across (?:the )?(?:cosmos|galaxy|stars|solar system)|our (?:role|place) (?:in|within) the universe|humanity'?s (?:place|role|future) (?:in|among) the (?:stars|universe|cosmos))\b/i;
 export const COSMIC_DIRECTIVE = ' Widen the lens: place this within the larger scales — the person, their organization, their community, society, and the generations after. Correct for the usual distortions of a short time-horizon and a narrow view: name a hidden assumption and an alternative perspective. Connect this single action to the larger trajectory it sits within — without losing the concrete next step.';
 
 // #22 — the convergence.

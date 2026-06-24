@@ -610,6 +610,12 @@ test('meaning + create + design (#66-#68)', () => {
   // #75 transcendent civilization — folded into #55 CIVEVOLUTION_QUERY (next-form framing)
   assert.ok(CIVEVOLUTION_QUERY.test('what comes after our current civilization'));
   assert.ok(CIVEVOLUTION_QUERY.test('what kind of civilization becomes possible'));
+  // #76 cosmic intelligence — folded into #21 COSMIC_QUERY (beyond-Earth framing)
+  assert.ok(COSMIC_QUERY.test('how does humanity expand beyond a single planet'));
+  assert.ok(COSMIC_QUERY.test('what is our place in the universe'));
+  // #77 universal possibility — folded into #44 POSSIBILITY_QUERY (unexplored-futures framing)
+  assert.ok(POSSIBILITY_QUERY.test('what futures remain unexplored'));
+  assert.ok(POSSIBILITY_QUERY.test('what markets do not yet exist'));
   // Plain task triggers none of the batch.
   assert.equal([POTENTIAL_QUERY, COLLECTIVE_QUERY, PRINCIPLE_QUERY, FUTUREMEM_QUERY, DESTINY_QUERY, MEANING_QUERY, DESIGN_QUERY, CREATE2_QUERY, ARCH_QUERY, UNIFY_QUERY, OPT_QUERY, ACCEL_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
