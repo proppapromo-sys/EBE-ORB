@@ -29,6 +29,7 @@ import { verifyAppleToken, appleConfigured, startPhone, verifyPhone, phoneConfig
 import { recordReferral, referralStats } from '../services/referrals.js';
 import { getTraveler, setTraveler } from '../services/profileStore.js';
 import { generateVideo, videoAllowedFor, videoConfigured } from '../services/video.js';
+import { generateAvatar, avatarAllowedFor, avatarConfigured } from '../services/avatar.js';
 import { synthesizeSpeech, ttsConfigured } from '../services/tts.js';
 import { listSkills } from '../brains/skills.js';
 import { deleteAccount } from '../services/account.js';
@@ -521,6 +522,26 @@ orbRouter.post('/video', async (req, res, next) => {
       return res.json({ available: false, locked: true, note: 'AI video is an Executive/Enterprise feature.' });
     }
     res.json({ configured: videoConfigured(), ...(await generateVideo(parsed.prompt, { aspectRatio: parsed.aspectRatio, provider: parsed.provider })) });
+  } catch (error) { next(error); }
+});
+
+// ── Talking-head avatar (optional, Executive/Enterprise). Consent-gated: a realistic avatar only
+// renders from a photo the owner explicitly provides, every result is disclosed as AI-generated, and
+// `consent` must be set so other-person/celebrity cloning isn't done silently. ──
+const AvatarSchema = z.object({
+  userId: z.string().min(1).default('demo-user'),
+  text: z.string().min(1),
+  imageUrl: z.string().url().optional(),
+  consent: z.boolean().optional(),
+  plan: z.string().optional()
+});
+orbRouter.post('/avatar', async (req, res, next) => {
+  try {
+    const parsed = AvatarSchema.parse(req.body ?? {});
+    const plan = parsed.plan ?? await getUserPlan(parsed.userId);
+    if (!avatarAllowedFor(plan)) return res.json({ available: false, locked: true, note: 'The talking avatar is an Executive/Enterprise feature.' });
+    if (parsed.imageUrl && !parsed.consent) return res.json({ available: false, note: 'Confirm you have permission to use this face (consent) — ORB never clones someone else without it.' });
+    res.json({ configured: avatarConfigured(), ...(await generateAvatar(parsed.text, parsed.imageUrl)) });
   } catch (error) { next(error); }
 });
 

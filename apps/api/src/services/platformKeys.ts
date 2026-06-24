@@ -22,6 +22,7 @@ export const OWNER_KEY_GROUPS: Record<string, string[]> = {
             'STRIPE_PRICE_PERSONAL_ANNUAL', 'STRIPE_PRICE_PRO_ANNUAL', 'STRIPE_PRICE_ENTREPRENEUR_ANNUAL', 'STRIPE_PRICE_EXECUTIVE_ANNUAL', 'STRIPE_PRICE_ENTERPRISE_ANNUAL'],
   voice: ['ELEVENLABS_API_KEY', 'ELEVENLABS_VOICE_ID', 'ORB_VOICE_ENGINE_URL'],
   video: ['RUNWAY_API_KEY', 'ORB_VIDEO_PROVIDER'],
+  avatar: ['DID_API_KEY', 'ORB_AVATAR_IMAGE_URL'],   // optional talking-head avatar (build-your-avatar / real pic)
   auth: ['APPLE_CLIENT_ID', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM'],
   whatsapp: ['WHATSAPP_TOKEN', 'WHATSAPP_PHONE_ID', 'WHATSAPP_VERIFY_TOKEN', 'TWILIO_WHATSAPP_FROM'],
   travel: ['AMADEUS_CLIENT_ID', 'AMADEUS_CLIENT_SECRET', 'AMADEUS_HOST'],
@@ -64,7 +65,7 @@ type KeyStatus = { name: string; set: boolean; source: 'app' | 'env' | 'none'; h
 function statusOf(name: string): KeyStatus {
   const inApp = cache.has(name);
   const v = getPlatformKey(name);
-  const secret = !/^(PUBLIC_BASE_URL|ORB_VIDEO_PROVIDER|ORB_TRIAL_DAYS|ELEVENLABS_VOICE_ID|ORB_VOICE_ENGINE_URL)$/.test(name);
+  const secret = !/^(PUBLIC_BASE_URL|ORB_VIDEO_PROVIDER|ORB_TRIAL_DAYS|ELEVENLABS_VOICE_ID|ORB_VOICE_ENGINE_URL|ORB_AVATAR_IMAGE_URL)$/.test(name);
   return { name, set: Boolean(v), source: inApp ? 'app' : v ? 'env' : 'none', hint: v ? (secret ? `••••${v.slice(-4)}` : v) : '' };
 }
 

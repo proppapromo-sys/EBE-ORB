@@ -88,6 +88,20 @@ export async function aboutEntity(userId: string, query: string): Promise<AboutR
   return { node: match, neighbors };
 }
 
+export type IngestItem = { label: string; type: string; mentions?: string[] };
+
+/** Bulk-ingest entities (e.g. from a calendar/drive sync) and link each to the things it mentions. */
+export async function ingestItems(userId: string, items: IngestItem[]): Promise<number> {
+  let added = 0;
+  for (const it of items) {
+    const node = await addEntity(userId, it.label, it.type);
+    if (!node) continue;
+    added++;
+    for (const m of it.mentions ?? []) await relate(userId, it.label, m, 'mentions');
+  }
+  return added;
+}
+
 /** Turn a subgraph into a navigable, human answer. */
 export function formatAbout(r: AboutResult): string {
   const head = `Here's what I know about **${r.node.label}**${r.node.type !== 'thing' ? ` (${r.node.type})` : ''}.`;

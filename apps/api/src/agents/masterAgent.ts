@@ -23,7 +23,7 @@ import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type Con
 import { profileDirective, describeProfile } from '../services/personality.js';
 import { analyzeComms, postureDirective, voiceFor, sceneDirective, sceneVoice, isUrgent, type Prosody, type Scene } from '../services/comms.js';
 import { detectLang } from '../services/lang.js';
-import { relate, aboutEntity, formatAbout } from '../services/graph.js';
+import { relate, aboutEntity, formatAbout, ingestItems, type IngestItem } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -69,6 +69,29 @@ function parseRelate(m: string): { a: string; b: string; rel: string } | null {
   }
   return null;
 }
+// Pull people / topics a calendar title refers to, so events link to the right entities in the map.
+const MAP_WORLD = /\b(map|build|sync|update|refresh)\s+my\s+(?:world|map|knowledge map|graph|connections)\b/i;
+export function mentionsIn(title: string): string[] {
+  const out: string[] = [];
+  const withRe = /\bwith\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/g; let w;
+  while ((w = withRe.exec(title))) out.push(w[1].trim());
+  const topic = title.match(/\b(?:re|about|on|for)\s+([A-Z][A-Za-z0-9][A-Za-z0-9 ]{1,28})/);
+  if (topic) out.push(topic[1].trim());
+  return [...new Set(out)];
+}
+async function mapMyWorld(userId: string): Promise<{ added: number; note?: string }> {
+  const token = await getAccessToken(userId);
+  if (!token) return { added: 0, note: 'Connect Google in the Connect tab first, and I can map your calendar into your knowledge graph automatically.' };
+  const items: IngestItem[] = [];
+  try {
+    const events = await calendarUpcoming(token, 14);
+    for (const e of events) if (e.summary) items.push({ label: e.summary, type: 'event', mentions: mentionsIn(e.summary) });
+  } catch { /* degrade */ }
+  if (!items.length) return { added: 0, note: "I didn't find calendar events to map in the next two weeks." };
+  const added = await ingestItems(userId, items);
+  return { added };
+}
+
 function parseAbout(m: string): string | null {
   const res = [
     /\bwhat do (?:i|we) know about\s+(.+?)[?.!]*$/i,
@@ -484,6 +507,15 @@ export async function askOrb(
       reassuring: "Okay — I'll make sure you always know it's handled and how, so you can breathe easy."
     };
     return { mode: 'fast' as const, answer: acks[supportStyle], route: 'fast' as const, model: 'prefs' };
+  }
+
+  // Digital Spatial Mapping: auto-build the map from connected systems (calendar today).
+  if (MAP_WORLD.test(message)) {
+    const r = await mapMyWorld(userId);
+    const answer = r.added
+      ? `Mapped ${r.added} thing${r.added === 1 ? '' : 's'} from your calendar into your knowledge graph. Ask "what's connected to <name>?" to navigate it.`
+      : (r.note || 'Nothing to map yet.');
+    return { mode: 'fast' as const, answer, route: 'fast' as const, model: 'graph' };
   }
 
   // Digital Spatial Mapping: build/navigate the user's knowledge graph. Relate two things, or ask

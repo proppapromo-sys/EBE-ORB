@@ -12,7 +12,9 @@ import { recordCommand, topCommands, getPrefs, setPrefs, observeMessage, resetPr
 import { applySignals, profileDirective, describeProfile, confident, type Traits } from '../services/personality.js';
 import { analyzeComms, readEmotion, readSarcasm, sarcasmRead, postureDirective, voiceFor, asProsody, asScene, sceneDirective, sceneVoice } from '../services/comms.js';
 import { detectLang } from '../services/lang.js';
-import { relate, aboutEntity, formatAbout } from '../services/graph.js';
+import { relate, aboutEntity, formatAbout, ingestItems } from '../services/graph.js';
+import { mentionsIn } from '../agents/masterAgent.js';
+import { avatarAllowedFor, avatarConfigured } from '../services/avatar.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -172,6 +174,23 @@ test('graph: digital spatial mapping — relate entities and navigate the connec
 
   // Unknown entity → null, so the caller falls through to a normal answer instead of hijacking.
   assert.equal(await aboutEntity(u, 'quantum chromodynamics'), null);
+});
+
+test('graph: auto-ingestion maps calendar events and links the people/topics they mention', async () => {
+  const u = 'test-ingest@example.com';
+  assert.deepEqual(mentionsIn('Kickoff with Dana re Atlas'), ['Dana', 'Atlas']);   // pulls person + topic
+  const n = await ingestItems(u, [{ label: 'Kickoff with Dana', type: 'event', mentions: ['Dana', 'Atlas'] }]);
+  assert.equal(n, 1);
+  const dana = await aboutEntity(u, 'Dana');
+  assert.ok(dana && dana.neighbors.some((x) => /Kickoff/.test(x.label)));   // navigable from the person
+});
+
+test('avatar: gated to top tiers, off by default, always disclosed', () => {
+  assert.equal(avatarAllowedFor('executive'), true);
+  assert.equal(avatarAllowedFor('enterprise'), true);
+  assert.equal(avatarAllowedFor('pro'), false);
+  assert.equal(avatarAllowedFor('free'), false);
+  assert.equal(avatarConfigured(), false);   // no DID_API_KEY in test env → off, degrades gracefully
 });
 
 test('thinking-partner: ORB helps clarify thinking instead of just answering', () => {
