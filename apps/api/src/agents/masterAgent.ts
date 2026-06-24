@@ -54,6 +54,7 @@ import { HARMONY_QUERY, HARMONY_DIRECTIVE } from '../services/harmony.js';
 import { FLOURISHING_QUERY, FLOURISHING_DIRECTIVE } from '../services/flourishing.js';
 import { EVOLVE_QUERY, EVOLVE_DIRECTIVE } from '../services/evolution.js';
 import { ANTIFRAGILE_QUERY, ANTIFRAGILE_DIRECTIVE } from '../services/antifragility.js';
+import { recordLesson, recallLessons, formatLessons, LESSONS_QUERY, WISDOM_ACCUM_DIRECTIVE } from '../services/lessons.js';
 import { parseReliability, recordReliability, reliabilityOf, roster } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -649,6 +650,12 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: v ? `The values you've told me to weigh decisions against: ${v}.` : "You haven't told me your core values yet — say \"my values are …\" and I'll weigh big decisions against them.", route: 'fast' as const, model: 'wisdom' };
   }
 
+  // Wisdom Accumulation (#35): recall the durable lessons the user has earned, relevant to what they asked.
+  if (LESSONS_QUERY.test(message)) {
+    const topic = message.replace(LESSONS_QUERY, ' ');
+    return { mode: 'fast' as const, answer: formatLessons(await recallLessons(userId, topic, 5).catch(() => [])), route: 'fast' as const, model: 'lessons' };
+  }
+
   // Adaptation & Learning: learn from reported outcomes, and surface what's working vs what to rethink.
   if (/\bwhat(?:'s| is| has been) working\b|\bwhat should i (?:do more of|double down on|change|stop doing)\b|\bwhat'?s working and what'?s not\b/i.test(message)) {
     return { mode: 'fast' as const, answer: formatAdaptation(await whatWorks(userId).catch(() => ({ keep: [], rethink: [] }))), route: 'fast' as const, model: 'adapt' };
@@ -796,6 +803,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const intent = await noteIntent(userId, message).catch(() => null);
     completeIntent(userId, message).then((g) => { if (g) void logEvent(userId, 'completed', g.action); }).catch(() => {});
     void logEvent(userId, 'active').catch(() => {});   // timestamped activity → habit/time-of-day patterns
+    void recordLesson(userId, message).catch(() => {});   // #35: capture durable lessons when the user reflects
     const nudge = intent && intent.deferred ? nudgeFor(intent.goal) : null;
     let liveCtx = toolCtx;
     if (!liveCtx && needsContext(message)) liveCtx = JSON.stringify(await gatherContext(userId)).slice(0, 4000);
@@ -825,7 +833,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const harmonic = HARMONY_QUERY.test(message);   // #31 balance competing forces
     const flourish = FLOURISHING_QUERY.test(message);   // #32 the north star: thriving over output
     const conscEvolve = EVOLVE_QUERY.test(message), antifragile = ANTIFRAGILE_QUERY.test(message);   // #33 become next, #34 gain from stress
-    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish || conscEvolve || antifragile;
+    const wisdomAccum = /\b(what (?:can|should) (?:i|we) learn from|lesson(?:s)? from (?:this|that)|what does this teach|takeaway from|for next time|so (?:this|it) (?:doesn'?t|won'?t) happen again|how do (?:i|we) avoid (?:this|that) (?:next time|again))\b/i.test(message);   // #35 extract a durable lesson
+    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish || conscEvolve || antifragile || wisdomAccum;
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
       : (deepThink && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
@@ -874,7 +883,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
       + (genesis ? GENESIS_DIRECTIVE : '') + (emerge ? EMERGENCE_DIRECTIVE : '')
       + (synth ? SYNTHESIS_DIRECTIVE : '') + (coherent ? COHERENCE_DIRECTIVE : '') + (resonant ? RESONANCE_DIRECTIVE : '') + (transcend ? TRANSCENDENCE_DIRECTIVE : '')
       + (harmonic ? HARMONY_DIRECTIVE : '') + (flourish ? FLOURISHING_DIRECTIVE : '')
-      + (conscEvolve ? EVOLVE_DIRECTIVE : '') + (antifragile ? ANTIFRAGILE_DIRECTIVE : ''));
+      + (conscEvolve ? EVOLVE_DIRECTIVE : '') + (antifragile ? ANTIFRAGILE_DIRECTIVE : '') + (wisdomAccum ? WISDOM_ACCUM_DIRECTIVE : ''));
     const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir + higherDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));

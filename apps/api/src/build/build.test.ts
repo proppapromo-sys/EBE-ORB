@@ -47,6 +47,7 @@ import { HARMONY_QUERY, HARMONY_DIRECTIVE } from '../services/harmony.js';
 import { FLOURISHING_QUERY, FLOURISHING_DIRECTIVE } from '../services/flourishing.js';
 import { EVOLVE_QUERY, EVOLVE_DIRECTIVE } from '../services/evolution.js';
 import { ANTIFRAGILE_QUERY, ANTIFRAGILE_DIRECTIVE } from '../services/antifragility.js';
+import { parseLesson, rankLessons, formatLessons, LESSONS_QUERY } from '../services/lessons.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -329,6 +330,33 @@ test('apex layers (#33-#34): conscious evolution chooses, antifragility gains fr
   assert.match(ANTIFRAGILE_DIRECTIVE, /antifragil|redundancy|optionality|stress-test|single point of failure/i);
   // Plain task triggers neither.
   assert.equal([EVOLVE_QUERY, ANTIFRAGILE_QUERY].some((re) => re.test('what time is my meeting')), false);
+});
+
+test('wisdom accumulation (#35): extracts lessons from reflection and recalls them by relevance', () => {
+  // Parse: reflection cues yield a durable lesson; plain statements don't.
+  assert.equal(parseLesson('I learned that shipping small and often beats big launches.')?.text, 'shipping small and often beats big launches');
+  assert.equal(parseLesson('next time, confirm the budget before starting work')?.kind, 'principle');
+  assert.equal(parseLesson('what worked was batching my calls into one afternoon')?.kind, 'worked');
+  assert.equal(parseLesson('I should have tested it on staging first')?.kind, 'failed');
+  assert.equal(parseLesson('the meeting is at 3pm'), null);
+  // Lesson keeps just the core clause, dropping the trailing reason.
+  assert.equal(parseLesson('I learned that hiring slowly matters because rushing burned us')?.text, 'hiring slowly matters');
+  // Recall: rank by keyword overlap with the topic; unrelated lessons are filtered out.
+  const now = Date.now();
+  const lessons = [
+    { id: '1', text: 'hire slowly and deliberately', kind: 'principle' as const, created: now, reinforced: 2 },
+    { id: '2', text: 'batch calls into one afternoon', kind: 'worked' as const, created: now, reinforced: 0 },
+    { id: '3', text: 'test on staging before production', kind: 'failed' as const, created: now, reinforced: 0 },
+  ];
+  const hits = rankLessons(lessons, 'thinking about how we hire', 3);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].id, '1');
+  // No topic → most-reinforced first.
+  assert.equal(rankLessons(lessons, '', 3)[0].id, '1');
+  assert.match(formatLessons(hits), /hire slowly/);
+  // Recall query is recognized; a plain task isn't.
+  assert.ok(LESSONS_QUERY.test('what have I learned about hiring'));
+  assert.equal(LESSONS_QUERY.test('what time is my meeting'), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {

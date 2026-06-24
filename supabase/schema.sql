@@ -212,6 +212,21 @@ create table if not exists orb_events (
 );
 create index if not exists orb_events_user_at on orb_events (user_id, at desc);
 
+-- Wisdom Accumulation (#35) — the lessons-learned repository. Durable lessons the user has earned
+-- ("I learned that…", "next time…", "what worked…"), extracted on reflection and recalled later by
+-- relevance so the same mistake isn't repeated and what works is carried forward. reinforced counts
+-- how often the same lesson is re-stated. Experience converted into compounding judgment.
+create table if not exists orb_lessons (
+  user_id    text not null,
+  id         text not null,
+  text       text not null,
+  kind       text not null default 'principle',
+  created    timestamptz default now(),
+  reinforced int  not null default 0,
+  primary key (user_id, id)
+);
+create index if not exists orb_lessons_user_created on orb_lessons (user_id, created desc);
+
 -- Motivation — the drivers behind a user's goals (Achievement / Freedom / Security / Legacy). Learned
 -- from the words they use; persists even as goals change. ORB frames why-it-matters around these.
 create table if not exists orb_motivation (
