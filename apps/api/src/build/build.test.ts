@@ -693,6 +693,12 @@ test('meaning + create + design (#66-#68)', () => {
   assert.ok(REALIZE_QUERY.test('how do we realize the highest potential'));
   assert.match(REALIZE_DIRECTIVE, /realization gap|potential|constraint|unlock/i);
   assert.equal([OMNIBUILD_QUERY, REALIZE_QUERY].some((re) => re.test('what time is my meeting')), false);
+  // #104 cosmic responsibility -> #37, #105 guardian of possibility -> #34
+  assert.ok(GOVERNANCE_QUERY.test('how do we become worthy of this capability'));
+  assert.ok(GOVERNANCE_QUERY.test('how do we match power with responsibility'));
+  assert.ok(ANTIFRAGILE_QUERY.test('which decisions cannot be undone'));
+  assert.ok(ANTIFRAGILE_QUERY.test('does this expand or reduce future options'));
+  assert.ok(ANTIFRAGILE_QUERY.test('what is irreversible here'));
   // Plain task triggers none of the batch.
   assert.equal([POTENTIAL_QUERY, COLLECTIVE_QUERY, PRINCIPLE_QUERY, FUTUREMEM_QUERY, DESTINY_QUERY, MEANING_QUERY, DESIGN_QUERY, CREATE2_QUERY, ARCH_QUERY, UNIFY_QUERY, OPT_QUERY, ACCEL_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
