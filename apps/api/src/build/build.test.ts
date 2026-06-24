@@ -34,6 +34,9 @@ import { SYSTEMS_QUERY, SYSTEMS_DIRECTIVE, parseCausal } from '../services/syste
 import { PURPOSE_QUERY, ALIGN_QUERY, ALIGNMENT_DIRECTIVE, parsePurpose } from '../services/purpose.js';
 import { FORESIGHT_QUERY, FORESIGHT_DIRECTIVE } from '../services/foresight.js';
 import { buildBrief, describeArchitecture, INTELLIGENCE_STACK } from '../services/architecture.js';
+import { PLAN_QUERY, ORCHESTRATION_DIRECTIVE } from '../services/orchestration.js';
+import { EVOLUTION_QUERY, STEWARDSHIP_QUERY, STEWARDSHIP_DIRECTIVE, LEGACY_QUERY } from '../services/stewardship.js';
+import { COSMIC_QUERY, UNIFIED_QUERY, UNIFIED_DIRECTIVE, REALITY_QUERY, REALITY_DIRECTIVE, IMPROVEMENT_QUERY, INFINITE_PRINCIPLE } from '../services/unified.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -234,6 +237,28 @@ test('decision: detects a choice and frames trade-offs, bias-guards, goals + dri
   // Decision profile is derived from learned tendencies.
   assert.equal(decisionProfile({ risk: { s: 0.5, n: 3 }, analytical: { s: 0.4, n: 3 } }).risk, 'high');
   assert.equal(decisionProfile({}).risk, 'medium');        // unknown → balanced default
+});
+
+test('higher-order layers (#17-#24): each altitude is recognized and steers the reasoning', () => {
+  // #17 orchestration / planning
+  assert.ok(PLAN_QUERY.test('lay out a plan for the launch'));
+  assert.match(ORCHESTRATION_DIRECTIVE, /executable plan|first step|confirm-first/i);
+  // #18 long view + #19 stewardship + #20 legacy
+  assert.ok(EVOLUTION_QUERY.test('is this sustainable long-term'));
+  assert.ok(STEWARDSHIP_QUERY.test('who could be affected by this'));
+  assert.match(STEWARDSHIP_DIRECTIVE, /human sovereign|confirm-first|responsib/i);
+  assert.ok(LEGACY_QUERY.test('what will remain after I\'m gone'));
+  // #21 cosmic + #22 unified
+  assert.ok(COSMIC_QUERY.test('zoom out — the bigger picture'));
+  assert.ok(UNIFIED_QUERY.test('given everything, what should I do next'));
+  assert.match(UNIFIED_DIRECTIVE, /TRUE|GOALS|VALUES|STEWARDSHIP|LEGACY/);
+  // #23 reality alignment + #24 infinite improvement
+  assert.ok(REALITY_QUERY.test('could we be wrong about this?'));
+  assert.match(REALITY_DIRECTIVE, /evidence|confidence|drift|closer to the truth/i);
+  assert.ok(IMPROVEMENT_QUERY.test('are you ever finished improving?'));
+  assert.match(INFINITE_PRINCIPLE, /never finished|keep (?:getting better|recalibrating)/i);
+  // A plain task is none of these.
+  assert.equal([PLAN_QUERY, EVOLUTION_QUERY, STEWARDSHIP_QUERY, LEGACY_QUERY, COSMIC_QUERY, UNIFIED_QUERY, REALITY_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
 
 test('architecture: unifies every layer into one briefing and can describe its own stack', () => {

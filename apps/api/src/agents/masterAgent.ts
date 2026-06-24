@@ -41,6 +41,9 @@ import { selfModel, userIdentity } from '../services/identity.js';
 import { PURPOSE_QUERY, ALIGN_QUERY, ALIGNMENT_DIRECTIVE, getPurpose, setPurpose, parsePurpose, alignmentContext } from '../services/purpose.js';
 import { FORESIGHT_QUERY, FORESIGHT_DIRECTIVE } from '../services/foresight.js';
 import { chiefOfStaffBrief, describeArchitecture } from '../services/architecture.js';
+import { PLAN_QUERY, ORCHESTRATION_DIRECTIVE } from '../services/orchestration.js';
+import { EVOLUTION_QUERY, EVOLUTION_DIRECTIVE, STEWARDSHIP_QUERY, STEWARDSHIP_DIRECTIVE, LEGACY_QUERY, LEGACY_DIRECTIVE } from '../services/stewardship.js';
+import { COSMIC_QUERY, COSMIC_DIRECTIVE, UNIFIED_QUERY, UNIFIED_DIRECTIVE, REALITY_QUERY, REALITY_DIRECTIVE, IMPROVEMENT_QUERY, INFINITE_PRINCIPLE } from '../services/unified.js';
 import { parseReliability, recordReliability, reliabilityOf, roster } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -602,6 +605,10 @@ export async function askOrb(
   if (/\bhow (?:do you work|are you (?:built|designed|wired))\b|\bwhat'?s your architecture\b|\bshow me your (?:stack|layers|architecture)\b|\bwhat makes you (?:you|different)\b|\bhow are you put together\b/i.test(message)) {
     return { mode: 'fast' as const, answer: describeArchitecture(), route: 'fast' as const, model: 'architecture' };
   }
+  // #24 Infinite Improvement Loop: ORB is never "done" — it keeps recalibrating.
+  if (IMPROVEMENT_QUERY.test(message)) {
+    return { mode: 'fast' as const, answer: INFINITE_PRINCIPLE, route: 'fast' as const, model: 'architecture' };
+  }
 
   // Self-Identity: ORB's model of itself (mission, boundaries, continuity) and its living model of you.
   if (/\bwho are you\b|\bwhat'?s your (?:mission|purpose)\b|\bare you conscious\b|\bwhat are you, really\b/i.test(message)) {
@@ -797,8 +804,14 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const systemic = SYSTEMS_QUERY.test(message);
     const aligned = ALIGN_QUERY.test(message);     // "does this serve my purpose/values?"
     const foresight = FORESIGHT_QUERY.test(message);  // looking ahead / positioning
+    // Higher-order frames (#17 orchestration, #18 long-view, #19 stewardship, #20 legacy, #21 cosmic,
+    // #22 unified): ORB recognizes the altitude of the question and steers the council to reason at it.
+    const orchestrating = PLAN_QUERY.test(message), evolving = EVOLUTION_QUERY.test(message), steward = STEWARDSHIP_QUERY.test(message);
+    const legacyQ = LEGACY_QUERY.test(message), cosmic = COSMIC_QUERY.test(message), unified = UNIFIED_QUERY.test(message);
+    const realityCheck = REALITY_QUERY.test(message);   // #23 calibrate to evidence
+    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck;
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
-      : ((decision || auditing || creative || strategic || systemic || aligned || foresight) && !urgent) ? 'detailed'
+      : (deepThink && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
 
     // Humor: the user's level, downgraded to professional this turn if they're rushed, frustrated, or
@@ -838,7 +851,11 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // Purpose alignment check + strategic-foresight framing on forward-looking turns.
     const alignDir = ((aligned || strategic) && !urgent) ? ALIGNMENT_DIRECTIVE : '';
     const foresightDir = (foresight && !urgent) ? FORESIGHT_DIRECTIVE : '';
-    const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir;
+    // The higher-order frames (#17–#22), each added only when its altitude is invoked.
+    const higherDir = urgent ? '' : (
+      (orchestrating ? ORCHESTRATION_DIRECTIVE : '') + (evolving ? EVOLUTION_DIRECTIVE : '') + (steward ? STEWARDSHIP_DIRECTIVE : '')
+      + (legacyQ ? LEGACY_DIRECTIVE : '') + (cosmic ? COSMIC_DIRECTIVE : '') + (unified ? UNIFIED_DIRECTIVE : '') + (realityCheck ? REALITY_DIRECTIVE : ''));
+    const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir + higherDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));
     const replyLang = lang.code === 'en' ? undefined : lang.name;
