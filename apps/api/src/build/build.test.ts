@@ -37,6 +37,8 @@ import { buildBrief, describeArchitecture, INTELLIGENCE_STACK } from '../service
 import { PLAN_QUERY, ORCHESTRATION_DIRECTIVE } from '../services/orchestration.js';
 import { EVOLUTION_QUERY, STEWARDSHIP_QUERY, STEWARDSHIP_DIRECTIVE, LEGACY_QUERY } from '../services/stewardship.js';
 import { COSMIC_QUERY, UNIFIED_QUERY, UNIFIED_DIRECTIVE, REALITY_QUERY, REALITY_DIRECTIVE, IMPROVEMENT_QUERY, INFINITE_PRINCIPLE } from '../services/unified.js';
+import { GENESIS_QUERY, GENESIS_DIRECTIVE } from '../services/genesis.js';
+import { EMERGENCE_QUERY, EMERGENCE_DIRECTIVE } from '../services/emergence.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -259,6 +261,19 @@ test('higher-order layers (#17-#24): each altitude is recognized and steers the 
   assert.match(INFINITE_PRINCIPLE, /never finished|keep (?:getting better|recalibrating)/i);
   // A plain task is none of these.
   assert.equal([PLAN_QUERY, EVOLUTION_QUERY, STEWARDSHIP_QUERY, LEGACY_QUERY, COSMIC_QUERY, UNIFIED_QUERY, REALITY_QUERY].some((re) => re.test('what time is my meeting')), false);
+});
+
+test('genesis (#25) creates the new and emergence (#26) discovers the forming', () => {
+  // #25 — from "what is" to "what should exist".
+  assert.ok(GENESIS_QUERY.test('what should I build that doesn\'t exist yet'));
+  assert.ok(GENESIS_QUERY.test('a net-new product, zero to one'));
+  assert.match(GENESIS_DIRECTIVE, /what should exist|smallest prototype|whitespace|invent/i);
+  // #26 — weak signals and cross-domain intersections.
+  assert.ok(EMERGENCE_QUERY.test('what\'s emerging that nobody sees'));
+  assert.ok(EMERGENCE_QUERY.test('connect the dots for me'));
+  assert.match(EMERGENCE_DIRECTIVE, /weak signals?|emerging|intersection|signal from noise/i);
+  // A plain task is neither.
+  assert.equal([GENESIS_QUERY, EMERGENCE_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
 
 test('architecture: unifies every layer into one briefing and can describe its own stack', () => {

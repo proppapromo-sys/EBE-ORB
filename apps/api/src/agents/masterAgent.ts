@@ -44,6 +44,8 @@ import { chiefOfStaffBrief, describeArchitecture } from '../services/architectur
 import { PLAN_QUERY, ORCHESTRATION_DIRECTIVE } from '../services/orchestration.js';
 import { EVOLUTION_QUERY, EVOLUTION_DIRECTIVE, STEWARDSHIP_QUERY, STEWARDSHIP_DIRECTIVE, LEGACY_QUERY, LEGACY_DIRECTIVE } from '../services/stewardship.js';
 import { COSMIC_QUERY, COSMIC_DIRECTIVE, UNIFIED_QUERY, UNIFIED_DIRECTIVE, REALITY_QUERY, REALITY_DIRECTIVE, IMPROVEMENT_QUERY, INFINITE_PRINCIPLE } from '../services/unified.js';
+import { GENESIS_QUERY, GENESIS_DIRECTIVE } from '../services/genesis.js';
+import { EMERGENCE_QUERY, EMERGENCE_DIRECTIVE } from '../services/emergence.js';
 import { parseReliability, recordReliability, reliabilityOf, roster } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -809,7 +811,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const orchestrating = PLAN_QUERY.test(message), evolving = EVOLUTION_QUERY.test(message), steward = STEWARDSHIP_QUERY.test(message);
     const legacyQ = LEGACY_QUERY.test(message), cosmic = COSMIC_QUERY.test(message), unified = UNIFIED_QUERY.test(message);
     const realityCheck = REALITY_QUERY.test(message);   // #23 calibrate to evidence
-    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck;
+    const genesis = GENESIS_QUERY.test(message), emerge = EMERGENCE_QUERY.test(message);   // #25 create, #26 discover
+    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge;
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
       : (deepThink && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
@@ -854,7 +857,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // The higher-order frames (#17–#22), each added only when its altitude is invoked.
     const higherDir = urgent ? '' : (
       (orchestrating ? ORCHESTRATION_DIRECTIVE : '') + (evolving ? EVOLUTION_DIRECTIVE : '') + (steward ? STEWARDSHIP_DIRECTIVE : '')
-      + (legacyQ ? LEGACY_DIRECTIVE : '') + (cosmic ? COSMIC_DIRECTIVE : '') + (unified ? UNIFIED_DIRECTIVE : '') + (realityCheck ? REALITY_DIRECTIVE : ''));
+      + (legacyQ ? LEGACY_DIRECTIVE : '') + (cosmic ? COSMIC_DIRECTIVE : '') + (unified ? UNIFIED_DIRECTIVE : '') + (realityCheck ? REALITY_DIRECTIVE : '')
+      + (genesis ? GENESIS_DIRECTIVE : '') + (emerge ? EMERGENCE_DIRECTIVE : ''));
     const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir + higherDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));
