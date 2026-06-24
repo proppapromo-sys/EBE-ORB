@@ -1,0 +1,59 @@
+/**
+ * comms.ts — ORB's Communication Layer. Humans don't just hear words; in milliseconds they read tone,
+ * emotion, urgency and intent, then plan a response to match. This layer does the same *before* the
+ * Council ever runs: it turns a message into a small "read" (is the user rushed? frustrated? unsure?
+ * being playful?) and a posture directive that shapes HOW ORB replies — efficient, reassuring, warm.
+ *
+ * The same words mean different things by delivery:
+ *   "ORB call John."   → a calm task.
+ *   "ORB CALL JOHN!!"  → urgent / frustrated — act now, no chit-chat.
+ *   "ORB call John…"   → hesitant — maybe check in before charging ahead.
+ *
+ * This is state, not personality: it's read fresh each turn and never stored. It reads only the
+ * finished text the user chose to send — no raw audio, no background speech.
+ */
+
+// Urgency — is the user in a hurry? (Also the canonical home for this signal across ORB.)
+const URGENT_RE = /\b(asap|a\.s\.a\.p|urgent(?:ly)?|emergency|right now|right away|immediately|hurry|quick(?:ly)?|fast|now now|come on|no time|stat|on it now)\b|!{2,}/i;
+export function isUrgent(message: string): boolean {
+  if (URGENT_RE.test(message)) return true;
+  const letters = (message || '').replace(/[^A-Za-z]/g, '');
+  return letters.length >= 6 && letters === letters.toUpperCase();   // SHOUTING in all-caps
+}
+
+// Emotional read — a transient state, not a label. Conservative by design: default 'neutral' unless
+// there's a clear cue, so ORB never mis-reads a plain question as an outburst.
+export type Emotion = 'neutral' | 'frustrated' | 'hesitant' | 'playful';
+
+const FRUSTRATED = /\b(ugh+|argh+|ffs|wtf|come on|seriously|are you kidding|for real|still (?:not|doesn'?t|won'?t|isn'?t)|again\?|why (?:isn'?t|won'?t|can'?t|aren'?t|does(?:n'?t)?)|not working|doesn'?t work|broken|frustrat\w*|annoying|ridiculous|hate this|fed up|stop it|useless|come on now)\b|[?!]{2,}/i;
+const PLAYFUL = /\b(lol|lmao|lmfao|haha+|hehe+|rofl|jk|just kidding|kidding|teasing)\b|[😂🤣😉😜😏😎🙃]/u;
+const HESITANT = /\b(um+|uh+|hmm+|i (?:think|guess|suppose)|maybe|not (?:really )?sure|kind of|sort of|i dunno|i don'?t know|possibly|might be|i'?m not sure|wondering if)\b/i;
+
+export function readEmotion(message: string): Emotion {
+  const m = message || '';
+  if (FRUSTRATED.test(m)) return 'frustrated';
+  if (PLAYFUL.test(m)) return 'playful';
+  if (HESITANT.test(m) || /(?:\.\.\.|…)\s*$/.test(m.trim())) return 'hesitant';   // trailing "…" = unsure
+  return 'neutral';
+}
+
+export type CommRead = { urgent: boolean; emotion: Emotion };
+
+/** The full read for a turn — what the Communication Layer hands to the responder. */
+export function analyzeComms(message: string): CommRead {
+  return { urgent: isUrgent(message), emotion: readEmotion(message) };
+}
+
+/**
+ * Turn the read into a quiet posture directive for the model (never shown or spoken). Matches the
+ * human move: meet urgency with speed, frustration with calm efficiency, hesitation with reassurance,
+ * play with warmth.
+ */
+export function postureDirective(read: CommRead): string {
+  let d = '';
+  if (read.urgent) d += ' The user is in a hurry — give the answer first, no preamble.';
+  if (read.emotion === 'frustrated') d += ' The user sounds frustrated — acknowledge it in a few words, drop pleasantries and jokes, and fix the problem directly.';
+  else if (read.emotion === 'hesitant') d += ' The user sounds unsure — be reassuring and clear, and offer a gentle recommendation if they seem to be deciding.';
+  else if (read.emotion === 'playful') d += ' The user is being light and playful — a warm, easy tone fits here.';
+  return d;
+}

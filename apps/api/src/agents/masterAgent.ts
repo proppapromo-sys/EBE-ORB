@@ -21,6 +21,7 @@ import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type ConvoStyle } from '../services/convoPrefs.js';
 import { profileDirective, describeProfile } from '../services/personality.js';
+import { analyzeComms, postureDirective, isUrgent } from '../services/comms.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
 // Adaptive Conversation Memory — answer-length intent.
@@ -31,15 +32,9 @@ const SET_DETAILED = /\b(detailed answers?|be (?:more )?detailed|more detail( fr
 const WANT_DETAIL = /\b(break it down|in detail|explain (?:it|that|this) (?:more|fully|in detail)|elaborate|go deeper|tell me more|the long version|full breakdown|walk me through)\b/i;
 const WANT_SHORT = /\b(quick(?:ly)?|in short|short version|just the gist|tl;?dr|one line|keep it short here)\b/i;
 
-// Adaptive Conversation Memory — urgency/tone. When the user sounds rushed (urgent words, "now",
-// shouting, "!!"), ORB tightens up: short answer, fast and direct, no pleasantries. Read from the
-// finished text, so it works whether typed or spoken (the transcript carries the urgency cues).
-const URGENT_RE = /\b(asap|a\.s\.a\.p|urgent(?:ly)?|emergency|right now|right away|immediately|hurry|quick(?:ly)?|fast|now now|come on|no time|stat|on it now)\b|!{2,}/i;
-export function isUrgent(message: string): boolean {
-  if (URGENT_RE.test(message)) return true;
-  const letters = message.replace(/[^A-Za-z]/g, '');
-  return letters.length >= 6 && letters === letters.toUpperCase();   // SHOUTING in all-caps
-}
+// Urgency/tone now lives in the Communication Layer (services/comms.ts). Re-exported here so callers
+// and tests keep one import surface.
+export { isUrgent };
 
 // Executive Wit toggle — the user can switch ORB's personality on or off in plain language.
 const WIT_OFF = /\b(turn off (?:the )?wit|no jokes?|be serious|cut the (?:jokes?|humor|wit)|stop being (?:funny|witty|cute)|just the facts|no humor|all business)\b/i;
@@ -450,25 +445,30 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     let liveCtx = toolCtx;
     if (!liveCtx && needsContext(message)) liveCtx = JSON.stringify(await gatherContext(userId)).slice(0, 4000);
 
-    // Adaptive Conversation Memory: start from the user's saved length preference, but let a
-    // per-turn cue win — "break it down" goes detailed once, "quick version" goes short once. An
-    // urgent tone forces short (unless they explicitly asked to break it down) and a faster delivery.
-    const urgent = isUrgent(message);
+    // Communication Layer: read tone + emotion + urgency for this turn (state, never stored).
+    // Saved length preference is the baseline, but a per-turn cue wins — "break it down" goes
+    // detailed once; an urgent or frustrated tone forces short and a faster, no-fluff delivery.
+    const comms = analyzeComms(message);
+    const urgent = comms.urgent;
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
-      : (WANT_SHORT.test(message) || urgent) ? 'short' : savedStyle;
+      : (WANT_SHORT.test(message) || urgent || comms.emotion === 'frustrated') ? 'short' : savedStyle;
 
     // Cache: only when no live/personal data was pulled (so cached answers can't go stale).
-    // Key includes style + urgency so short/detailed/rushed answers don't collide.
+    // Key includes style + tone so calm/rushed/frustrated/playful answers don't collide.
     const cacheable = !liveCtx && !mems.length;
-    const key = `${userId}|${style}|${urgent ? 'u' : 'n'}|${prefs.wit ? 'w' : 'p'}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
+    const key = `${userId}|${style}|${urgent ? 'u' : 'n'}|${comms.emotion[0]}|${prefs.wit ? 'w' : 'p'}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
     if (cacheable) { const hit = cacheGet(key); if (hit) return { mode: 'fast' as const, answer: hit, route: 'fast' as const, model: 'cache' }; }
 
     const memCtx = mems.length ? `What I remember about you (use if relevant):\n${mems.map((m) => `- ${m.title}: ${m.content}`).join('\n')}` : '';
     const faveCtx = faves.length ? `Commands this user reaches for often (recognize these shortcuts, act on intent fast): ${faves.map((c) => `"${c}"`).join(', ')}.` : '';
     const context = [memCtx, faveCtx, liveCtx].filter(Boolean).join('\n\n') || undefined;
-    // Personality Engine: a quiet directive shaping HOW ORB answers. Skipped when rushed (speed wins).
+    // Communication posture (urgency/emotion) + learned personality tendencies → quiet directives
+    // shaping HOW ORB answers. Personality is skipped when rushed (speed wins); wit is dropped when
+    // the user is frustrated (a chief of staff reads the room).
+    const posture = postureDirective(comms);
     const profile = urgent ? '' : profileDirective(prefs.traits);
-    const routed = await routedAnswer(message, { images: opts.images, context, style, urgent, wit: prefs.wit, profile });
+    const witEffective = prefs.wit && comms.emotion !== 'frustrated';
+    const routed = await routedAnswer(message, { images: opts.images, context, style, urgent, wit: witEffective, profile, posture });
     if (cacheable && routed.ok && routed.answer) cacheSet(key, routed.answer);
     return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label };
   }

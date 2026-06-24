@@ -67,7 +67,7 @@ const WIT_DIRECTIVE =
 
 export async function routedAnswer(
   message: string,
-  opts: { images?: string[]; context?: string; style?: 'short' | 'detailed'; urgent?: boolean; wit?: boolean; profile?: string } = {}
+  opts: { images?: string[]; context?: string; style?: 'short' | 'detailed'; urgent?: boolean; wit?: boolean; profile?: string; posture?: string } = {}
 ): Promise<{ answer: string; route: TaskClass; model: string; label: string; ok: boolean }> {
   const cls = classifyTask(message, Boolean(opts.images && opts.images.length));
   // Adaptive Conversation Memory: honor the user's learned answer-length preference. "short" keeps
@@ -76,14 +76,14 @@ export async function routedAnswer(
   const styleDirective = detailed
     ? 'Give a thorough, well-structured answer — the user asked you to break it down.'
     : 'Answer briefly and directly — one or two sentences unless more is truly needed.';
-  // Urgency/tone: when the user sounds rushed, lead with the answer, no preamble or pleasantries.
-  const urgentDirective = opts.urgent ? ' The user is in a hurry — give the answer first, no preamble.' : '';
+  // Communication Layer posture: how the user sounds this turn (rushed/frustrated/unsure/playful).
+  const postureDirective = opts.posture || '';
   // Executive Wit: only when enabled AND the user isn't rushed (speed beats cleverness when urgent).
   const witDirective = (opts.wit && !opts.urgent) ? WIT_DIRECTIVE : '';
   // Personality Engine: learned communication tendencies (already gated/empty when not yet earned).
   const profileDirective = opts.profile || '';
   const base = opts.context ? `Context (use silently, never read aloud):\n${opts.context}\n\nUser: ${message}` : message;
-  const user = `${styleDirective}${urgentDirective}${witDirective}${profileDirective}\n\n${base}`;
+  const user = `${styleDirective}${postureDirective}${witDirective}${profileDirective}\n\n${base}`;
   const chain = providerChain(cls);
   // Keep spoken/chat answers short → far faster to generate. Heavy work goes through the council instead.
   const maxTokens = detailed ? 900 : cls === 'fast' ? 240 : 700;

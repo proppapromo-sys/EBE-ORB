@@ -10,6 +10,7 @@ import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
 import { looksLikeBuildRequest, looksLikeVideoRequest, needsContext, isUrgent } from '../agents/masterAgent.js';
 import { recordCommand, topCommands, getPrefs, setPrefs, observeMessage, resetProfile } from '../services/convoPrefs.js';
 import { applySignals, profileDirective, describeProfile, confident, type Traits } from '../services/personality.js';
+import { analyzeComms, readEmotion, postureDirective } from '../services/comms.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
 import { classifyTask, ROUTES } from '../brains/router.js';
@@ -103,6 +104,22 @@ test('convoPrefs: learns short commands, ignores private-length speech', async (
   assert.ok(top.includes("what's urgent"), 'recurring short command is remembered');
   const prefs = await getPrefs(u);
   assert.equal(Object.keys(prefs.commands).some((k) => k.length > 60), false, 'long private speech never stored');
+});
+
+test('comms: the same words read differently by delivery', () => {
+  // "call John" three ways — the Communication Layer reads tone, not just words.
+  assert.deepEqual(analyzeComms('ORB call John.'), { urgent: false, emotion: 'neutral' });   // calm task
+  assert.equal(analyzeComms('ORB CALL JOHN!!').urgent, true);                                  // shouting + !! → urgent
+  assert.equal(readEmotion('ORB call John…'), 'hesitant');                                     // trailing … → unsure
+});
+
+test('comms: emotion read is conservative and maps to a posture', () => {
+  assert.equal(readEmotion("ugh this still isn't working"), 'frustrated');
+  assert.equal(readEmotion('haha nice one, thanks'), 'playful');
+  assert.equal(readEmotion('what time is my meeting?'), 'neutral');   // plain question, not an outburst
+  assert.match(postureDirective({ urgent: false, emotion: 'frustrated' }), /frustrated/i);
+  assert.match(postureDirective({ urgent: true, emotion: 'neutral' }), /hurry/i);
+  assert.equal(postureDirective({ urgent: false, emotion: 'neutral' }), '');   // calm → no special posture
 });
 
 test('personality: tendencies need repeated evidence before they speak', () => {
