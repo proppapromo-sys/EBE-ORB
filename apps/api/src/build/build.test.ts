@@ -49,6 +49,7 @@ import { EVOLVE_QUERY, EVOLVE_DIRECTIVE } from '../services/evolution.js';
 import { ANTIFRAGILE_QUERY, ANTIFRAGILE_DIRECTIVE } from '../services/antifragility.js';
 import { parseLesson, rankLessons, formatLessons, LESSONS_QUERY } from '../services/lessons.js';
 import { DISCOVERY_QUERY, DISCOVERY_DIRECTIVE } from '../services/discovery.js';
+import { GOVERNANCE_QUERY, GOVERNANCE_DIRECTIVE } from '../services/governance.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -367,6 +368,15 @@ test('truth discovery (#36): triggers the research posture, excludes plain tasks
   assert.ok(DISCOVERY_QUERY.test('what assumptions should we challenge'));
   assert.match(DISCOVERY_DIRECTIVE, /hypothes|researcher|test|unknown unknowns|replicated/i);
   assert.equal(DISCOVERY_QUERY.test('what time is my meeting'), false);
+});
+
+test('stewardship of intelligence (#37): governance posture — tiers, oversight, transparency', () => {
+  assert.ok(GOVERNANCE_QUERY.test('just because we can, should we'));
+  assert.ok(GOVERNANCE_QUERY.test('should this be automated'));
+  assert.ok(GOVERNANCE_QUERY.test('explain your reasoning for that'));
+  assert.ok(GOVERNANCE_QUERY.test('does this need human approval'));
+  assert.match(GOVERNANCE_DIRECTIVE, /confirm-first|sovereign|transparent|authority tiers|who bears the risk/i);
+  assert.equal(GOVERNANCE_QUERY.test('what time is my meeting'), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
