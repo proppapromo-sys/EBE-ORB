@@ -16,6 +16,7 @@ import { getAccessToken, calendarUpcoming, gmailUnreadImportant, driveSearch } f
 import { recall } from '../services/memoryStore.js';
 import { cacheGet, cacheSet } from '../services/cache.js';
 import { searchFlights, searchHotels, travelConfigured, duffelConfigured } from '../services/travel.js';
+import { calculate, convertUnits } from '../services/calc.js';
 import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -234,13 +235,39 @@ async function fileAgent(userId: string, message: string): Promise<string | null
   } catch { return null; }
 }
 
+// Calculator (exact, local) — words → symbols, then evaluate safely.
+function mathTool(message: string): string | null {
+  const mm = message.match(/\b(?:what'?s|what is|calculate|compute|how much is|solve)\b\s*(.+)$/i);
+  const raw = (mm ? mm[1] : message).replace(/[?!.]+$/, '').trim();
+  const norm = raw.toLowerCase()
+    .replace(/\bto the power of\b/g, '^').replace(/\bsquared\b/g, '^2').replace(/\bsquare root of\b/g, 'sqrt')
+    .replace(/\bplus\b/g, '+').replace(/\bminus\b/g, '-')
+    .replace(/\b(?:times|multiplied by)\b/g, '*').replace(/\b(?:divided by|over)\b/g, '/')
+    .replace(/(\d+(?:\.\d+)?)\s*(?:%|percent)\s*of\s*(\d+(?:\.\d+)?)/g, '($1/100)*$2')
+    .replace(/[,$]/g, '').trim();
+  if (!/[0-9]/.test(norm) || !/[-+*/^]|sqrt|cbrt|sin|cos|tan|log|ln|abs|exp/.test(norm)) return null;
+  const r = calculate(norm);
+  if (r == null) return null;
+  return `Calculation: ${raw} = ${Number.isInteger(r) ? r : Number(r.toFixed(6))}`;
+}
+
+// Measurements / unit converter (exact, local).
+function measureTool(message: string): string | null {
+  let m = message.match(/(?:convert\s+)?(-?\d+(?:\.\d+)?)\s*([A-Za-z°"']+)\s+(?:to|in|into)\s+([A-Za-z°"']+)/);
+  if (!m) { const m2 = message.match(/how many\s+([A-Za-z]+)\s+(?:in|are in|is)\s+(-?\d+(?:\.\d+)?)\s*([A-Za-z]+)/i); if (m2) m = [m2[0], m2[2], m2[3], m2[1]] as any; }
+  if (!m) return null;
+  const out = convertUnits(Number(m[1]), m[2], m[3]);
+  if (!out) return null;
+  return `Conversion: ${m[1]} ${m[2]} = ${Number.isInteger(out.value) ? out.value : Number(out.value.toFixed(4))} ${m[3]}`;
+}
+
 /**
  * The fan-out: ORB Router → many specialized agents run in parallel (knowledge tools + Calendar /
  * Email / File over the user's accounts) → results feed the Finalizer for one fast answer.
  * Each agent only fetches if the request matches it, so plain chat stays instant.
  */
 async function toolContext(message: string, userId: string, opts: { lat?: number; lon?: number }): Promise<string | undefined> {
-  const sync = [selfContext(message)].filter(Boolean) as string[];
+  const sync = [selfContext(message), mathTool(message), measureTool(message)].filter(Boolean) as string[];
   const fetched = (await Promise.all([
     weatherContext(message, opts), newsContext(message), stocksContext(message),
     dictionaryContext(message), wikiContext(message), geographyContext(message), currencyContext(message),
