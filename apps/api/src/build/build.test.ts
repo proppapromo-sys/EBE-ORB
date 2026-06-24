@@ -11,6 +11,7 @@ import { looksLikeBuildRequest, looksLikeVideoRequest, needsContext, isUrgent } 
 import { recordCommand, topCommands, getPrefs, setPrefs, observeMessage, resetProfile } from '../services/convoPrefs.js';
 import { applySignals, profileDirective, describeProfile, confident, type Traits } from '../services/personality.js';
 import { analyzeComms, readEmotion, postureDirective } from '../services/comms.js';
+import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
 import { classifyTask, ROUTES } from '../brains/router.js';
@@ -104,6 +105,32 @@ test('convoPrefs: learns short commands, ignores private-length speech', async (
   assert.ok(top.includes("what's urgent"), 'recurring short command is remembered');
   const prefs = await getPrefs(u);
   assert.equal(Object.keys(prefs.commands).some((k) => k.length > 60), false, 'long private speech never stored');
+});
+
+test('predict: anticipates the missing slot of a trailed-off command', () => {
+  const p = predictIntent('schedule a meeting with…');
+  assert.equal(p?.intent, 'meeting');
+  assert.equal(needsClarification(p), true);
+  assert.match(nextPrompt(p!), /who with, and when/i);
+
+  // Slots already filled → nothing to ask.
+  const full = predictIntent('schedule a meeting with Dana tomorrow at 3');
+  assert.equal(needsClarification(full), false);
+
+  // Only the time is missing → ORB asks just for that.
+  const noTime = predictIntent('set up a meeting with Dana');
+  assert.match(nextPrompt(noTime!), /day and time/i);
+
+  // Flight with half the route.
+  assert.match(nextPrompt(predictIntent('book a flight to Paris')!), /flying from/i);
+});
+
+test('predict: ignores questions and idioms, fires only on real commands', () => {
+  assert.equal(predictIntent('what time should I schedule a meeting?'), null);   // a question, not a command
+  assert.equal(predictIntent("let's call it a day"), null);                      // idiom, not a phone call
+  assert.equal(predictIntent('how do I book a flight?'), null);                  // a question
+  assert.equal(needsClarification(predictIntent('call John')), false);          // fully specified → no ask
+  assert.equal(predictIntent('call Sarah')?.filled.person, 'Sarah');
 });
 
 test('comms: the same words read differently by delivery', () => {

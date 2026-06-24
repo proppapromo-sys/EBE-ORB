@@ -22,6 +22,7 @@ import { getPlan } from '../billing/plans.js';
 import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type ConvoStyle } from '../services/convoPrefs.js';
 import { profileDirective, describeProfile } from '../services/personality.js';
 import { analyzeComms, postureDirective, isUrgent } from '../services/comms.js';
+import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
 // Adaptive Conversation Memory — answer-length intent.
@@ -329,6 +330,12 @@ export async function gatherContext(userId: string): Promise<ConnectorResult[]> 
   return results;
 }
 
+// Anticipation follow-through: when ORB asks for a missing slot, it briefly remembers the command it
+// was completing so the next short reply folds back in ("schedule a meeting with…" → "Dana, at 3").
+const pendingClarify = new Map<string, { partial: string; at: number }>();
+const CLARIFY_TTL = 45_000;
+const FOLLOWUP_QUESTION = /^(?:\s*orb[,!.]?\s*)?(what|when|how|why|who|where|which|can|could|should|is|are|do|does|tell me|explain)\b/i;
+
 /**
  * Ask ORB. By default this convenes the full Multi-Model Council and returns the
  * ORB-Finalizer's single clean answer; `approvalRequired` stays code-computed from the cycle.
@@ -339,6 +346,17 @@ export async function askOrb(
   message: string,
   opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string; personality?: string; customPersona?: string; lat?: number; lon?: number; tz?: string } = {}
 ) {
+  // Anticipation follow-through: if ORB just asked for a missing slot, fold this short reply back
+  // into the command it was completing. Survives exactly one turn (consumed here, fresh window only).
+  const pend = pendingClarify.get(userId);
+  pendingClarify.delete(userId);
+  if (pend && Date.now() - pend.at < CLARIFY_TTL) {
+    const reply = message.trim();
+    if (reply.split(/\s+/).length <= 8 && !FOLLOWUP_QUESTION.test(reply)) {
+      message = `${pend.partial.replace(/(?:\.\.\.|…)\s*$/, '').trim()} ${reply}`.trim();
+    }
+  }
+
   // Video mode (Veo): generate an AI video. Top tiers only — it's the priciest call.
   if (looksLikeVideoRequest(message)) {
     if (!videoAllowedFor(opts.plan)) {
@@ -397,6 +415,15 @@ export async function askOrb(
   // goes without a "confirm". Checked before build so "remind me to build X" stays a reminder.
   const action = await handleAction(userId, message, { tz: opts.tz });
   if (action) return action;
+
+  // Anticipation: the user started a command and trailed off ("schedule a meeting with…"). ORB
+  // recognizes the frame and asks for exactly the missing slot — fluid, not a dead-ended fragment.
+  // Only runs once actions.ts couldn't complete it, and never on questions (the predictor guards).
+  const prediction = predictIntent(message);
+  if (needsClarification(prediction)) {
+    pendingClarify.set(userId, { partial: message, at: Date.now() });   // remember it for the reply
+    return { mode: 'clarify' as const, answer: nextPrompt(prediction), intent: prediction.intent, missing: prediction.missing };
+  }
 
   // Build mode: if the user is asking ORB to construct a site/app, run the Construction Genome
   // (Gemini designs, GPT architects, Claude codes) instead of a chat answer. Tier caps the depth.
