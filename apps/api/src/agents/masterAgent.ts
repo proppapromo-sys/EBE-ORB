@@ -25,6 +25,7 @@ import { analyzeComms, postureDirective, voiceFor, sceneDirective, sceneVoice, i
 import { detectLang } from '../services/lang.js';
 import { relate, aboutEntity, formatAbout, ingestItems, type IngestItem } from '../services/graph.js';
 import { noteIntent, completeIntent, pendingGoals, formatPending, nudgeFor } from '../services/goals.js';
+import { focusList, formatFocus } from '../services/attention.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -528,6 +529,11 @@ export async function askOrb(
       reassuring: "Okay — I'll make sure you always know it's handled and how, so you can breathe easy."
     };
     return { mode: 'fast' as const, answer: acks[supportStyle], route: 'fast' as const, model: 'prefs' };
+  }
+
+  // Attention Engine: the spotlight — what deserves focus right now, priority-scored (emergency first).
+  if (/\bwhat (?:needs|deserves|should have) my attention\b|\bwhat(?:'s| is) (?:the )?most important\b|\bmy (?:top )?priorit(?:y|ies)\b|\bwhat should i focus on right now\b|\bwhat matters (?:most|right now)\b|\bprioriti[sz]e my\b/i.test(message)) {
+    return { mode: 'fast' as const, answer: formatFocus(await focusList(userId).catch(() => [])), route: 'fast' as const, model: 'attention' };
   }
 
   // Attention & Goals: surface what the user keeps putting off, most pressing first.

@@ -16,6 +16,7 @@ import { relate, aboutEntity, formatAbout, ingestItems } from '../services/graph
 import { mentionsIn, senderName } from '../agents/masterAgent.js';
 import { avatarAllowedFor, avatarConfigured } from '../services/avatar.js';
 import { noteIntent, completeIntent, pendingGoals, nudgeFor } from '../services/goals.js';
+import { priorityScore, classifyTier, focusList } from '../services/attention.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -196,6 +197,31 @@ test('avatar: gated to top tiers, off by default, always disclosed', () => {
   assert.equal(avatarAllowedFor('pro'), false);
   assert.equal(avatarAllowedFor('free'), false);
   assert.equal(avatarConfigured(), false);   // no DID_API_KEY in test env → off, degrades gracefully
+});
+
+test('attention: priority score follows the survival → goals → novelty → reward → routine hierarchy', () => {
+  assert.equal(classifyTier('the server is down, security breach'), 'emergency');
+  assert.equal(classifyTier('payroll due tomorrow'), 'deadline');
+  assert.equal(classifyTier('weekly newsletter'), 'routine');
+  // Emergency outranks a deadline outranks a reward outranks routine.
+  const emerg = priorityScore('production outage right now');
+  const deadline = priorityScore('payroll due tomorrow', { dueInHours: 20 });
+  const reward = priorityScore('new sales lead opportunity');
+  const routine = priorityScore('read the newsletter');
+  assert.ok(emerg > deadline && deadline > reward && reward > routine);
+  assert.ok(emerg >= 90 && routine <= 25);
+  // The same item climbs as it's put off and ages.
+  assert.ok(priorityScore('call the supplier', { deferrals: 3, ageDays: 5 }) > priorityScore('call the supplier'));
+});
+
+test('attention: focus list ranks the user\'s tracked items by priority', async () => {
+  const u = 'test-attention@example.com';
+  await noteIntent(u, 'I need to handle the payroll, it is due tomorrow');
+  await noteIntent(u, 'I should read the newsletter sometime');
+  const focus = await focusList(u);
+  assert.ok(focus.length >= 2);
+  assert.match(focus[0].label.toLowerCase(), /payroll/);   // the urgent, high-impact item is on top
+  assert.ok(focus[0].score > focus[focus.length - 1].score);
 });
 
 test('goals: tracks intentions, notices what keeps slipping, nudges, and closes on completion', async () => {
