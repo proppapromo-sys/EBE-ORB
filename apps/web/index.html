@@ -205,6 +205,8 @@ let micRate=44100,tdata=null,proAcc=null,lastProsody=null,proTimer=null;
 // Spatial audio: read the ENVIRONMENT (ambient noise level + whether other voices are around) so ORB
 // can adapt — short & clear in a loud place, privacy-aware in a crowd. Summary only ever leaves the device.
 let sceneAcc=null,lastScene=null;
+// Server-side speech (Whisper): the voice path for browsers WITHOUT the Web Speech API (Safari/Firefox).
+let sttMode=false,sttRec=null,sttStream=null,sttTimer=null;
 const setState=s=>{const e=document.getElementById('st-state');if(e)e.textContent=s;};
 function setPhase(p){phase=p;setState(p.toUpperCase());}
 
@@ -464,7 +466,7 @@ function onSpeakStart(){speaking=true;setPhase('speaking');document.getElementBy
   if(recogActive){try{recog.stop();}catch(e){}}}                    // don't transcribe our own voice
 function onSpeakEnd(){speaking=false;document.getElementById('speaking').classList.remove('on');
   if(wakeMode) armedUntil=Date.now()+FOLLOWUP_MS;        // keep listening for natural follow-ups
-  if(convoMode||wakeMode){setPhase('listening');startRecog();}else setPhase('idle');}
+  if(convoMode||wakeMode){setPhase('listening'); if(sttMode)sttListen(); else startRecog();}else setPhase('idle');}
 // Adaptive voice: the server reads the user's state and returns how ORB should sound (rate/pitch/
 // volume). We clamp to safe ranges and fall back to ORB's calm executive default when none is given.
 function vNum(v,key,def,lo,hi){const n=v&&typeof v[key]==='number'?v[key]:def;return Math.max(lo,Math.min(hi,n));}
@@ -942,6 +944,42 @@ function sceneSnapshot(){
   const crowd=noise!=='quiet' && (sceneAcc.babble/Math.max(1,sceneAcc.ambN))>0.25;
   return {noise,crowd};
 }
+// ── Server-side speech (OpenAI Whisper): record an utterance, use the GATE (VAD) to know when the
+// user finished, condition the audio, transcribe it multilingually on the server, then answer. This
+// gives voice to browsers without the Web Speech API and far better non-English transcription.
+function blobToB64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onloadend=()=>res(String(r.result).split(',')[1]||'');r.onerror=rej;r.readAsDataURL(blob);});}
+async function sttListen(){
+  if(sttRec||speaking||!API)return;
+  try{
+    if(!analyser)await startMicAnalyser();
+    sttStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+    const recStream=conditionStream(sttStream);                 // clean the input audio for the recognizer
+    const chunks=[]; sttRec=new MediaRecorder(recStream);
+    sttRec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
+    sttRec.onstop=async()=>{
+      const rec=sttRec; sttRec=null; if(sttTimer){clearInterval(sttTimer);sttTimer=null;}
+      if(sttStream){sttStream.getTracks().forEach(t=>t.stop());sttStream=null;}
+      const blob=new Blob(chunks,{type:(rec&&rec.mimeType)||'audio/webm'});
+      if(blob.size>1200){
+        try{ setPhase('thinking');
+          const b64=await blobToB64(blob);
+          const r=await fetch(API+'/api/orb/transcribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({audio:b64,mime:blob.type})});
+          const d=await r.json(); const q=(d.text||'').trim();
+          if(q){document.getElementById('q').value=q; gatedConvene(q);}   // got speech → answer (ORB resumes listening after)
+          else if(convoMode){setPhase('listening');sttListen();}          // heard nothing usable → keep waiting
+        }catch(e){ if(convoMode){setPhase('listening');sttListen();} }
+      } else if(convoMode){ setPhase('listening'); sttListen(); }
+    };
+    sttRec.start(); setPhase('listening');
+    let spoke=false,silent=0;                                   // VAD: stop ~1.3s after the user goes quiet
+    sttTimer=setInterval(()=>{
+      if(!sttRec||speaking)return;
+      if(gate.open){spoke=true;silent=0;}
+      else if(spoke){silent+=120; if(silent>1300){clearInterval(sttTimer);sttTimer=null; try{sttRec.state!=='inactive'&&sttRec.stop();}catch(e){}}}
+    },120);
+  }catch(e){ sttRec=null; }
+}
+function sttStop(){ if(sttTimer){clearInterval(sttTimer);sttTimer=null;} try{sttRec&&sttRec.state!=='inactive'&&sttRec.stop();}catch(e){} sttRec=null; if(sttStream){sttStream.getTracks().forEach(t=>t.stop());sttStream=null;} }
 function estimatePitch(buf,rate){                                                    // ACF2+ autocorrelation
   let size=buf.length,rms=0; for(let i=0;i<size;i++)rms+=buf[i]*buf[i];
   rms=Math.sqrt(rms/size); if(rms<0.01)return -1;
@@ -994,21 +1032,25 @@ function buildRecog(){
   r.onend=()=>{recogActive=false;if((convoMode||wakeMode)&&!speaking)setTimeout(startRecog,400);}; // keep listening
   return r;
 }
-// Turn ON the hands-free conversation loop: greet, then actually listen for your reply.
+// Turn ON the hands-free conversation loop: greet, then actually listen for your reply. Uses the Web
+// Speech API where available (instant, on-device), and falls back to server-side Whisper otherwise.
 async function startConversation(greeting){
-  if(!SR){alert('Voice input needs Chrome or Edge (Web Speech API).');return;}
-  convoMode=true;listening=true;startRoll();recog=recog||buildRecog();
+  if(!SR && !API){alert('Voice input needs Chrome/Edge, or a connected ORB API.');return;}
+  convoMode=true;listening=true;startRoll();
   document.getElementById('mic').style.color='#ffc878';
-  await startMicAnalyser();setPhase('listening');startRecog();
+  await startMicAnalyser();setPhase('listening');
+  if(SR){ sttMode=false; recog=recog||buildRecog(); startRecog(); }
+  else { sttMode=true; sttListen(); }                          // Safari/Firefox → Whisper voice path
   const g = greeting===undefined ? "Hey, I'm here. What do you need?" : greeting;  // "" = listen silently
   if(g && !speaking)speak(g);
 }
 function stopConversation(){
   convoMode=false;listening=false;setPhase('idle');document.getElementById('mic').style.color='';
+  sttMode=false; sttStop();
   try{recog&&recog.stop();}catch(e){}if(!wakeMode){analyser=null;stopRoll();}
 }
 document.getElementById('mic').addEventListener('click',async()=>{
-  if(!SR){alert('Voice input needs Chrome or Edge (Web Speech API).');return;}
+  if(!SR && !API){alert('Voice input needs Chrome/Edge, or a connected ORB API.');return;}
   if(convoMode){stopConversation();return;}
   await startConversation("Okay, I'm listening.");
 });
