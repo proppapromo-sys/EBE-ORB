@@ -27,7 +27,8 @@ import { relate, aboutEntity, formatAbout, ingestItems, type IngestItem } from '
 import { noteIntent, completeIntent, pendingGoals, formatPending, nudgeFor } from '../services/goals.js';
 import { focusList, formatFocus } from '../services/attention.js';
 import { parseObjective, setObjective, updateProgress, listObjectives, formatObjectives, progressOf, goalsContext } from '../services/objectives.js';
-import { observeMotivation, motivationDirective, describeMotivation, parseDriver, setDriver } from '../services/motivation.js';
+import { observeMotivation, motivationDirective, describeMotivation, parseDriver, setDriver, topDrivers } from '../services/motivation.js';
+import { parseDecision, decisionDirective } from '../services/decision.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -670,7 +671,10 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const comms = analyzeComms(message, opts.prosody);
     const urgent = comms.urgent;
     const noisy = opts.scene?.noise === 'loud';   // a loud place → favor brevity and clarity
+    // Decision Engine: is the user choosing between options? If so, give it room and a structured frame.
+    const decision = parseDecision(message);
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
+      : (decision && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
 
     // Humor: the user's level, downgraded to professional this turn if they're rushed, frustrated, or
@@ -698,7 +702,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // Communication posture (urgency/emotion) + learned personality tendencies → quiet directives
     // shaping HOW ORB answers. Personality is skipped when rushed (speed wins); wit is dropped when
     // the user is frustrated (a chief of staff reads the room).
-    const posture = postureDirective(comms) + sceneDirective(opts.scene);
+    const decisionDir = (decision && !urgent) ? decisionDirective(decision, await topDrivers(userId).catch(() => [])) : '';
+    const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));
     const replyLang = lang.code === 'en' ? undefined : lang.name;

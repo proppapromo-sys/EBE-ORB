@@ -19,6 +19,7 @@ import { noteIntent, completeIntent, pendingGoals, nudgeFor } from '../services/
 import { priorityScore, classifyTier, focusList } from '../services/attention.js';
 import { parseObjective, setObjective, updateProgress, progressOf, listObjectives, detectConflicts, classifyLevel, classifyType } from '../services/objectives.js';
 import { observeMotivation, topDrivers, motivationDirective, parseDriver, setDriver } from '../services/motivation.js';
+import { parseDecision, decisionDirective } from '../services/decision.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -199,6 +200,19 @@ test('avatar: gated to top tiers, off by default, always disclosed', () => {
   assert.equal(avatarAllowedFor('pro'), false);
   assert.equal(avatarAllowedFor('free'), false);
   assert.equal(avatarConfigured(), false);   // no DID_API_KEY in test env → off, degrades gracefully
+});
+
+test('decision: detects a choice and frames the trade-offs against goals + drivers', () => {
+  const d = parseDecision('Should I hire now or wait a quarter?');
+  assert.deepEqual(d?.options, ['hire now', 'wait a quarter']);
+  assert.ok(parseDecision('choose between the Lagos office and the London office'));
+  assert.ok(parseDecision('Runway vs Veo'));
+  assert.equal(parseDecision('what time is my meeting?'), null);   // not a decision
+
+  const dir = decisionDirective(d!, ['freedom', 'security']);
+  assert.match(dir, /trade-?off/i);
+  assert.match(dir, /one clear recommendation|commit to ONE/i);
+  assert.match(dir, /freedom, security/i);   // weighed through the user's drivers
 });
 
 test('motivation: learns the drivers behind goals and frames around them', async () => {
