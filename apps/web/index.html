@@ -459,16 +459,19 @@ function onSpeakStart(){speaking=true;setPhase('speaking');document.getElementBy
 function onSpeakEnd(){speaking=false;document.getElementById('speaking').classList.remove('on');
   if(wakeMode) armedUntil=Date.now()+FOLLOWUP_MS;        // keep listening for natural follow-ups
   if(convoMode||wakeMode){setPhase('listening');startRecog();}else setPhase('idle');}
-function speakBrowser(text,lang){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
+// Adaptive voice: the server reads the user's state and returns how ORB should sound (rate/pitch/
+// volume). We clamp to safe ranges and fall back to ORB's calm executive default when none is given.
+function vNum(v,key,def,lo,hi){const n=v&&typeof v[key]==='number'?v[key]:def;return Math.max(lo,Math.min(hi,n));}
+function speakBrowser(text,lang,voice){if(!('speechSynthesis'in window))return;speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(speakable(text).slice(0,800));
   u.lang=lang||'en-US';
   u.voice=pickVoice(speechSynthesis.getVoices(),u.lang);
-  u.rate=0.97;u.pitch=1.0;
+  u.rate=vNum(voice,'rate',0.97,0.8,1.3);u.pitch=vNum(voice,'pitch',1.0,0.8,1.2);u.volume=vNum(voice,'volume',1.0,0.7,1.0);
   u.onstart=onSpeakStart;
   u.onboundary=()=>{voiceKick=1;ripples.push({r:R*0.16,life:1});}; // ripple on each word — voice-wave sync
   u.onend=onSpeakEnd;
   speechSynthesis.speak(u);}
-async function speakCloned(text){
+async function speakCloned(text,voice){
   try{
     const r=await fetch(API+'/api/orb/speak',{method:'POST',headers:{'content-type':'application/json'},
       body:JSON.stringify({text:speakable(text).slice(0,1200)})});
@@ -476,6 +479,7 @@ async function speakCloned(text){
     if(!d||!d.available||!d.audioUrl) return false;
     try{speechSynthesis.cancel();}catch(e){} stopCloned();
     const a=new Audio(d.audioUrl); clonedAudio=a;
+    a.playbackRate=vNum(voice,'rate',1.0,0.8,1.3);a.volume=vNum(voice,'volume',1.0,0.7,1.0); // adapt delivery to state
     const rip=setInterval(()=>{if(clonedAudio!==a){clearInterval(rip);return;}voiceKick=1;ripples.push({r:R*0.16,life:1});},200);
     a.onplay=onSpeakStart;
     a.onended=()=>{clearInterval(rip);if(clonedAudio===a)clonedAudio=null;onSpeakEnd();};
@@ -484,9 +488,9 @@ async function speakCloned(text){
     return true;
   }catch(e){return false;}
 }
-function speak(text,lang){
-  if(CLONED&&API){ speakCloned(text).then(ok=>{ if(!ok) speakBrowser(text,lang); }); return; }
-  speakBrowser(text,lang);
+function speak(text,lang,voice){
+  if(CLONED&&API){ speakCloned(text,voice).then(ok=>{ if(!ok) speakBrowser(text,lang,voice); }); return; }
+  speakBrowser(text,lang,voice);
 }
 if(API){fetch(API+'/api/orb/voice/status').then(r=>r.json()).then(d=>{CLONED=!!(d&&d.configured);}).catch(()=>{});}
 // Voice cloning is a SKILL: the owner just tells ORB ("clone my voice") and ORB records ~20s here,
@@ -811,7 +815,7 @@ async function convene(q){
         const td=await t2.json(); if(td.translated){answer=td.translated;sayLang=voiceLang.code;}}catch(e){}
     }
     box.innerHTML=need+mdToHtml(answer);   // ORB speaks as one — never show which model answered
-    speak(answer,sayLang);
+    speak(answer,sayLang,d.voice);         // adaptive delivery: rate/pitch/volume tuned to the user's state
   }catch(e){box.textContent='Could not reach ORB API: '+e.message;speak("Sorry, I can't reach my system right now.");}}
 
 document.getElementById('cmd').addEventListener('submit',ev=>{ev.preventDefault();convene(document.getElementById('q').value.trim());});

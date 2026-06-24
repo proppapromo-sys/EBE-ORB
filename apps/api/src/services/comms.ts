@@ -60,6 +60,35 @@ export function analyzeComms(message: string): CommRead {
  * human move: meet urgency with speed, frustration with calm efficiency, hesitation with reassurance,
  * play with warmth.
  */
+// ── Adaptive voice: ORB tunes its own delivery to the moment ──
+// The brain judges a voice — trust, confidence, calm — in a fraction of a second, before the words.
+// So ORB doesn't speak every line the same way: it picks a register and dials rate/pitch/energy to
+// match the user's state. Stress → slow, lower, controlled (de-escalate). Urgency → faster, crisp.
+// Excitement → brighter, more energetic. Values map straight to the Web Speech API on the client.
+export type VoiceTone = 'executive' | 'friendly' | 'emergency' | 'calm';
+export type VoiceSpec = { tone: VoiceTone; rate: number; pitch: number; volume: number };
+type HumorLevel = 'professional' | 'executive' | 'friendly' | 'playful';
+
+const clampRate = (x: number) => Math.max(0.8, Math.min(1.3, Number(x.toFixed(3))));
+const clampPitch = (x: number) => Math.max(0.8, Math.min(1.2, Number(x.toFixed(3))));
+const clampVol = (x: number) => Math.max(0.7, Math.min(1.0, Number(x.toFixed(3))));
+
+export function voiceFor(read: CommRead, humor: HumorLevel = 'executive'): VoiceSpec {
+  // Baseline register from the relationship — executive is lower & controlled (authority/warmth);
+  // friendly/playful are a touch brighter and more dynamic.
+  let rate = 1.0, pitch = 0.97, volume = 1.0, tone: VoiceTone = 'executive';
+  if (humor === 'friendly') { rate = 1.03; pitch = 1.0; tone = 'friendly'; }
+  else if (humor === 'playful') { rate = 1.06; pitch = 1.03; tone = 'friendly'; }
+
+  // State overrides the baseline — meet the person where they are.
+  if (read.emotion === 'frustrated') { rate = 0.9; pitch = 0.94; volume = 0.92; tone = 'calm'; }       // stressed → de-escalate
+  else if (read.urgent) { rate = 1.14; pitch = 1.0; volume = 1.0; tone = 'emergency'; }                // urgent → faster, crisp
+  else if (read.emotion === 'hesitant') { rate = 0.95; pitch = 0.98; volume = 0.95; tone = 'calm'; }   // unsure → gentle, unhurried
+  else if (read.emotion === 'playful') { rate = Math.max(rate, 1.06); pitch = Math.max(pitch, 1.03); tone = 'friendly'; } // match the energy
+
+  return { tone, rate: clampRate(rate), pitch: clampPitch(pitch), volume: clampVol(volume) };
+}
+
 export function postureDirective(read: CommRead): string {
   let d = '';
   if (read.urgent) d += ' The user is in a hurry — give the answer first, no preamble.';

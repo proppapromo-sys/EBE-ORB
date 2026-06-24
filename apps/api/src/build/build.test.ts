@@ -10,7 +10,7 @@ import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
 import { looksLikeBuildRequest, looksLikeVideoRequest, needsContext, isUrgent } from '../agents/masterAgent.js';
 import { recordCommand, topCommands, getPrefs, setPrefs, observeMessage, resetProfile } from '../services/convoPrefs.js';
 import { applySignals, profileDirective, describeProfile, confident, type Traits } from '../services/personality.js';
-import { analyzeComms, readEmotion, readSarcasm, postureDirective } from '../services/comms.js';
+import { analyzeComms, readEmotion, readSarcasm, postureDirective, voiceFor } from '../services/comms.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -156,6 +156,28 @@ test('comms: detects likely sarcasm and tells ORB not to take it literally', () 
   const read = analyzeComms('Well that went perfectly.');
   assert.equal(read.sarcasm, true);
   assert.match(postureDirective(read), /sarcastic/i);
+});
+
+test('voice: ORB adapts its delivery to the user state', () => {
+  // Stressed/frustrated → slow down, lower pitch, lower energy (de-escalate).
+  const stressed = voiceFor({ urgent: false, emotion: 'frustrated', sarcasm: false });
+  assert.equal(stressed.tone, 'calm');
+  assert.ok(stressed.rate < 1.0 && stressed.pitch < 1.0 && stressed.volume < 1.0);
+
+  // Urgent → faster, crisp.
+  const urgent = voiceFor({ urgent: true, emotion: 'neutral', sarcasm: false });
+  assert.equal(urgent.tone, 'emergency');
+  assert.ok(urgent.rate > 1.0);
+
+  // Playful baseline (humor=playful) → brighter and more dynamic than executive.
+  const playful = voiceFor({ urgent: false, emotion: 'neutral', sarcasm: false }, 'playful');
+  const exec = voiceFor({ urgent: false, emotion: 'neutral', sarcasm: false }, 'executive');
+  assert.ok(playful.rate >= exec.rate && playful.pitch >= exec.pitch);
+
+  // Everything stays inside safe, natural ranges.
+  for (const v of [stressed, urgent, playful, exec]) {
+    assert.ok(v.rate >= 0.8 && v.rate <= 1.3 && v.pitch >= 0.8 && v.pitch <= 1.2 && v.volume >= 0.7 && v.volume <= 1.0);
+  }
 });
 
 test('humor: graduated levels persist and stay in lockstep with the legacy flag', async () => {

@@ -21,7 +21,7 @@ import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type ConvoStyle, type HumorLevel } from '../services/convoPrefs.js';
 import { profileDirective, describeProfile } from '../services/personality.js';
-import { analyzeComms, postureDirective, isUrgent } from '../services/comms.js';
+import { analyzeComms, postureDirective, voiceFor, isUrgent } from '../services/comms.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -497,7 +497,9 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // Key includes style + tone + humor so calm/rushed/frustrated/playful/sarcastic answers don't collide.
     const cacheable = !liveCtx && !mems.length;
     const key = `${userId}|${style}|${urgent ? 'u' : 'n'}|${comms.emotion[0]}|${comms.sarcasm ? 's' : 'x'}|${humor[0]}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
-    if (cacheable) { const hit = cacheGet(key); if (hit) return { mode: 'fast' as const, answer: hit, route: 'fast' as const, model: 'cache' }; }
+    // Adaptive voice: how ORB should SOUND this turn (register from humor, delivery from the state read).
+    const voice = voiceFor(comms, prefs.humor);
+    if (cacheable) { const hit = cacheGet(key); if (hit) return { mode: 'fast' as const, answer: hit, route: 'fast' as const, model: 'cache', voice }; }
 
     const memCtx = mems.length ? `What I remember about you (use if relevant):\n${mems.map((m) => `- ${m.title}: ${m.content}`).join('\n')}` : '';
     const faveCtx = faves.length ? `Commands this user reaches for often (recognize these shortcuts, act on intent fast): ${faves.map((c) => `"${c}"`).join(', ')}.` : '';
@@ -509,7 +511,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const profile = urgent ? '' : profileDirective(prefs.traits);
     const routed = await routedAnswer(message, { images: opts.images, context, style, urgent, humor, profile, posture });
     if (cacheable && routed.ok && routed.answer) cacheSet(key, routed.answer);
-    return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label };
+    return { mode: 'fast' as const, answer: routed.answer, route: routed.route, model: routed.label, voice };
   }
 
   const council = await runCouncil(userId, message, {
