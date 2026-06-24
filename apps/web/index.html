@@ -294,10 +294,19 @@ function drawLucidOrb(pulse){
   ctx.save();
   ctx.globalCompositeOperation='lighter';
 
-  // soft glow core
+  // soft outer halo
   const core=ctx.createRadialGradient(CX,CY,0,CX,CY,r*1.1);
   core.addColorStop(0,`rgba(70,255,180,${0.06+0.18*amp})`);core.addColorStop(0.6,`rgba(40,160,255,${0.04+0.08*amp})`);core.addColorStop(1,'rgba(0,30,25,0)');
   ctx.fillStyle=core;ctx.beginPath();ctx.arc(CX,CY,r*1.1,0,7);ctx.fill();
+
+  // ambient light in the middle — a glowing heart that breathes and brightens with the voice
+  const pul=1+0.06*Math.sin(t*1.5)+0.18*amp, ar=r*0.55*pul;
+  const amb=ctx.createRadialGradient(CX,CY,0,CX,CY,ar);
+  amb.addColorStop(0,`rgba(225,255,248,${0.55+0.35*amp})`);
+  amb.addColorStop(0.28,`rgba(95,255,205,${0.26+0.25*amp})`);
+  amb.addColorStop(0.6,`rgba(50,170,255,${0.10+0.12*amp})`);
+  amb.addColorStop(1,'rgba(40,140,255,0)');
+  ctx.fillStyle=amb;ctx.beginPath();ctx.arc(CX,CY,ar,0,7);ctx.fill();
 
   // CIRCULAR DNA — the double helix wraps into a ring (a glowing circle). The two strands twist
   // around the ring's tube; base-pair rungs bridge them. Gentle 3D tilt; the twist travels around.
