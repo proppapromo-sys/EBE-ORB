@@ -674,6 +674,10 @@ test('meaning + create + design (#66-#68)', () => {
   assert.ok(RECREATE_QUERY.test('how do we build systems that create systems'));
   assert.ok(RECREATE_QUERY.test('build a builder of builders'));
   assert.match(RECREATE_DIRECTIVE, /builder of builders|capability creator|exponential|multiplication/i);
+  // #102 infinite legacy of creation -> folded into #96 (succession/teaching/outlive the creator)
+  assert.ok(RECREATE_QUERY.test('builders that train builders'));
+  assert.ok(RECREATE_QUERY.test('how do we make creation never stop'));
+  assert.match(RECREATE_DIRECTIVE, /create creators|teaching|transfer|without you/i);
   assert.ok(EVOLVE_QUERY.test('how does a system surpass itself'));
   assert.ok(EVOLVE_QUERY.test('what architecture must we outgrow'));
   assert.ok(CULTIVATE_QUERY.test('how do we create conditions for emergence'));
