@@ -76,6 +76,7 @@ import { DESTINY_QUERY, DESTINY_DIRECTIVE } from '../services/destiny.js';
 import { INFCOORD_QUERY, PLANETARY_QUERY, SPECIES_QUERY, EXISTENTIAL_QUERY, EXISTENTIAL_DIRECTIVE, INTERGEN_QUERY } from '../services/planetary.js';
 import { MEANING_QUERY, MEANING_DIRECTIVE } from '../services/meaning.js';
 import { CREATE2_QUERY, DESIGN_QUERY, DESIGN_DIRECTIVE } from '../services/design.js';
+import { ARCH_QUERY, ARCH_DIRECTIVE, UNIFY_QUERY, UNIFY_DIRECTIVE } from '../services/realityarch.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -582,8 +583,17 @@ test('meaning + create + design (#66-#68)', () => {
   assert.ok(DESIGN_QUERY.test('how should we structure the team'));
   assert.ok(DESIGN_QUERY.test('align incentives so people do the right thing'));
   assert.match(DESIGN_DIRECTIVE, /structure|incentive|architecture|resilience|path of least resistance/i);
+  // #70 reality architecture — structure generating the outcome (gap-filling, verified uncovered by #68/#45/#13)
+  assert.ok(ARCH_QUERY.test('what structure is producing this outcome'));
+  assert.ok(ARCH_QUERY.test('what hidden structure makes this inevitable'));
+  assert.ok(ARCH_QUERY.test('what structural constraint is limiting growth'));
+  assert.match(ARCH_DIRECTIVE, /architecture|generates|leverage point|structural|inevitable/i);
+  // #71 knowledge unification — cross-domain pattern transfer (gap beyond #46/#27/#58)
+  assert.ok(UNIFY_QUERY.test('where else does this pattern appear'));
+  assert.ok(UNIFY_QUERY.test('what field has already solved this'));
+  assert.match(UNIFY_DIRECTIVE, /across domains|pattern|transfer|recurring|analogy/i);
   // Plain task triggers none of the batch.
-  assert.equal([POTENTIAL_QUERY, COLLECTIVE_QUERY, PRINCIPLE_QUERY, FUTUREMEM_QUERY, DESTINY_QUERY, MEANING_QUERY, DESIGN_QUERY, CREATE2_QUERY].some((re) => re.test('what time is my meeting')), false);
+  assert.equal([POTENTIAL_QUERY, COLLECTIVE_QUERY, PRINCIPLE_QUERY, FUTUREMEM_QUERY, DESTINY_QUERY, MEANING_QUERY, DESIGN_QUERY, CREATE2_QUERY, ARCH_QUERY, UNIFY_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
