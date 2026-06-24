@@ -168,6 +168,23 @@ alter table orb_convo_prefs add column if not exists humor text not null default
 alter table orb_convo_prefs add column if not exists support text not null default 'standard';
 alter table orb_convo_prefs add column if not exists traits jsonb not null default '{}'::jsonb;
 
+-- Digital Spatial Mapping — a per-user knowledge graph: entities (projects, people, businesses,
+-- documents, deals…) and the relationships between them. ORB navigates by meaning, not by location.
+create table if not exists orb_graph_nodes (
+  user_id text not null,
+  id      text not null,            -- normalized label
+  type    text not null default 'thing',
+  label   text not null,
+  primary key (user_id, id)
+);
+create table if not exists orb_graph_edges (
+  user_id text not null,
+  from_id text not null,
+  to_id   text not null,
+  rel     text not null default 'linked to',
+  primary key (user_id, from_id, to_id, rel)
+);
+
 -- Traveler profiles — details ORB needs to book flights for a user.
 create table if not exists orb_profiles (
   user_id     text primary key,

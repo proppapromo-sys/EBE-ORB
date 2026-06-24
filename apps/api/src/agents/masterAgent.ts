@@ -23,6 +23,7 @@ import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type Con
 import { profileDirective, describeProfile } from '../services/personality.js';
 import { analyzeComms, postureDirective, voiceFor, sceneDirective, sceneVoice, isUrgent, type Prosody, type Scene } from '../services/comms.js';
 import { detectLang } from '../services/lang.js';
+import { relate, aboutEntity, formatAbout } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -49,6 +50,36 @@ const SUPPORT_ENCOURAGE = /\b(encourage me|cheer me on|be (?:more )?encouraging|
 const SUPPORT_DIRECT = /\b(skip the pep talk|no pep talk|just handle it|no cheerleading|spare me the (?:praise|encouragement)|don'?t (?:coddle|baby) me|just the facts and action)\b/i;
 const SUPPORT_REASSURE = /\b(reassure me|i need reassurance|tell me it'?s (?:handled|under control|okay)|walk me through it so i feel|put my mind at ease)\b/i;
 const SUPPORT_STANDARD = /\b(balanced support|normal support|default support)\b/i;
+
+// Digital Spatial Mapping — parse a "relate two things" statement or a "what's connected to X" query.
+const PRONOUN = /^(?:this|that|it|those|these|here|there|you|me|i|we|us|him|her|them|him\/her)$/i;
+function parseRelate(m: string): { a: string; b: string; rel: string } | null {
+  const tries: [RegExp, (x: RegExpExecArray) => { a: string; b: string; rel: string }][] = [
+    [/^(?:link|connect|associate)\s+(.+?)\s+(?:to|with|and)\s+(.+?)[.!]*$/i, (x) => ({ a: x[1], b: x[2], rel: 'linked to' })],
+    [/^(?:remember (?:that )?)?(.+?)\s+is part of\s+(.+?)[.!]*$/i, (x) => ({ a: x[1], b: x[2], rel: 'part of' })],
+    [/^(?:remember (?:that )?)?(.+?)\s+(belongs to|is owned by|is managed by|reports to|is related to|is connected to|is linked to)\s+(.+?)[.!]*$/i, (x) => ({ a: x[1], b: x[3], rel: x[2].replace(/^is /, '') })]
+  ];
+  for (const [re, build] of tries) {
+    const x = re.exec(m);
+    if (!x) continue;
+    const r = build(x); const a = r.a.trim(), b = r.b.trim();
+    if (a.length < 2 || a.length > 60 || b.length < 2 || b.length > 60) return null;
+    if (PRONOUN.test(a) || PRONOUN.test(b)) return null;
+    return { a, b, rel: r.rel.trim() };
+  }
+  return null;
+}
+function parseAbout(m: string): string | null {
+  const res = [
+    /\bwhat do (?:i|we) know about\s+(.+?)[?.!]*$/i,
+    /\bwhat(?:'s| is) connected to\s+(.+?)[?.!]*$/i,
+    /\beverything (?:i know )?about\s+(.+?)[?.!]*$/i,
+    /\bmap (?:of|out)\s+(.+?)[?.!]*$/i,
+    /\bhow (?:is|are)\s+(.+?)\s+(?:connected|related|linked)\b/i
+  ];
+  for (const re of res) { const x = re.exec(m); if (x && x[1].trim().length >= 2) return x[1].trim(); }
+  return null;
+}
 
 // Personality Engine — the user can read back what ORB has learned, or reset it (transparency + control).
 const DESCRIBE_PROFILE = /\b(what (?:have|did|do) you (?:learn(?:ed)?|know) about me|what'?s my (?:profile|personality|communication style)|how (?:do|would) you describe me|describe my (?:profile|style)|my personality profile)\b/i;
@@ -453,6 +484,21 @@ export async function askOrb(
       reassuring: "Okay — I'll make sure you always know it's handled and how, so you can breathe easy."
     };
     return { mode: 'fast' as const, answer: acks[supportStyle], route: 'fast' as const, model: 'prefs' };
+  }
+
+  // Digital Spatial Mapping: build/navigate the user's knowledge graph. Relate two things, or ask
+  // what's connected to one. Unknown entities fall through to a normal answer (never hijacked).
+  const rel = parseRelate(message);
+  if (rel) {
+    const ok = await relate(userId, rel.a, rel.b, rel.rel);
+    const answer = ok ? `Mapped it — **${rel.a}** ${rel.rel} **${rel.b}**. Ask me "what's connected to ${rel.a}?" anytime.`
+      : "I couldn't map that — try naming two distinct things.";
+    return { mode: 'fast' as const, answer, route: 'fast' as const, model: 'graph' };
+  }
+  const aboutQ = parseAbout(message);
+  if (aboutQ) {
+    const r = await aboutEntity(userId, aboutQ).catch(() => null);
+    if (r) return { mode: 'fast' as const, answer: formatAbout(r), route: 'fast' as const, model: 'graph' };
   }
 
   // Action mode: ORB *does* things — reminders/tasks now, email confirm-first. Nothing outward

@@ -12,6 +12,7 @@ import { recordCommand, topCommands, getPrefs, setPrefs, observeMessage, resetPr
 import { applySignals, profileDirective, describeProfile, confident, type Traits } from '../services/personality.js';
 import { analyzeComms, readEmotion, readSarcasm, sarcasmRead, postureDirective, voiceFor, asProsody, asScene, sceneDirective, sceneVoice } from '../services/comms.js';
 import { detectLang } from '../services/lang.js';
+import { relate, aboutEntity, formatAbout } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -149,6 +150,28 @@ test('comms: emotion read is conservative and maps to a posture', () => {
   assert.match(postureDirective({ urgent: false, emotion: 'frustrated' }), /reflect back|feel heard/i);   // active listening
   assert.match(postureDirective({ urgent: true, emotion: 'neutral' }), /hurry/i);
   assert.equal(postureDirective({ urgent: false, emotion: 'neutral' }), '');   // calm → no special posture
+});
+
+test('graph: digital spatial mapping — relate entities and navigate the connections', async () => {
+  const u = 'test-graph@example.com';
+  await relate(u, 'Project Atlas', 'Dana', 'managed by');
+  await relate(u, 'Project Atlas', 'Euphoria', 'part of');
+  await relate(u, 'lease agreement', 'Euphoria', 'for');
+
+  const atlas = await aboutEntity(u, 'project atlas');   // case-insensitive match
+  assert.ok(atlas, 'finds the entity');
+  assert.equal(atlas!.neighbors.length, 2);
+  const out = formatAbout(atlas!);
+  assert.match(out, /Project Atlas/);
+  assert.match(out, /Dana/);
+  assert.match(out, /Euphoria/);
+
+  // Navigate from the other side — Euphoria is referenced by Atlas and the lease.
+  const euph = await aboutEntity(u, 'Euphoria');
+  assert.ok(euph!.neighbors.length >= 2);
+
+  // Unknown entity → null, so the caller falls through to a normal answer instead of hijacking.
+  assert.equal(await aboutEntity(u, 'quantum chromodynamics'), null);
 });
 
 test('thinking-partner: ORB helps clarify thinking instead of just answering', () => {
