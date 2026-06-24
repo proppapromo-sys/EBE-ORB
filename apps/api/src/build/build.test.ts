@@ -53,6 +53,8 @@ import { GOVERNANCE_QUERY, GOVERNANCE_DIRECTIVE } from '../services/governance.j
 import { CIVILIZATION_QUERY, CIVILIZATION_DIRECTIVE } from '../services/civilization.js';
 import { COORDINATION_QUERY, COORDINATION_DIRECTIVE } from '../services/coordination.js';
 import { PRIME_QUERY, CONSTITUTION_DIRECTIVE, constitutionStatement, PRIME_DIRECTIVE, PILLARS, CONSTITUTIONAL_TEST } from '../services/constitution.js';
+import { PRESERVATION_QUERY, PRESERVATION_DIRECTIVE } from '../services/preservation.js';
+import { CONTINUITY_QUERY, CONTINUITY_DIRECTIVE } from '../services/continuity.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -413,6 +415,21 @@ test('prime directive (#40): ORB can state its constitution and runs the constit
   assert.match(CONSTITUTION_DIRECTIVE, /constitutional test|sustainable|responsible|sovereign|agency/i);
   // A plain task isn't a constitutional question.
   assert.equal(PRIME_QUERY.test('what time is my meeting'), false);
+});
+
+test('legacy/continuity (#41-#42): preservation across generations + holding the thread over time', () => {
+  // #41 preservation
+  assert.ok(PRESERVATION_QUERY.test('how do we capture this knowledge before they leave'));
+  assert.ok(PRESERVATION_QUERY.test('what must survive us'));
+  assert.ok(PRESERVATION_QUERY.test('we keep losing institutional memory'));
+  assert.match(PRESERVATION_DIRECTIVE, /endure|institutional memory|document|generation|preserve/i);
+  // #42 continuity
+  assert.ok(CONTINUITY_QUERY.test('why did we originally decide this'));
+  assert.ok(CONTINUITY_QUERY.test('I don\'t want to lose the thread'));
+  assert.ok(CONTINUITY_QUERY.test('how do we maintain context across leadership transitions'));
+  assert.match(CONTINUITY_DIRECTIVE, /thread|context|original|identity|through-line/i);
+  // Plain task triggers neither.
+  assert.equal([PRESERVATION_QUERY, CONTINUITY_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {

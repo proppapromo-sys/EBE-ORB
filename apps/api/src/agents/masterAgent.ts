@@ -60,6 +60,8 @@ import { GOVERNANCE_QUERY, GOVERNANCE_DIRECTIVE } from '../services/governance.j
 import { CIVILIZATION_QUERY, CIVILIZATION_DIRECTIVE } from '../services/civilization.js';
 import { COORDINATION_QUERY, COORDINATION_DIRECTIVE } from '../services/coordination.js';
 import { PRIME_QUERY, CONSTITUTION_DIRECTIVE, constitutionStatement } from '../services/constitution.js';
+import { PRESERVATION_QUERY, PRESERVATION_DIRECTIVE } from '../services/preservation.js';
+import { CONTINUITY_QUERY, CONTINUITY_DIRECTIVE } from '../services/continuity.js';
 import { parseReliability, recordReliability, reliabilityOf, roster } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -848,9 +850,10 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const governing = GOVERNANCE_QUERY.test(message);   // #37 govern intelligence: tiers, oversight, transparency
     const civscale = CIVILIZATION_QUERY.test(message);   // #38 reason at civilization scale
     const coordinating = COORDINATION_QUERY.test(message);   // #39 synchronize independent actors
+    const preserving = PRESERVATION_QUERY.test(message), continuity = CONTINUITY_QUERY.test(message);   // #41 preserve across generations, #42 hold the thread
     // #40 Prime Directive: the constitutional test rides along on the most consequential calls (not chit-chat).
     const constitutional = !urgent && (decision || strategic || governing || aligned || steward || flourish);
-    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish || conscEvolve || antifragile || wisdomAccum || discovering || governing || civscale || coordinating;
+    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish || conscEvolve || antifragile || wisdomAccum || discovering || governing || civscale || coordinating || preserving || continuity;
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
       : (deepThink && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
@@ -901,7 +904,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
       + (harmonic ? HARMONY_DIRECTIVE : '') + (flourish ? FLOURISHING_DIRECTIVE : '')
       + (conscEvolve ? EVOLVE_DIRECTIVE : '') + (antifragile ? ANTIFRAGILE_DIRECTIVE : '') + (wisdomAccum ? WISDOM_ACCUM_DIRECTIVE : '')
       + (discovering ? DISCOVERY_DIRECTIVE : '') + (governing ? GOVERNANCE_DIRECTIVE : '') + (civscale ? CIVILIZATION_DIRECTIVE : '')
-      + (coordinating ? COORDINATION_DIRECTIVE : '') + (constitutional ? CONSTITUTION_DIRECTIVE : ''));
+      + (coordinating ? COORDINATION_DIRECTIVE : '') + (constitutional ? CONSTITUTION_DIRECTIVE : '')
+      + (preserving ? PRESERVATION_DIRECTIVE : '') + (continuity ? CONTINUITY_DIRECTIVE : ''));
     const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir + higherDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));
