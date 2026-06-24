@@ -10,7 +10,7 @@ import { CONSTRUCTION_LAWS, CONSTRUCTION_ORGANS } from './genome.js';
 import { looksLikeBuildRequest, looksLikeVideoRequest, needsContext, isUrgent } from '../agents/masterAgent.js';
 import { recordCommand, topCommands, getPrefs, setPrefs, observeMessage, resetProfile } from '../services/convoPrefs.js';
 import { applySignals, profileDirective, describeProfile, confident, type Traits } from '../services/personality.js';
-import { analyzeComms, readEmotion, readSarcasm, postureDirective, voiceFor } from '../services/comms.js';
+import { analyzeComms, readEmotion, readSarcasm, postureDirective, voiceFor, asProsody } from '../services/comms.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -156,6 +156,21 @@ test('comms: detects likely sarcasm and tells ORB not to take it literally', () 
   const read = analyzeComms('Well that went perfectly.');
   assert.equal(read.sarcasm, true);
   assert.match(postureDirective(read), /sarcastic/i);
+});
+
+test('prosody: voice tone disambiguates flat words, but text always wins', () => {
+  // "okay." is emotionally flat in text — the voice decides.
+  assert.equal(analyzeComms('okay.').emotion, 'neutral');
+  assert.equal(analyzeComms('okay.', 'frustrated').emotion, 'frustrated');   // sounded tense
+  assert.equal(analyzeComms('okay.', 'excited').emotion, 'playful');         // sounded bright
+  assert.equal(analyzeComms('sure, go ahead', 'urgent').urgent, true);       // sounded rushed
+
+  // Explicit words override the voice hint — text is the stronger signal.
+  assert.equal(analyzeComms('ugh this is broken', 'excited').emotion, 'frustrated');
+  assert.equal(analyzeComms('that went wonderfully', 'calm').sarcasm, true);
+
+  assert.equal(asProsody('excited'), 'excited');
+  assert.equal(asProsody('garbage'), undefined);   // unknown hints are ignored, never trusted
 });
 
 test('voice: ORB adapts its delivery to the user state', () => {

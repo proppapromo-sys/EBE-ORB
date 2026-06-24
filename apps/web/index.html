@@ -199,6 +199,9 @@ function sizeP(){pc.width=cv.width;pc.height=cv.height;pctx.setTransform(DPR,0,0
 let energy=0.15,target=0.15,amp=0,speaking=false,listening=false,analyser=null,freq=null,t=0,voiceKick=0;
 let ripples=[],lastRipple=0,phase='idle',ncCol=[123,179,223];
 let bargeFrames=0; // barge-in: how many recent frames the user has been talking OVER ORB
+// Prosody-in: read tone/energy/tempo from the user's own voice → a hint the server uses to tell
+// emotionally-flat words apart ("Great." said four ways). Measured here, never recorded or uploaded.
+let micRate=44100,tdata=null,proAcc=null,lastProsody=null,proTimer=null;
 const setState=s=>{const e=document.getElementById('st-state');if(e)e.textContent=s;};
 function setPhase(p){phase=p;setState(p.toUpperCase());}
 
@@ -826,6 +829,8 @@ async function convene(q){
   const askBody={userId:ORB_USER||'demo-user',message:q,personality:persona};
   try{askBody.tz=Intl.DateTimeFormat().resolvedOptions().timeZone;}catch(e){}
   if(ORB_GEO){askBody.lat=ORB_GEO.lat;askBody.lon=ORB_GEO.lon;}
+  if(lastProsody&&lastProsody!=='neutral')askBody.prosody=lastProsody;  // voice-tone hint (spoken turns only)
+  lastProsody=null;                                                     // consume it — never reuse on the next turn
   try{const r=await fetch(API+'/api/orb/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(askBody)});
     const d=await r.json();
     if(d.mode==='skill'){box.classList.add('show');box.innerHTML=mdToHtml(d.answer||'');speak(d.answer||'');
@@ -857,17 +862,65 @@ function startRecog(){if(!recog||recogActive||speaking)return;try{recog.start();
 async function startMicAnalyser(){
   try{const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
     const ac=new(window.AudioContext||window.webkitAudioContext)();const src=ac.createMediaStreamSource(stream);
-    analyser=ac.createAnalyser();analyser.fftSize=128;freq=new Uint8Array(analyser.frequencyBinCount);src.connect(analyser);
+    micRate=ac.sampleRate||44100;
+    analyser=ac.createAnalyser();analyser.fftSize=1024;freq=new Uint8Array(analyser.frequencyBinCount);src.connect(analyser); // 1024 → enough samples for pitch
+    startProsody();
   }catch(e){/* visuals only; recognition can still run */}
+}
+// ── Prosody analysis: sample the mic while the user speaks, derive pitch (autocorrelation), energy,
+// and tempo, then collapse to one tone hint. Defensive: silence frames are skipped; never persisted.
+function startProsody(){ if(!proTimer) proTimer=setInterval(proSample,100); }       // ~10 Hz
+function proReset(){ proAcc={n:0,eSum:0,pSum:0,pN:0,t0:Date.now()}; }
+function proSample(){
+  if(!analyser||!listening||speaking)return;
+  const N=analyser.fftSize; if(!tdata||tdata.length!==N)tdata=new Float32Array(N);
+  try{analyser.getFloatTimeDomainData(tdata);}catch(e){return;}
+  let s=0;for(let i=0;i<N;i++)s+=tdata[i]*tdata[i];
+  const rms=Math.sqrt(s/N); if(rms<0.012)return;                                    // ignore near-silence
+  if(!proAcc)proReset();
+  proAcc.n++;proAcc.eSum+=rms;
+  const f0=estimatePitch(tdata,micRate); if(f0>70&&f0<400){proAcc.pSum+=f0;proAcc.pN++;}
+}
+function estimatePitch(buf,rate){                                                    // ACF2+ autocorrelation
+  let size=buf.length,rms=0; for(let i=0;i<size;i++)rms+=buf[i]*buf[i];
+  rms=Math.sqrt(rms/size); if(rms<0.01)return -1;
+  let r1=0,r2=size-1;const thr=0.2;
+  for(let i=0;i<size/2;i++){if(Math.abs(buf[i])<thr){r1=i;break;}}
+  for(let i=1;i<size/2;i++){if(Math.abs(buf[size-i])<thr){r2=size-i;break;}}
+  const b=buf.subarray(r1,r2),n=b.length; if(n<32)return -1; const c=new Float32Array(n);
+  for(let i=0;i<n;i++){let sum=0;for(let j=0;j<n-i;j++)sum+=b[j]*b[j+i];c[i]=sum;}
+  let d=0;while(d<n-1&&c[d]>c[d+1])d++;
+  let maxv=-1,maxp=-1;for(let i=d;i<n;i++){if(c[i]>maxv){maxv=c[i];maxp=i;}}
+  if(maxp<=0)return -1;
+  let T0=maxp;const x1=c[T0-1]||0,x2=c[T0]||0,x3=c[T0+1]||0;
+  const a=(x1+x3-2*x2)/2,bb=(x3-x1)/2; if(a)T0=T0-bb/(2*a);
+  return T0>0?rate/T0:-1;
+}
+function prosodyTag(energy,pitch,rate){
+  const fast=rate>3.0, slow=rate<1.5, loud=energy>0.16;
+  const highP=pitch>185, lowP=pitch>0&&pitch<135;
+  if(fast&&highP)return 'excited';
+  if(fast&&loud)return 'urgent';
+  if(loud&&highP)return 'excited';
+  if(loud&&!fast)return 'frustrated';                                               // loud but measured → tense
+  if(slow&&!highP)return 'calm';
+  return 'neutral';
+}
+function prosodySnapshot(wordCount){
+  if(!proAcc||proAcc.n<3)return 'neutral';
+  const energy=proAcc.eSum/proAcc.n, pitch=proAcc.pN?proAcc.pSum/proAcc.pN:0;
+  const secs=Math.max(0.5,(Date.now()-proAcc.t0)/1000), rate=wordCount/secs;
+  return prosodyTag(energy,pitch,rate);
 }
 function buildRecog(){
   if(!SR)return null;
   const r=new SR();r.lang='en-US';r.interimResults=true;r.continuous=false;
-  r.onstart=()=>{recogActive=true;if(convoMode||wakeMode)setPhase('listening');};
+  r.onstart=()=>{recogActive=true;proReset();if(convoMode||wakeMode)setPhase('listening');};
   r.onresult=ev=>{let txt='';for(let i=ev.resultIndex;i<ev.results.length;i++)txt+=ev.results[i][0].transcript;
     document.getElementById('q').value=txt;
     if(!ev.results[ev.results.length-1].isFinal)return;
     const q=txt.trim();if(!q)return;
+    lastProsody=prosodySnapshot(q.split(/\s+/).length);proReset();   // read the voice tone of this utterance
     if(convoMode){handleUtterance(q);return;}
     if(wakeMode){
       if(WAKE.test(q)){const cmd=afterWake(q);

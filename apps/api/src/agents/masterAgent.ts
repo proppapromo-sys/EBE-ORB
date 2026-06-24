@@ -21,7 +21,7 @@ import { generateVideo, videoAllowedFor } from '../services/video.js';
 import { getPlan } from '../billing/plans.js';
 import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type ConvoStyle, type HumorLevel } from '../services/convoPrefs.js';
 import { profileDirective, describeProfile } from '../services/personality.js';
-import { analyzeComms, postureDirective, voiceFor, isUrgent } from '../services/comms.js';
+import { analyzeComms, postureDirective, voiceFor, isUrgent, type Prosody } from '../services/comms.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -346,7 +346,7 @@ const FOLLOWUP_QUESTION = /^(?:\s*orb[,!.]?\s*)?(what|when|how|why|who|where|whi
 export async function askOrb(
   userId: string,
   message: string,
-  opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string; personality?: string; customPersona?: string; lat?: number; lon?: number; tz?: string } = {}
+  opts: { council?: boolean; documents?: string; images?: string[]; level?: CouncilLevel; plan?: string; personality?: string; customPersona?: string; lat?: number; lon?: number; tz?: string; prosody?: Prosody } = {}
 ) {
   // Anticipation follow-through: if ORB just asked for a missing slot, fold this short reply back
   // into the command it was completing. Survives exactly one turn (consumed here, fresh window only).
@@ -484,7 +484,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // Communication Layer: read tone + emotion + urgency for this turn (state, never stored).
     // Saved length preference is the baseline, but a per-turn cue wins — "break it down" goes
     // detailed once; an urgent or frustrated tone forces short and a faster, no-fluff delivery.
-    const comms = analyzeComms(message);
+    const comms = analyzeComms(message, opts.prosody);
     const urgent = comms.urgent;
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || comms.emotion === 'frustrated') ? 'short' : savedStyle;

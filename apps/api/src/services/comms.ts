@@ -50,9 +50,28 @@ export function readSarcasm(message: string): boolean {
 
 export type CommRead = { urgent: boolean; emotion: Emotion; sarcasm: boolean };
 
+// Prosody — the read from the user's VOICE (pitch, energy, tempo), measured in the browser and sent
+// as a single hint. This is what lets "Great." said four ways mean four things: the words are flat,
+// the delivery isn't. Text always wins when it's explicit; prosody only fills a neutral, ambiguous turn.
+export type Prosody = 'urgent' | 'frustrated' | 'excited' | 'calm' | 'neutral';
+const PROSODY: Prosody[] = ['urgent', 'frustrated', 'excited', 'calm', 'neutral'];
+export function asProsody(v: unknown): Prosody | undefined {
+  return typeof v === 'string' && PROSODY.includes(v as Prosody) ? v as Prosody : undefined;
+}
+
 /** The full read for a turn — what the Communication Layer hands to the responder. */
-export function analyzeComms(message: string): CommRead {
-  return { urgent: isUrgent(message), emotion: readEmotion(message), sarcasm: readSarcasm(message) };
+export function analyzeComms(message: string, prosody?: Prosody): CommRead {
+  let urgent = isUrgent(message);
+  let emotion = readEmotion(message);
+  const sarcasm = readSarcasm(message);
+  // Voice fills the gap only when the words give nothing away (no explicit cue, no sarcasm).
+  if (prosody && emotion === 'neutral' && !urgent && !sarcasm) {
+    if (prosody === 'urgent') urgent = true;
+    else if (prosody === 'frustrated') emotion = 'frustrated';
+    else if (prosody === 'excited') emotion = 'playful';
+    // 'calm'/'neutral' leave the neutral read as-is.
+  }
+  return { urgent, emotion, sarcasm };
 }
 
 /**
