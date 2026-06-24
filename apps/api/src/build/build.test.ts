@@ -56,6 +56,7 @@ import { PRIME_QUERY, CONSTITUTION_DIRECTIVE, constitutionStatement, PRIME_DIREC
 import { PRESERVATION_QUERY, PRESERVATION_DIRECTIVE } from '../services/preservation.js';
 import { CONTINUITY_QUERY, CONTINUITY_DIRECTIVE } from '../services/continuity.js';
 import { RECALL_QUERY, COSMIC_MEMORY_DIRECTIVE } from '../services/recall.js';
+import { POSSIBILITY_QUERY, POSSIBILITY_DIRECTIVE } from '../services/possibility.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -439,6 +440,15 @@ test('cosmic memory (#43): "have we seen this before" retrieval + memory-hierarc
   assert.ok(RECALL_QUERY.test('what did we learn from last time'));
   assert.match(COSMIC_MEMORY_DIRECTIVE, /hierarchy|event|lesson|principle|seen before|integrity/i);
   assert.equal(RECALL_QUERY.test('what time is my meeting'), false);
+});
+
+test('infinite possibility (#44): opens the future-scenario space, excludes plain tasks', () => {
+  assert.ok(POSSIBILITY_QUERY.test('what are my options here'));
+  assert.ok(POSSIBILITY_QUERY.test('walk me through best case and worst case'));
+  assert.ok(POSSIBILITY_QUERY.test('what could we build from here'));
+  assert.ok(POSSIBILITY_QUERY.test('what if we went all in'));
+  assert.match(POSSIBILITY_DIRECTIVE, /possibility space|scenario|probable|impact|first concrete move/i);
+  assert.equal(POSSIBILITY_QUERY.test('what time is my meeting'), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {

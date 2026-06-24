@@ -63,6 +63,7 @@ import { PRIME_QUERY, CONSTITUTION_DIRECTIVE, constitutionStatement } from '../s
 import { PRESERVATION_QUERY, PRESERVATION_DIRECTIVE } from '../services/preservation.js';
 import { CONTINUITY_QUERY, CONTINUITY_DIRECTIVE } from '../services/continuity.js';
 import { RECALL_QUERY, COSMIC_MEMORY_DIRECTIVE } from '../services/recall.js';
+import { POSSIBILITY_QUERY, POSSIBILITY_DIRECTIVE } from '../services/possibility.js';
 import { parseReliability, recordReliability, reliabilityOf, roster } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -863,9 +864,10 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const coordinating = COORDINATION_QUERY.test(message);   // #39 synchronize independent actors
     const preserving = PRESERVATION_QUERY.test(message), continuity = CONTINUITY_QUERY.test(message);   // #41 preserve across generations, #42 hold the thread
     const cosmicMem = /\b(what should (?:we|i) never forget|never be forgotten|too valuable to (?:lose|forget)|worth remembering (?:long[- ]term|forever)|what'?s worth remembering|memory hierarchy|what (?:learning|knowledge) (?:should|must) (?:we|i) keep)\b/i.test(message);   // #43 memory hierarchy posture
+    const possible = POSSIBILITY_QUERY.test(message);   // #44 open the future-possibility space
     // #40 Prime Directive: the constitutional test rides along on the most consequential calls (not chit-chat).
     const constitutional = !urgent && (decision || strategic || governing || aligned || steward || flourish);
-    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish || conscEvolve || antifragile || wisdomAccum || discovering || governing || civscale || coordinating || preserving || continuity || cosmicMem;
+    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish || conscEvolve || antifragile || wisdomAccum || discovering || governing || civscale || coordinating || preserving || continuity || cosmicMem || possible;
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
       : (deepThink && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
@@ -917,7 +919,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
       + (conscEvolve ? EVOLVE_DIRECTIVE : '') + (antifragile ? ANTIFRAGILE_DIRECTIVE : '') + (wisdomAccum ? WISDOM_ACCUM_DIRECTIVE : '')
       + (discovering ? DISCOVERY_DIRECTIVE : '') + (governing ? GOVERNANCE_DIRECTIVE : '') + (civscale ? CIVILIZATION_DIRECTIVE : '')
       + (coordinating ? COORDINATION_DIRECTIVE : '') + (constitutional ? CONSTITUTION_DIRECTIVE : '')
-      + (preserving ? PRESERVATION_DIRECTIVE : '') + (continuity ? CONTINUITY_DIRECTIVE : '') + (cosmicMem ? COSMIC_MEMORY_DIRECTIVE : ''));
+      + (preserving ? PRESERVATION_DIRECTIVE : '') + (continuity ? CONTINUITY_DIRECTIVE : '') + (cosmicMem ? COSMIC_MEMORY_DIRECTIVE : '')
+      + (possible ? POSSIBILITY_DIRECTIVE : ''));
     const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir + higherDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));
