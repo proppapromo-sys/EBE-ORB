@@ -20,8 +20,8 @@ const env = (k: string, f: string) => process.env[k] ?? f;
 
 /** Speed-tiered model map (overridable via env). */
 export const ROUTES: Record<TaskClass, { provider: BrainProvider; model: string; label: string }> = {
-  fast:   { provider: 'gemini',    model: env('ORB_FAST_MODEL', 'gemini-2.5-flash'),     label: 'Gemini Flash' },
-  medium: { provider: 'openai',    model: env('ORB_MEDIUM_MODEL', 'gpt-4.1-mini'),       label: 'GPT' },
+  fast:   { provider: 'openai',    model: env('ORB_FAST_MODEL', 'gpt-4.1-mini'),         label: 'GPT' },
+  medium: { provider: 'openai',    model: env('ORB_MEDIUM_MODEL', 'gpt-4.1'),            label: 'GPT' },
   heavy:  { provider: 'anthropic', model: env('ORB_HEAVY_MODEL', 'claude-sonnet-4-6'),   label: 'Claude' },
   visual: { provider: 'gemini',    model: env('ORB_VISUAL_MODEL', 'gemini-2.5-flash'),   label: 'Gemini' }
 };
