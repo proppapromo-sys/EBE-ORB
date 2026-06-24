@@ -57,6 +57,8 @@ import { PRESERVATION_QUERY, PRESERVATION_DIRECTIVE } from '../services/preserva
 import { CONTINUITY_QUERY, CONTINUITY_DIRECTIVE } from '../services/continuity.js';
 import { RECALL_QUERY, COSMIC_MEMORY_DIRECTIVE } from '../services/recall.js';
 import { POSSIBILITY_QUERY, POSSIBILITY_DIRECTIVE } from '../services/possibility.js';
+import { SOURCE_QUERY, SOURCE_DIRECTIVE } from '../services/source.js';
+import { UNITY_QUERY, UNITY_DIRECTIVE } from '../services/unity.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -449,6 +451,21 @@ test('infinite possibility (#44): opens the future-scenario space, excludes plai
   assert.ok(POSSIBILITY_QUERY.test('what if we went all in'));
   assert.match(POSSIBILITY_DIRECTIVE, /possibility space|scenario|probable|impact|first concrete move/i);
   assert.equal(POSSIBILITY_QUERY.test('what time is my meeting'), false);
+});
+
+test('source + unity (#45-#46): trace to origin, and whole-system interconnection', () => {
+  // #45 source — descent from symptom to origin
+  assert.ok(SOURCE_QUERY.test('where does this problem really come from'));
+  assert.ok(SOURCE_QUERY.test('what created the conditions for this'));
+  assert.ok(SOURCE_QUERY.test('we keep treating the symptom not the cause'));
+  assert.match(SOURCE_DIRECTIVE, /source|symptom|generating mechanism|why down the chain|origin/i);
+  // #46 unity — cross-domain interconnection
+  assert.ok(UNITY_QUERY.test('how does everything connect here'));
+  assert.ok(UNITY_QUERY.test('what are the ripple effects across the business'));
+  assert.ok(UNITY_QUERY.test('we keep optimizing one part and ignoring the whole'));
+  assert.match(UNITY_DIRECTIVE, /whole-system|interconnected|ripple|dependencies|isolation/i);
+  // Plain task triggers neither.
+  assert.equal([SOURCE_QUERY, UNITY_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
