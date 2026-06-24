@@ -55,6 +55,7 @@ import { FLOURISHING_QUERY, FLOURISHING_DIRECTIVE } from '../services/flourishin
 import { EVOLVE_QUERY, EVOLVE_DIRECTIVE } from '../services/evolution.js';
 import { ANTIFRAGILE_QUERY, ANTIFRAGILE_DIRECTIVE } from '../services/antifragility.js';
 import { recordLesson, recallLessons, formatLessons, LESSONS_QUERY, WISDOM_ACCUM_DIRECTIVE } from '../services/lessons.js';
+import { DISCOVERY_QUERY, DISCOVERY_DIRECTIVE } from '../services/discovery.js';
 import { parseReliability, recordReliability, reliabilityOf, roster } from '../services/relationships.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
@@ -834,7 +835,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const flourish = FLOURISHING_QUERY.test(message);   // #32 the north star: thriving over output
     const conscEvolve = EVOLVE_QUERY.test(message), antifragile = ANTIFRAGILE_QUERY.test(message);   // #33 become next, #34 gain from stress
     const wisdomAccum = /\b(what (?:can|should) (?:i|we) learn from|lesson(?:s)? from (?:this|that)|what does this teach|takeaway from|for next time|so (?:this|it) (?:doesn'?t|won'?t) happen again|how do (?:i|we) avoid (?:this|that) (?:next time|again))\b/i.test(message);   // #35 extract a durable lesson
-    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish || conscEvolve || antifragile || wisdomAccum;
+    const discovering = DISCOVERY_QUERY.test(message);   // #36 reason like a researcher: hypothesize + verify
+    const deepThink = decision || auditing || creative || strategic || systemic || aligned || foresight || orchestrating || evolving || steward || legacyQ || cosmic || unified || realityCheck || genesis || emerge || synth || coherent || resonant || transcend || harmonic || flourish || conscEvolve || antifragile || wisdomAccum || discovering;
     const style: ConvoStyle = WANT_DETAIL.test(message) ? 'detailed'
       : (deepThink && !urgent) ? 'detailed'
       : (WANT_SHORT.test(message) || urgent || noisy || comms.emotion === 'frustrated') ? 'short' : savedStyle;
@@ -883,7 +885,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
       + (genesis ? GENESIS_DIRECTIVE : '') + (emerge ? EMERGENCE_DIRECTIVE : '')
       + (synth ? SYNTHESIS_DIRECTIVE : '') + (coherent ? COHERENCE_DIRECTIVE : '') + (resonant ? RESONANCE_DIRECTIVE : '') + (transcend ? TRANSCENDENCE_DIRECTIVE : '')
       + (harmonic ? HARMONY_DIRECTIVE : '') + (flourish ? FLOURISHING_DIRECTIVE : '')
-      + (conscEvolve ? EVOLVE_DIRECTIVE : '') + (antifragile ? ANTIFRAGILE_DIRECTIVE : '') + (wisdomAccum ? WISDOM_ACCUM_DIRECTIVE : ''));
+      + (conscEvolve ? EVOLVE_DIRECTIVE : '') + (antifragile ? ANTIFRAGILE_DIRECTIVE : '') + (wisdomAccum ? WISDOM_ACCUM_DIRECTIVE : '')
+      + (discovering ? DISCOVERY_DIRECTIVE : ''));
     const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir + higherDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));

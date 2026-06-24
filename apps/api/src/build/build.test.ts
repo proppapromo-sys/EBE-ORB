@@ -48,6 +48,7 @@ import { FLOURISHING_QUERY, FLOURISHING_DIRECTIVE } from '../services/flourishin
 import { EVOLVE_QUERY, EVOLVE_DIRECTIVE } from '../services/evolution.js';
 import { ANTIFRAGILE_QUERY, ANTIFRAGILE_DIRECTIVE } from '../services/antifragility.js';
 import { parseLesson, rankLessons, formatLessons, LESSONS_QUERY } from '../services/lessons.js';
+import { DISCOVERY_QUERY, DISCOVERY_DIRECTIVE } from '../services/discovery.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -357,6 +358,15 @@ test('wisdom accumulation (#35): extracts lessons from reflection and recalls th
   // Recall query is recognized; a plain task isn't.
   assert.ok(LESSONS_QUERY.test('what have I learned about hiring'));
   assert.equal(LESSONS_QUERY.test('what time is my meeting'), false);
+});
+
+test('truth discovery (#36): triggers the research posture, excludes plain tasks', () => {
+  assert.ok(DISCOVERY_QUERY.test('what are we missing here'));
+  assert.ok(DISCOVERY_QUERY.test('what\'s the real cause of the churn'));
+  assert.ok(DISCOVERY_QUERY.test('how would we test this assumption'));
+  assert.ok(DISCOVERY_QUERY.test('what assumptions should we challenge'));
+  assert.match(DISCOVERY_DIRECTIVE, /hypothes|researcher|test|unknown unknowns|replicated/i);
+  assert.equal(DISCOVERY_QUERY.test('what time is my meeting'), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
