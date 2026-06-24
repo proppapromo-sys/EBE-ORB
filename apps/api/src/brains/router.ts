@@ -73,7 +73,7 @@ const HUMOR_DIRECTIVE: Record<HumorLevel, string> = {
 
 export async function routedAnswer(
   message: string,
-  opts: { images?: string[]; context?: string; style?: 'short' | 'detailed'; urgent?: boolean; humor?: HumorLevel; profile?: string; posture?: string } = {}
+  opts: { images?: string[]; context?: string; style?: 'short' | 'detailed'; urgent?: boolean; humor?: HumorLevel; profile?: string; posture?: string; replyLang?: string } = {}
 ): Promise<{ answer: string; route: TaskClass; model: string; label: string; ok: boolean }> {
   const cls = classifyTask(message, Boolean(opts.images && opts.images.length));
   // Adaptive Conversation Memory: honor the user's learned answer-length preference. "short" keeps
@@ -88,8 +88,11 @@ export async function routedAnswer(
   const witDirective = (!opts.urgent && opts.humor) ? HUMOR_DIRECTIVE[opts.humor] : '';
   // Personality Engine: learned communication tendencies (already gated/empty when not yet earned).
   const profileDirective = opts.profile || '';
+  // Language: mirror the user's language and read intent in context (pragmatics), not literal words.
+  const langDirective = opts.replyLang ? ` Reply in ${opts.replyLang}, the language the user wrote in — preserve their meaning and tone, don't translate literally.` : '';
+  const pragmaticsDirective = ' Read the user\'s intent in context, not just the literal words.';
   const base = opts.context ? `Context (use silently, never read aloud):\n${opts.context}\n\nUser: ${message}` : message;
-  const user = `${styleDirective}${postureDirective}${witDirective}${profileDirective}\n\n${base}`;
+  const user = `${styleDirective}${postureDirective}${witDirective}${profileDirective}${langDirective}${pragmaticsDirective}\n\n${base}`;
   const chain = providerChain(cls);
   // Keep spoken/chat answers short → far faster to generate. Heavy work goes through the council instead.
   const maxTokens = detailed ? 900 : cls === 'fast' ? 240 : 700;

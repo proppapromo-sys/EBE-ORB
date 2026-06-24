@@ -873,7 +873,7 @@ async function convene(q){
     if(voiceLang.code!=='en-US'){                          // answer in the chosen language
       try{const t2=await fetch(API+'/api/orb/translate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:answer,to:voiceLang.name})});
         const td=await t2.json(); if(td.translated){answer=td.translated;sayLang=voiceLang.code;}}catch(e){}
-    }
+    } else if(d.lang){ sayLang=d.lang; }                   // ORB already replied in the user's language — speak it in that voice
     box.innerHTML=need+mdToHtml(answer);   // ORB speaks as one — never show which model answered
     speak(answer,sayLang,d.voice);         // adaptive delivery: rate/pitch/volume tuned to the user's state
   }catch(e){box.textContent='Could not reach ORB API: '+e.message;speak("Sorry, I can't reach my system right now.");}}

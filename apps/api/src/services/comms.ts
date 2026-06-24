@@ -14,7 +14,8 @@
  */
 
 // Urgency — is the user in a hurry? (Also the canonical home for this signal across ORB.)
-const URGENT_RE = /\b(asap|a\.s\.a\.p|urgent(?:ly)?|emergency|right now|right away|immediately|hurry|quick(?:ly)?|fast|now now|come on|no time|stat|on it now)\b|!{2,}/i;
+// English plus the major languages' urgency words — prosody (voice tone) catches the rest in any tongue.
+const URGENT_RE = /\b(asap|a\.s\.a\.p|urgent(?:ly)?|emergency|right now|right away|immediately|hurry|quick(?:ly)?|fast|now now|come on|no time|stat|on it now|ahora mismo|r[áa]pido|deprisa|maintenant|vite|d[ée]p[êe]che|urgente|agora|depressa|sofort|schnell|eilig|subito|presto|быстро|сейчас)\b|!{2,}/i;
 export function isUrgent(message: string): boolean {
   if (URGENT_RE.test(message)) return true;
   const letters = (message || '').replace(/[^A-Za-z]/g, '');

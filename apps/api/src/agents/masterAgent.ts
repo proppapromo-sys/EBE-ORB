@@ -22,6 +22,7 @@ import { getPlan } from '../billing/plans.js';
 import { getPrefs, setPrefs, observeMessage, resetProfile, topCommands, type ConvoStyle, type HumorLevel } from '../services/convoPrefs.js';
 import { profileDirective, describeProfile } from '../services/personality.js';
 import { analyzeComms, postureDirective, voiceFor, sceneDirective, sceneVoice, isUrgent, type Prosody, type Scene } from '../services/comms.js';
+import { detectLang } from '../services/lang.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import type { ConnectorResult, OrbAction, OrbInsight } from '../types/orb.js';
 
@@ -509,10 +510,12 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // Key includes style + tone + humor so calm/rushed/frustrated/playful/sarcastic answers don't collide.
     const cacheable = !liveCtx && !mems.length;
     const key = `${userId}|${style}|${urgent ? 'u' : 'n'}|${comms.emotion[0]}|${comms.sarcasm ? 's' : 'x'}|${humor[0]}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
+    // Language: detect what the user wrote in, so ORB replies in-kind and speaks it in that voice.
+    const lang = detectLang(message);
     // Adaptive voice: how ORB should SOUND this turn (register from humor, delivery from the state read,
     // then shifted toward clarity if the environment is loud).
     const voice = sceneVoice(voiceFor(comms, prefs.humor), opts.scene);
-    if (cacheable) { const hit = cacheGet(key); if (hit) return { mode: 'fast' as const, answer: hit, route: 'fast' as const, model: 'cache', voice }; }
+    if (cacheable) { const hit = cacheGet(key); if (hit) return { mode: 'fast' as const, answer: hit, route: 'fast' as const, model: 'cache', voice, lang: lang.locale }; }
 
     const memCtx = mems.length ? `What I remember about you (use if relevant):\n${mems.map((m) => `- ${m.title}: ${m.content}`).join('\n')}` : '';
     const faveCtx = faves.length ? `Commands this user reaches for often (recognize these shortcuts, act on intent fast): ${faves.map((c) => `"${c}"`).join(', ')}.` : '';
@@ -522,11 +525,12 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     // the user is frustrated (a chief of staff reads the room).
     const posture = postureDirective(comms) + sceneDirective(opts.scene);
     const profile = urgent ? '' : profileDirective(prefs.traits);
-    const routed = await routedAnswer(message, { images: opts.images, context, style, urgent, humor, profile, posture });
+    const replyLang = lang.code === 'en' ? undefined : lang.name;
+    const routed = await routedAnswer(message, { images: opts.images, context, style, urgent, humor, profile, posture, replyLang });
     if (cacheable && routed.ok && routed.answer) cacheSet(key, routed.answer);
     // Situational awareness: the first time a loud place is detected, ORB says so once (then drops it).
-    const envNote = (noisy && shouldNoteEnv(userId)) ? "Sounds loud where you are — I'll keep this short. " : '';
-    return { mode: 'fast' as const, answer: envNote + routed.answer, route: routed.route, model: routed.label, voice };
+    const envNote = (noisy && lang.code === 'en' && shouldNoteEnv(userId)) ? "Sounds loud where you are — I'll keep this short. " : '';
+    return { mode: 'fast' as const, answer: envNote + routed.answer, route: routed.route, model: routed.label, voice, lang: lang.locale };
   }
 
   const council = await runCouncil(userId, message, {

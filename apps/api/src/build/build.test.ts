@@ -11,6 +11,7 @@ import { looksLikeBuildRequest, looksLikeVideoRequest, needsContext, isUrgent } 
 import { recordCommand, topCommands, getPrefs, setPrefs, observeMessage, resetProfile } from '../services/convoPrefs.js';
 import { applySignals, profileDirective, describeProfile, confident, type Traits } from '../services/personality.js';
 import { analyzeComms, readEmotion, readSarcasm, postureDirective, voiceFor, asProsody, asScene, sceneDirective, sceneVoice } from '../services/comms.js';
+import { detectLang } from '../services/lang.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
 import { isOwner, getUserPlan } from '../services/planStore.js';
@@ -156,6 +157,26 @@ test('comms: detects likely sarcasm and tells ORB not to take it literally', () 
   const read = analyzeComms('Well that went perfectly.');
   assert.equal(read.sarcasm, true);
   assert.match(postureDirective(read), /sarcastic/i);
+});
+
+test('lang: detects the user\'s language across scripts, defaults to English', () => {
+  assert.equal(detectLang('Hola, ¿cómo estás?').code, 'es');
+  assert.equal(detectLang('Bonjour, merci beaucoup').code, 'fr');
+  assert.equal(detectLang('Olá, preciso de ajuda').code, 'pt');
+  assert.equal(detectLang('你好吗').code, 'zh');
+  assert.equal(detectLang('こんにちは').code, 'ja');     // kana wins over Han
+  assert.equal(detectLang('Привет, как дела').code, 'ru');
+  assert.equal(detectLang('مرحبا').code, 'ar');
+  assert.equal(detectLang('Schedule a meeting tomorrow').code, 'en');
+  assert.equal(detectLang('').code, 'en');                // nothing → English
+  assert.equal(detectLang('Hola, ¿cómo estás?').locale, 'es-ES');   // carries a TTS locale
+});
+
+test('lang: urgency is read across languages (prosody covers the rest)', () => {
+  assert.equal(isUrgent('necesito esto rápido'), true);   // Spanish
+  assert.equal(isUrgent('dépêche-toi'), true);            // French
+  assert.equal(isUrgent('ich brauche das sofort'), true); // German
+  assert.equal(isUrgent('tell me about the weather'), false);
 });
 
 test('scene: spatial read drives brevity, clarity voice, and privacy awareness', () => {
