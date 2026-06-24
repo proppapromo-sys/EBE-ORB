@@ -51,6 +51,7 @@ import { parseLesson, rankLessons, formatLessons, LESSONS_QUERY } from '../servi
 import { DISCOVERY_QUERY, DISCOVERY_DIRECTIVE } from '../services/discovery.js';
 import { GOVERNANCE_QUERY, GOVERNANCE_DIRECTIVE } from '../services/governance.js';
 import { CIVILIZATION_QUERY, CIVILIZATION_DIRECTIVE } from '../services/civilization.js';
+import { COORDINATION_QUERY, COORDINATION_DIRECTIVE } from '../services/coordination.js';
 import { traceCausal, formatTrace } from '../services/graph.js';
 import { predictIntent, needsClarification, nextPrompt } from '../services/predict.js';
 import { videoAllowedFor, chooseProvider } from '../services/video.js';
@@ -386,6 +387,15 @@ test('civilization operating system (#38): reasons at society scale, excludes pl
   assert.ok(CIVILIZATION_QUERY.test('what\'s good for society and future generations'));
   assert.match(CIVILIZATION_DIRECTIVE, /civilization scale|institutions|commons|second-order|sovereign/i);
   assert.equal(CIVILIZATION_QUERY.test('what time is my meeting'), false);
+});
+
+test('universal coordination (#39): synchronizing independent actors, excludes plain tasks', () => {
+  assert.ok(COORDINATION_QUERY.test('how do I get everyone on the same page'));
+  assert.ok(COORDINATION_QUERY.test('who should do what here'));
+  assert.ok(COORDINATION_QUERY.test('the teams keep duplicating work and stepping on each other'));
+  assert.ok(COORDINATION_QUERY.test('I think we have misaligned incentives'));
+  assert.match(COORDINATION_DIRECTIVE, /coordination|incentives|who decides|handoffs|friction/i);
+  assert.equal(COORDINATION_QUERY.test('what time is my meeting'), false);
 });
 
 test('coherence (#28): detects stated-important-but-deferred goals as real gaps', () => {
