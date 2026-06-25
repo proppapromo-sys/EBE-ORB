@@ -57,6 +57,8 @@ import { PRESERVATION_QUERY, PRESERVATION_DIRECTIVE } from '../services/preserva
 import { CONTINUITY_QUERY, CONTINUITY_DIRECTIVE } from '../services/continuity.js';
 import { RECALL_QUERY, COSMIC_MEMORY_DIRECTIVE } from '../services/recall.js';
 import { POSSIBILITY_QUERY, POSSIBILITY_DIRECTIVE } from '../services/possibility.js';
+import { BENEFIT_QUERY, BENEFIT_DIRECTIVE } from '../services/benefit.js';
+import { CONTRIBUTION_QUERY, CONTRIBUTION_DIRECTIVE } from '../services/contribution.js';
 import { SOURCE_QUERY, SOURCE_DIRECTIVE } from '../services/source.js';
 import { UNITY_QUERY, UNITY_DIRECTIVE } from '../services/unity.js';
 import { RECURSION_QUERY, RECURSION_DIRECTIVE } from '../services/recursion.js';
@@ -699,6 +701,18 @@ test('meaning + create + design (#66-#68)', () => {
   assert.ok(ANTIFRAGILE_QUERY.test('which decisions cannot be undone'));
   assert.ok(ANTIFRAGILE_QUERY.test('does this expand or reduce future options'));
   assert.ok(ANTIFRAGILE_QUERY.test('what is irreversible here'));
+  // #106 possibility expansion -> #44, #107 flourishing expansion -> #32, #108 universal benefit (new),
+  // #109 contribution (new), #110 meaning expansion -> #66
+  assert.ok(POSSIBILITY_QUERY.test('how do we create new categories of possibility'));
+  assert.ok(FLOURISHING_QUERY.test('how do we increase what is beneficial'));
+  assert.ok(BENEFIT_QUERY.test('how do we create positive-sum outcomes'));
+  assert.ok(BENEFIT_QUERY.test('how can more systems benefit at the same time'));
+  assert.match(BENEFIT_DIRECTIVE, /positive-sum|shared|who (?:gains|bears)|harm/i);
+  assert.ok(CONTRIBUTION_QUERY.test('how do we maximize what we give back'));
+  assert.ok(CONTRIBUTION_QUERY.test('leave more than we take'));
+  assert.match(CONTRIBUTION_DIRECTIVE, /contribution|give back|multiply|net-positive/i);
+  assert.ok(MEANING_QUERY.test('how do we make progress matter'));
+  assert.equal([BENEFIT_QUERY, CONTRIBUTION_QUERY].some((re) => re.test('what time is my meeting')), false);
   // Plain task triggers none of the batch.
   assert.equal([POTENTIAL_QUERY, COLLECTIVE_QUERY, PRINCIPLE_QUERY, FUTUREMEM_QUERY, DESTINY_QUERY, MEANING_QUERY, DESIGN_QUERY, CREATE2_QUERY, ARCH_QUERY, UNIFY_QUERY, OPT_QUERY, ACCEL_QUERY].some((re) => re.test('what time is my meeting')), false);
 });
