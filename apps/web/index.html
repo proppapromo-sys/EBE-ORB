@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#05080f" />
 <title>ORB — Digital Chief of Staff</title>
 <style>
   :root{ --cyan:#5adcff; --ice:#bdf3ff; --gold:#ffc878; --hud:#9fd0e6; }
@@ -21,7 +25,7 @@
     display:flex;gap:8px;align-items:center;background:rgba(10,28,46,.55);
     border:1px solid rgba(90,220,255,.30);border-radius:999px;padding:10px 14px;backdrop-filter:blur(8px);
     box-shadow:0 0 34px rgba(20,60,90,.55)}
-  .cmd input{flex:1;background:transparent;border:0;outline:0;color:var(--ice);font:inherit;letter-spacing:.05em}
+  .cmd input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:var(--ice);font:inherit;letter-spacing:.05em}
   .cmd input::placeholder{color:#6fa6c2}
   .cmd button{background:rgba(90,220,255,.16);border:1px solid rgba(90,220,255,.42);color:var(--ice);
     border-radius:999px;padding:8px 16px;font:inherit;cursor:pointer;letter-spacing:.08em}
@@ -98,6 +102,29 @@
   .join-card .skip{display:block;margin-top:14px;color:#6fa6c2;font-size:12px;cursor:pointer;background:none;border:0}
   .join-card .laws{margin-top:16px;font-size:10px;color:#5f88a3;letter-spacing:.06em}
   .join-card .note{font-size:11px;color:var(--gold);margin-top:8px;min-height:14px}
+  /* never let anything create horizontal scroll/overflow on any screen */
+  html,body{overflow-x:hidden;max-width:100%}
+  /* ── phone / app layout ─────────────────────────────────────────────────── */
+  @media (max-width:640px){
+    .hud.tl{top:max(12px,env(safe-area-inset-top));left:14px;font-size:10px;max-width:62vw}
+    .hud.tl .row{line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .hud.tr{top:max(12px,env(safe-area-inset-top));right:14px}
+    .hud.bl{bottom:128px;left:14px;font-size:11px}
+    #speaking{top:max(10px,env(safe-area-inset-top));font-size:10px;width:92vw;letter-spacing:.1em}
+    #live{top:max(10px,env(safe-area-inset-top));right:12px;padding:7px 12px;font-size:11px;letter-spacing:.1em}
+    .toggle{padding:10px 5px;font-size:11px;letter-spacing:.08em}
+    .cmd{width:94vw;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));padding:8px 10px;gap:6px}
+    .cmd button[type=submit]{padding:8px 12px;letter-spacing:.04em}
+    .cmd .icon{padding:6px 7px;font-size:15px}
+    .answer{width:94vw;bottom:calc(84px + env(safe-area-inset-bottom));max-height:42vh;font-size:13px}
+    .hint{display:none}
+    #panel{width:100vw;border-left:0}
+    #panel .tab{flex:1 1 44%;font-size:11px}
+    /* proactive "ORB NOTICED" panel: stretch to margins, sit above the command bar */
+    #orb-proactive{left:8px!important;right:8px!important;max-width:none!important;
+      bottom:calc(86px + env(safe-area-inset-bottom))!important}
+    .join-card{padding:24px 18px}
+  }
 </style>
 </head>
 <body>
