@@ -15,8 +15,9 @@ import { detectCoherenceGaps, type CoherenceGap } from './coherence.js';
 import { listObjectives, progressOf, type Objective } from './objectives.js';
 import { habitPredictions } from './events.js';
 import { supabase } from './supabase.js';
+import { getAccessToken, calendarUpcoming, gmailUnreadImportant } from '../connectors/google.js';
 
-export type Insight = { kind: 'nudge' | 'coherence' | 'stalled' | 'habit'; key: string; priority: number; message: string };
+export type Insight = { kind: 'nudge' | 'coherence' | 'stalled' | 'habit' | 'calendar' | 'inbox'; key: string; priority: number; message: string };
 
 const DAY = 86_400_000;
 
@@ -64,20 +65,87 @@ export function buildInsights(
   return [...best.values()].sort((a, b) => b.priority - a.priority).slice(0, max);
 }
 
+export type CalEvent = { summary: string; start?: string };
+
+function hhmm(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * Pure: turn live connector data (calendar + important-email count) into insights ORB couldn't see from
+ * its own stores — the real-world half. Deterministic (caller passes `now`). Only timed events count for
+ * "soon"; all-day entries (no time component) are ignored. Tested directly.
+ */
+export function connectorInsights(input: { events: CalEvent[]; unreadImportant: number; now: number }, soonMins = 120): Insight[] {
+  const out: Insight[] = [];
+  // Parse timed events into {summary, start, end?} sorted by start.
+  const timed = input.events
+    .filter((e) => e.start && e.start.includes('T'))
+    .map((e) => ({ summary: e.summary, t: Date.parse(e.start as string) }))
+    .filter((e) => Number.isFinite(e.t))
+    .sort((a, b) => a.t - b.t);
+
+  // Meetings starting soon (within the window, not already past).
+  for (const e of timed) {
+    const mins = Math.round((e.t - input.now) / 60_000);
+    if (mins < 0 || mins > soonMins) continue;
+    out.push({
+      kind: 'calendar',
+      key: `cal:${e.summary}:${e.t}`,
+      priority: 70 + Math.max(0, 60 - mins) / 2,   // sooner = higher
+      message: mins <= 1 ? `Starting now: ${e.summary}` : `Coming up in ~${mins} min: ${e.summary} (${hhmm(new Date(e.t).toISOString())})`,
+    });
+  }
+
+  // Back-to-back / overlapping meetings in the upcoming set (worth a heads-up to prep or reschedule).
+  for (let i = 1; i < timed.length; i++) {
+    const prev = timed[i - 1], cur = timed[i];
+    if (cur.t - prev.t <= 5 * 60_000 && cur.t >= input.now) {
+      out.push({ kind: 'calendar', key: `calclash:${prev.t}:${cur.t}`, priority: 96, message: `Tight back-to-back: "${prev.summary}" and "${cur.summary}" start within minutes — want to prep or space them out?` });
+    }
+  }
+
+  // Important-email backlog building up.
+  if (input.unreadImportant >= 5) {
+    out.push({ kind: 'inbox', key: 'inbox:backlog', priority: 55, message: `${input.unreadImportant} important unread emails are piling up — want to triage them?` });
+  }
+  return out;
+}
+
 /** One human-readable digest of what ORB would proactively raise. '' when nothing is worth surfacing. */
 export function formatDigest(insights: Insight[]): string {
   if (!insights.length) return '';
   return 'A few things I\'d raise proactively:\n' + insights.map((i) => `• ${i.message}`).join('\n');
 }
 
-/** Gather the live per-user state and build insights. Never throws — a scan failure surfaces nothing. */
-export async function scanUser(userId: string, now = Date.now()): Promise<Insight[]> {
+/** Live connector data (calendar + important email), or empty when Google isn't connected. Never throws. */
+async function gatherConnectors(userId: string): Promise<{ events: CalEvent[]; unreadImportant: number }> {
+  try {
+    const token = await getAccessToken(userId).catch(() => null);
+    if (!token) return { events: [], unreadImportant: 0 };
+    const [events, unreadImportant] = await Promise.all([
+      calendarUpcoming(token, 1).catch(() => []),
+      gmailUnreadImportant(token).catch(() => 0),
+    ]);
+    return { events, unreadImportant };
+  } catch { return { events: [], unreadImportant: 0 }; }
+}
+
+/** Gather the live per-user state + connectors and build insights. Never throws — failure surfaces nothing. */
+export async function scanUser(userId: string, now = Date.now(), max = 5): Promise<Insight[]> {
   try {
     const goals = await pendingGoals(userId, 12).catch(() => []);
     const gaps = detectCoherenceGaps(goals);
     const objectives = await listObjectives(userId).catch(() => []);
     const habits = await habitPredictions(userId).catch(() => []);
-    return buildInsights({ goals, gaps, objectives, habits, now });
+    const conn = await gatherConnectors(userId);
+    const stored = buildInsights({ goals, gaps, objectives, habits, now }, max);
+    const live = connectorInsights({ events: conn.events, unreadImportant: conn.unreadImportant, now });
+    // Merge both worlds, dedupe by key, rank, cap.
+    const best = new Map<string, Insight>();
+    for (const i of [...live, ...stored]) { const p = best.get(i.key); if (!p || i.priority > p.priority) best.set(i.key, i); }
+    return [...best.values()].sort((a, b) => b.priority - a.priority).slice(0, max);
   } catch { return []; }
 }
 

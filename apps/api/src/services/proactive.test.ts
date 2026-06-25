@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildInsights, formatDigest, freshInsights, persistInsights, pendingInsights, markSeen, _resetStore, type Insight } from './proactive.js';
+import { buildInsights, formatDigest, freshInsights, persistInsights, pendingInsights, markSeen, connectorInsights, _resetStore, type Insight } from './proactive.js';
 import type { Goal } from './goals.js';
 import type { Objective } from './objectives.js';
 
@@ -76,6 +76,31 @@ test('persist + pending + markSeen: durable queue the UI reads, then dismisses',
   assert.equal((await pendingInsights('u1')).length, 0);
   // Another user is isolated.
   assert.equal((await pendingInsights('u2')).length, 0);
+});
+
+test('connectorInsights: surfaces soon meetings, tight back-to-backs, and email backlog', () => {
+  const iso = (minsFromNow: number) => new Date(NOW + minsFromNow * 60_000).toISOString();
+  const out = connectorInsights({
+    events: [
+      { summary: 'Standup', start: iso(30) },        // soon → surfaced
+      { summary: 'Standup b2b', start: iso(33) },     // 3 min after → tight back-to-back
+      { summary: 'All-hands next week', start: '2025-12-01' }, // all-day, no time → ignored
+      { summary: 'Already over', start: iso(-20) },   // past → ignored
+      { summary: 'Way later', start: iso(600) },      // outside 120-min window → ignored
+    ],
+    unreadImportant: 7,
+    now: NOW,
+  });
+  const kinds = out.map((i) => i.kind);
+  assert.ok(out.some((i) => i.kind === 'calendar' && /Coming up/.test(i.message)));
+  assert.ok(out.some((i) => /back-to-back/i.test(i.message)));      // clash detected
+  assert.ok(out.some((i) => i.kind === 'inbox' && /7 important/.test(i.message)));
+  // The all-day, past, and far-future events produced nothing extra beyond the two soon + clash + inbox.
+  assert.ok(!out.some((i) => /All-hands|Already over|Way later/.test(i.message)));
+  // Nothing in, nothing out.
+  assert.equal(connectorInsights({ events: [], unreadImportant: 0, now: NOW }).length, 0);
+  // A small inbox (under threshold) isn't flagged.
+  assert.equal(connectorInsights({ events: [], unreadImportant: 3, now: NOW }).length, 0);
 });
 
 test('freshInsights: cooldown prevents re-surfacing the same insight, then lapses', () => {
