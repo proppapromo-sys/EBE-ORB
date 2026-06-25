@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { askOrb, gatherContext, createAction, dailyBriefing, proactive } from '../agents/masterAgent.js';
 import { scanUser, formatDigest, pendingInsights, markSeen } from '../services/proactive.js';
-import { appendTurn, getConversation, formatTranscript, SAVE_CONVO_RE } from '../services/conversation.js';
+import { appendTurn, getConversation, formatTranscript, clearConversation, SAVE_CONVO_RE } from '../services/conversation.js';
 import { connectors, getConnector } from '../connectors/index.js';
 import { runOrbCycle } from '../genome/orbBranch.js';
 import { createJournal, journalIsDurable } from '../services/journalStore.js';
@@ -446,6 +446,15 @@ orbRouter.post('/conversation/save', async (req, res, next) => {
     const userId = String(req.body?.userId ?? 'demo-user');
     const note = await saveConversationToNotepad(userId);
     res.json({ userId, ok: true, note });
+  } catch (error) { next(error); }
+});
+
+// Clear the stored conversation (a saved notepad copy, if any, is left intact).
+orbRouter.post('/conversation/clear', async (req, res, next) => {
+  try {
+    const userId = String(req.body?.userId ?? 'demo-user');
+    await clearConversation(userId);
+    res.json({ userId, ok: true });
   } catch (error) { next(error); }
 });
 

@@ -1389,22 +1389,36 @@ async function renderChat(){
   const r=await fetch(API+'/api/orb/conversation?userId='+encodeURIComponent(uid));
   const d=await r.json();
   const turns=(d&&d.turns)||[];
-  const head=`<div class="m" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-    <span>${turns.length} message${turns.length===1?'':'s'} · the whole conversation, stored</span>
-    <button id="chat-save" style="font:inherit;font-size:11px;border-radius:7px;padding:5px 9px;cursor:pointer;background:rgba(127,230,161,.16);border:1px solid #7fe6a166;color:#cfeefb">Save to Notepad</button></div>`;
-  const body=turns.length
-    ? turns.map(t=>{const me=t.role==='user';
-        return `<div style="display:flex;justify-content:${me?'flex-end':'flex-start'};margin:6px 0">
-          <div style="max-width:84%;padding:8px 11px;border-radius:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;
-            background:${me?'rgba(90,220,255,.14)':'rgba(10,24,40,.7)'};border:1px solid ${me?'rgba(90,220,255,.35)':'rgba(90,220,255,.18)'};color:#cfeefb">
-            <div style="font-size:10px;letter-spacing:.08em;color:${me?'#7fc7e6':'#ffc878'};margin-bottom:3px">${me?'YOU':'ORB'}</div>${esc(t.text)}</div></div>`;}).join('')
-    : '<div class="empty">No conversation yet. Ask ORB something and it shows up here — the complete thread is kept.</div>';
-  pbody.innerHTML=head+'<div id="chat-log">'+body+'</div>';
-  const log=document.getElementById('chat-log'); if(log) log.scrollTop=log.scrollHeight;
+  const head=`<div class="m" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
+    <span id="chat-count">${turns.length} message${turns.length===1?'':'s'} · the whole conversation, stored</span>
+    <span style="display:flex;gap:6px">
+      <button id="chat-save" style="font:inherit;font-size:11px;border-radius:7px;padding:5px 9px;cursor:pointer;background:rgba(127,230,161,.16);border:1px solid #7fe6a166;color:#cfeefb">Save to Notepad</button>
+      <button id="chat-clear" style="font:inherit;font-size:11px;border-radius:7px;padding:5px 9px;cursor:pointer;background:rgba(255,120,120,.12);border:1px solid #ff787866;color:#ffb0b0">Clear</button>
+    </span></div>
+    <input id="chat-search" placeholder="Search the conversation…" style="width:100%;margin-bottom:8px;background:rgba(10,24,40,.6);
+      border:1px solid rgba(90,220,255,.2);border-radius:9px;color:#cfeefb;font:inherit;font-size:12px;padding:8px 11px;outline:0" />`;
+  function bubble(t){const me=t.role==='user';
+    return `<div style="display:flex;justify-content:${me?'flex-end':'flex-start'};margin:6px 0">
+      <div style="max-width:84%;padding:8px 11px;border-radius:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;
+        background:${me?'rgba(90,220,255,.14)':'rgba(10,24,40,.7)'};border:1px solid ${me?'rgba(90,220,255,.35)':'rgba(90,220,255,.18)'};color:#cfeefb">
+        <div style="font-size:10px;letter-spacing:.08em;color:${me?'#7fc7e6':'#ffc878'};margin-bottom:3px">${me?'YOU':'ORB'}</div>${esc(t.text)}</div></div>`;}
+  const empty='<div class="empty">No conversation yet. Ask ORB something and it shows up here — the complete thread is kept.</div>';
+  pbody.innerHTML=head+'<div id="chat-log">'+(turns.length?turns.map(bubble).join(''):empty)+'</div>';
+  const log=document.getElementById('chat-log'); if(log&&turns.length) log.scrollTop=log.scrollHeight;
+  // Live search filters the visible turns (case-insensitive substring).
+  const search=document.getElementById('chat-search');
+  if(search) search.addEventListener('input',()=>{const q=search.value.trim().toLowerCase();
+    const hits=q?turns.filter(t=>t.text.toLowerCase().includes(q)):turns;
+    log.innerHTML=hits.length?hits.map(bubble).join(''):'<div class="empty">No messages match “'+esc(search.value)+'”.</div>';
+    document.getElementById('chat-count').textContent=q?(hits.length+' of '+turns.length+' match'):(turns.length+' message'+(turns.length===1?'':'s')+' · the whole conversation, stored');});
   const sv=document.getElementById('chat-save');
   if(sv) sv.onclick=async()=>{ sv.textContent='Saving…';
-    try{ const s=await (await fetch(API+'/api/orb/conversation/save',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:uid})})).json();
+    try{ await fetch(API+'/api/orb/conversation/save',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:uid})});
       sv.textContent='✓ Saved to Notepad'; }catch(e){ sv.textContent='Save failed'; } };
+  const cl=document.getElementById('chat-clear');
+  if(cl) cl.onclick=async()=>{ if(!confirm('Clear this conversation? Anything you already saved to Notepad stays.')) return;
+    try{ await fetch(API+'/api/orb/conversation/clear',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:uid})});
+      refreshPanel(); }catch(e){ cl.textContent='Failed'; } };
 }
 async function renderNotes(){
   const r=await fetch(API+'/api/orb/notepad?userId='+encodeURIComponent(ORB_USER||'demo-user'));

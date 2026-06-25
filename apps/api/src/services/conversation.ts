@@ -40,5 +40,11 @@ export function formatTranscript(turns: Turn[]): string {
   return turns.map((t) => `${t.role === 'user' ? 'You' : 'ORB'}: ${t.text}`).join('\n\n');
 }
 
+/** Wipe the conversation for a user (in-memory + Supabase). Never throws. The notepad copy, if saved, stays. */
+export async function clearConversation(userId: string): Promise<void> {
+  cache.set(userId, []);
+  if (supabase) { try { await supabase.from('orb_conversation').delete().eq('user_id', userId); } catch { /* in-memory */ } }
+}
+
 // "save this conversation in/to my notepad", "save our chat", "save the conversation", etc.
 export const SAVE_CONVO_RE = /\b(save (?:this|our|the|my) (?:conversation|chat|convo|transcript|discussion)|save (?:this|it) (?:in|to)(?: my)? notepad|(?:add|put|log) (?:this|our|the) (?:conversation|chat) (?:in|to)(?: my)? note|keep a (?:copy|record) of (?:this|our) (?:conversation|chat))\b/i;

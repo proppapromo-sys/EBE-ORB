@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendTurn, getConversation, formatTranscript, SAVE_CONVO_RE } from './conversation.js';
+import { appendTurn, getConversation, formatTranscript, clearConversation, SAVE_CONVO_RE } from './conversation.js';
 
 test('conversation: appends turns in order and formats a readable transcript', async () => {
   const u = 'convo-test-user';
@@ -15,6 +15,15 @@ test('conversation: appends turns in order and formats a readable transcript', a
   assert.match(transcript, /^You: what needs my attention today\?/);
   assert.match(transcript, /ORB: Your strategy doc has stalled\./);
   assert.equal(formatTranscript([]), '(no conversation yet)');
+});
+
+test('clearConversation: wipes the stored transcript', async () => {
+  const u = 'convo-clear-user';
+  await appendTurn(u, 'user', 'hello');
+  await appendTurn(u, 'orb', 'hi there');
+  assert.equal((await getConversation(u)).length, 2);
+  await clearConversation(u);
+  assert.equal((await getConversation(u)).length, 0);
 });
 
 test('SAVE_CONVO_RE: matches the save-to-notepad command, not normal chat', () => {
