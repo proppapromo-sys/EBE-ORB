@@ -95,6 +95,16 @@ create table if not exists orb_notepad (
   updated_at timestamptz default now()
 );
 
+-- Conversation transcript — every exchange (user message + ORB answer), so the whole conversation is
+-- stored and viewable in the CHAT tab, and "save this conversation in my notepad" can write it all out.
+create table if not exists orb_conversation (
+  user_id text not null,
+  role    text not null,
+  text    text not null,
+  at      timestamptz default now()
+);
+create index if not exists orb_conversation_user_at on orb_conversation (user_id, at desc);
+
 -- OAuth tokens for live connectors (Google → Gmail + Calendar)
 create table if not exists orb_oauth_tokens (
   user_key     text not null,

@@ -181,6 +181,7 @@
   <header><div class="h">◢ ORB CONTROL</div><button class="icon" id="panel-close" style="background:none;border:0;color:#8fb9d4;cursor:pointer;font-size:16px">✕</button></header>
   <div class="tabs">
     <div class="tab sel" data-tab="approvals">APPROVALS</div>
+    <div class="tab" data-tab="chat">CHAT</div>
     <div class="tab" data-tab="briefing">BRIEFING</div>
     <div class="tab" data-tab="notes">NOTES</div>
     <div class="tab" data-tab="news">NEWS</div>
@@ -924,6 +925,8 @@ async function convene(q){
     if(avatarOn&&avatarUrl){ box.innerHTML=need+'<div class="m" style="opacity:.7">Rendering your avatar…</div>'+mdToHtml(answer);
       const played=await playAvatar(answer); if(!played) speak(answer,sayLang,d.voice); }
     else speak(answer,sayLang,d.voice);    // adaptive delivery: rate/pitch/volume tuned to the user's state
+    // If the CHAT transcript is open, refresh it so the new exchange shows up live.
+    try{ if(panel.classList.contains('on')&&tab==='chat') setTimeout(refreshPanel,200); }catch(_){}
   }catch(e){box.textContent='Could not reach ORB API: '+e.message;speak("Sorry, I can't reach my system right now.");}}
 
 document.getElementById('cmd').addEventListener('submit',ev=>{ev.preventDefault();convene(document.getElementById('q').value.trim());});
@@ -1238,6 +1241,7 @@ async function refreshPanel(){
   pbody.innerHTML='<div class="empty">Loading…</div>';
   try{
     if(tab==='approvals') await renderApprovals();
+    else if(tab==='chat') await renderChat();
     else if(tab==='briefing') await renderBriefing();
     else if(tab==='notes') await renderNotes();
     else if(tab==='news') await renderNews();
@@ -1380,6 +1384,28 @@ async function renderKeys(){
   });
 }
 let noteTimer=null;
+async function renderChat(){
+  const uid=ORB_USER||'demo-user';
+  const r=await fetch(API+'/api/orb/conversation?userId='+encodeURIComponent(uid));
+  const d=await r.json();
+  const turns=(d&&d.turns)||[];
+  const head=`<div class="m" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <span>${turns.length} message${turns.length===1?'':'s'} · the whole conversation, stored</span>
+    <button id="chat-save" style="font:inherit;font-size:11px;border-radius:7px;padding:5px 9px;cursor:pointer;background:rgba(127,230,161,.16);border:1px solid #7fe6a166;color:#cfeefb">Save to Notepad</button></div>`;
+  const body=turns.length
+    ? turns.map(t=>{const me=t.role==='user';
+        return `<div style="display:flex;justify-content:${me?'flex-end':'flex-start'};margin:6px 0">
+          <div style="max-width:84%;padding:8px 11px;border-radius:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;
+            background:${me?'rgba(90,220,255,.14)':'rgba(10,24,40,.7)'};border:1px solid ${me?'rgba(90,220,255,.35)':'rgba(90,220,255,.18)'};color:#cfeefb">
+            <div style="font-size:10px;letter-spacing:.08em;color:${me?'#7fc7e6':'#ffc878'};margin-bottom:3px">${me?'YOU':'ORB'}</div>${esc(t.text)}</div></div>`;}).join('')
+    : '<div class="empty">No conversation yet. Ask ORB something and it shows up here — the complete thread is kept.</div>';
+  pbody.innerHTML=head+'<div id="chat-log">'+body+'</div>';
+  const log=document.getElementById('chat-log'); if(log) log.scrollTop=log.scrollHeight;
+  const sv=document.getElementById('chat-save');
+  if(sv) sv.onclick=async()=>{ sv.textContent='Saving…';
+    try{ const s=await (await fetch(API+'/api/orb/conversation/save',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:uid})})).json();
+      sv.textContent='✓ Saved to Notepad'; }catch(e){ sv.textContent='Save failed'; } };
+}
 async function renderNotes(){
   const r=await fetch(API+'/api/orb/notepad?userId='+encodeURIComponent(ORB_USER||'demo-user'));
   const d=await r.json();

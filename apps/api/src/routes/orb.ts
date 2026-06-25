@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { askOrb, gatherContext, createAction, dailyBriefing, proactive } from '../agents/masterAgent.js';
 import { scanUser, formatDigest, pendingInsights, markSeen } from '../services/proactive.js';
+import { appendTurn, getConversation, formatTranscript, SAVE_CONVO_RE } from '../services/conversation.js';
 import { connectors, getConnector } from '../connectors/index.js';
 import { runOrbCycle } from '../genome/orbBranch.js';
 import { createJournal, journalIsDurable } from '../services/journalStore.js';
@@ -386,9 +387,27 @@ orbRouter.post('/proactive/seen', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// Save the running transcript into the user's notepad (appended, dated). Returns a short confirmation.
+async function saveConversationToNotepad(userId: string): Promise<string> {
+  const turns = await getConversation(userId, 1000).catch(() => []);
+  const transcript = formatTranscript(turns);
+  const prev = (await getNotepad(userId).catch(() => ({ content: '' }))).content || '';
+  const stamp = new Date().toLocaleString();
+  const block = `--- Conversation saved ${stamp} ---\n${transcript}`;
+  await saveNotepad(userId, prev ? `${prev}\n\n${block}` : block).catch(() => {});
+  return `Saved our conversation to your notepad — ${turns.length} message${turns.length === 1 ? '' : 's'}. Open the NOTES tab to read it, or the CHAT tab to see it live.`;
+}
+
 orbRouter.post('/ask', async (req, res, next) => {
   try {
     const parsed = AskSchema.parse(req.body);
+    // "save this conversation in my notepad" — write the full transcript out, no model call needed.
+    if (SAVE_CONVO_RE.test(parsed.message)) {
+      const answer = await saveConversationToNotepad(parsed.userId);
+      await appendTurn(parsed.userId, 'user', parsed.message);
+      await appendTurn(parsed.userId, 'orb', answer);
+      return res.json({ mode: 'fast', answer, route: 'fast', model: 'notepad' });
+    }
     // Use the user's subscribed tier (caps council depth + Build power) unless one is passed.
     const plan = parsed.plan ?? await getUserPlan(parsed.userId);
     const result = await askOrb(parsed.userId, parsed.message, {
@@ -405,7 +424,28 @@ orbRouter.post('/ask', async (req, res, next) => {
       prosody: parsed.prosody,
       scene: parsed.scene
     });
+    // Store the exchange so the whole conversation is viewable + saveable. Fire-and-forget, never blocks.
+    void appendTurn(parsed.userId, 'user', parsed.message).catch(() => {});
+    void appendTurn(parsed.userId, 'orb', (result as { answer?: string }).answer ?? '').catch(() => {});
     res.json(result);
+  } catch (error) { next(error); }
+});
+
+// The stored conversation transcript (oldest -> newest) — what the CHAT tab renders.
+orbRouter.get('/conversation', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? 'demo-user');
+    const turns = await getConversation(userId, 400);
+    res.json({ userId, turns, transcript: formatTranscript(turns) });
+  } catch (error) { next(error); }
+});
+
+// Save the full conversation into the notepad (button or spoken command both hit this path).
+orbRouter.post('/conversation/save', async (req, res, next) => {
+  try {
+    const userId = String(req.body?.userId ?? 'demo-user');
+    const note = await saveConversationToNotepad(userId);
+    res.json({ userId, ok: true, note });
   } catch (error) { next(error); }
 });
 
