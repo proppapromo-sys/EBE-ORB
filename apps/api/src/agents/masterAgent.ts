@@ -41,6 +41,8 @@ import { selfModel, userIdentity } from '../services/identity.js';
 import { PURPOSE_QUERY, ALIGN_QUERY, ALIGNMENT_DIRECTIVE, getPurpose, setPurpose, parsePurpose, alignmentContext } from '../services/purpose.js';
 import { FORESIGHT_QUERY, FORESIGHT_DIRECTIVE } from '../services/foresight.js';
 import { chiefOfStaffBrief, describeArchitecture } from '../services/architecture.js';
+import { parseBusiness, setBusiness, businessContext, EYES_AND_EARS, EYES_DIRECTIVE, PROBLEMS_QUERY } from '../services/business.js';
+import { scanUser as scanBusiness, formatProblems } from '../services/proactive.js';
 import { PLAN_QUERY, ORCHESTRATION_DIRECTIVE } from '../services/orchestration.js';
 import { EVOLUTION_QUERY, EVOLUTION_DIRECTIVE, STEWARDSHIP_QUERY, STEWARDSHIP_DIRECTIVE, LEGACY_QUERY, LEGACY_DIRECTIVE } from '../services/stewardship.js';
 import { COSMIC_QUERY, COSMIC_DIRECTIVE, UNIFIED_QUERY, UNIFIED_DIRECTIVE, REALITY_QUERY, REALITY_DIRECTIVE, IMPROVEMENT_QUERY, INFINITE_PRINCIPLE } from '../services/unified.js';
@@ -659,9 +661,15 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: INFINITE_PRINCIPLE, route: 'fast' as const, model: 'architecture' };
   }
 
+  // Eyes & ears: "what do you see / what's wrong / what needs fixing" → live scan of the business,
+  // framed as problems to act on (confirm-first). This is ORB watching, not just answering.
+  if (PROBLEMS_QUERY.test(message)) {
+    return { mode: 'fast' as const, answer: formatProblems(await scanBusiness(userId).catch(() => [])), route: 'fast' as const, model: 'eyes' };
+  }
+
   // Self-Identity: ORB's model of itself (mission, boundaries, continuity) and its living model of you.
-  if (/\bwho are you\b|\bwhat'?s your (?:mission|purpose)\b|\bare you conscious\b|\bwhat are you, really\b/i.test(message)) {
-    return { mode: 'fast' as const, answer: selfModel(), route: 'fast' as const, model: 'identity' };
+  if (/\bwho are you\b|\bwhat'?s your (?:mission|purpose)\b|\bare you conscious\b|\bwhat are you, really\b|\bwhat do you do for me\b/i.test(message)) {
+    return { mode: 'fast' as const, answer: `${EYES_AND_EARS}\n\n${selfModel()}`, route: 'fast' as const, model: 'identity' };
   }
   if (/\bwho am i(?: to you)?\b|\bwhat do you know about me\b|\bhow (?:do|would) you (?:see|describe) me\b|\bdescribe me\b|\bmy identity\b|\bpaint a picture of (?:me|who i am)\b/i.test(message)) {
     return { mode: 'fast' as const, answer: await userIdentity(userId).catch(() => "I'm still forming a picture of who you are."), route: 'fast' as const, model: 'identity' };
@@ -857,6 +865,7 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     completeIntent(userId, message).then((g) => { if (g) void logEvent(userId, 'completed', g.action); }).catch(() => {});
     void logEvent(userId, 'active').catch(() => {});   // timestamped activity → habit/time-of-day patterns
     void recordLesson(userId, message).catch(() => {});   // #35: capture durable lessons when the user reflects
+    { const biz = parseBusiness(message); if (biz) void setBusiness(userId, biz).catch(() => {}); }   // learn the business as they describe it
     const nudge = intent && intent.deferred ? nudgeFor(intent.goal) : null;
     let liveCtx = toolCtx;
     if (!liveCtx && needsContext(message)) liveCtx = JSON.stringify(await gatherContext(userId)).slice(0, 4000);
@@ -946,8 +955,8 @@ Flag every action whose requiresApproval is true — never imply it can run on i
     const faveCtx = faves.length ? `Commands this user reaches for often (recognize these shortcuts, act on intent fast): ${faves.map((c) => `"${c}"`).join(', ')}.` : '';
     // Goal Systems + Purpose: hand the model the user's objectives and what gives their work meaning,
     // so it frames answers around what they serve and flags anything pulling against it.
-    const [goalCtx, purposeCtx] = await Promise.all([goalsContext(userId).catch(() => ''), alignmentContext(userId).catch(() => '')]);
-    const context = [memCtx, faveCtx, goalCtx, purposeCtx, liveCtx].filter(Boolean).join('\n\n') || undefined;
+    const [goalCtx, purposeCtx, bizCtx] = await Promise.all([goalsContext(userId).catch(() => ''), alignmentContext(userId).catch(() => ''), businessContext(userId).catch(() => '')]);
+    const context = [bizCtx, memCtx, faveCtx, goalCtx, purposeCtx, liveCtx].filter(Boolean).join('\n\n') || undefined;
     // Communication posture (urgency/emotion) + learned personality tendencies → quiet directives
     // shaping HOW ORB answers. Personality is skipped when rushed (speed wins); wit is dropped when
     // the user is frustrated (a chief of staff reads the room).
@@ -983,7 +992,9 @@ Flag every action whose requiresApproval is true — never imply it can run on i
       + (optimizing ? OPT_DIRECTIVE : '') + (accelerating ? ACCEL_DIRECTIVE : '')
       + (metaReal ? METAREALITY_DIRECTIVE : '') + (existential2 ? EXIST_DIRECTIVE : '') + (questioning ? QUESTION_DIRECTIVE : '') + (horizon ? HORIZON_DIRECTIVE : '') + (progress ? PROGRESS_DIRECTIVE : '') + (valuing ? VALUE_DIRECTIVE : '') + (recreating ? RECREATE_DIRECTIVE : '') + (cultivating ? CULTIVATE_DIRECTIVE : '')
       + (omnibuild ? OMNIBUILD_DIRECTIVE : '') + (realizing ? REALIZE_DIRECTIVE : '') + (benefiting ? BENEFIT_DIRECTIVE : '') + (contributing ? CONTRIBUTION_DIRECTIVE : ''));
-    const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir + higherDir;
+    // Once ORB knows the business, every answer takes the eyes-and-ears operator stance (skip when rushed).
+    const eyesDir = (!urgent && bizCtx) ? EYES_DIRECTIVE : '';
+    const posture = postureDirective(comms) + sceneDirective(opts.scene) + decisionDir + auditDir + creativeDir + wisdomDir + systemsDir + alignDir + foresightDir + higherDir + eyesDir;
     // Personality tendencies + motivation drivers shape HOW and WHY ORB frames the answer (skip when rushed).
     const profile = urgent ? '' : (profileDirective(prefs.traits) + await motivationDirective(userId).catch(() => ''));
     const replyLang = lang.code === 'en' ? undefined : lang.name;

@@ -119,6 +119,13 @@ export function formatDigest(insights: Insight[]): string {
   return 'A few things I\'d raise proactively:\n' + insights.map((i) => `• ${i.message}`).join('\n');
 }
 
+/** Eyes-and-ears framing: what ORB sees across the business, as problems to act on (confirm-first). */
+export function formatProblems(insights: Insight[]): string {
+  if (!insights.length) return "I'm watching, and nothing's flagging right now — goals, calendar, and inbox look clear. Connect more of your business and I'll see more.";
+  return "Here's what I'm seeing across your business right now — I'll drive any fix, but I'll check with you before anything changes:\n"
+    + insights.map((i) => `• ${i.message}`).join('\n');
+}
+
 /** Live connector data (calendar + important email), or empty when Google isn't connected. Never throws. */
 async function gatherConnectors(userId: string): Promise<{ events: CalEvent[]; unreadImportant: number }> {
   try {

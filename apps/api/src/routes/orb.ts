@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { askOrb, gatherContext, createAction, dailyBriefing, proactive } from '../agents/masterAgent.js';
 import { scanUser, formatDigest, pendingInsights, markSeen } from '../services/proactive.js';
 import { appendTurn, getConversation, formatTranscript, clearConversation, SAVE_CONVO_RE } from '../services/conversation.js';
+import { getBusiness, setBusiness } from '../services/business.js';
 import { connectors, getConnector } from '../connectors/index.js';
 import { runOrbCycle } from '../genome/orbBranch.js';
 import { createJournal, journalIsDurable } from '../services/journalStore.js';
@@ -455,6 +456,28 @@ orbRouter.post('/conversation/clear', async (req, res, next) => {
     const userId = String(req.body?.userId ?? 'demo-user');
     await clearConversation(userId);
     res.json({ userId, ok: true });
+  } catch (error) { next(error); }
+});
+
+// Business Brain — what ORB knows about the user's business (eyes-and-ears profile).
+orbRouter.get('/business', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? 'demo-user');
+    res.json({ userId, business: await getBusiness(userId) });
+  } catch (error) { next(error); }
+});
+orbRouter.post('/business', async (req, res, next) => {
+  try {
+    const userId = String(req.body?.userId ?? 'demo-user');
+    const { name, description, priorities, metrics, notes } = req.body ?? {};
+    const business = await setBusiness(userId, {
+      ...(typeof name === 'string' ? { name } : {}),
+      ...(typeof description === 'string' ? { description } : {}),
+      ...(Array.isArray(priorities) ? { priorities: priorities.map(String) } : {}),
+      ...(Array.isArray(metrics) ? { metrics: metrics.map(String) } : {}),
+      ...(Array.isArray(notes) ? { notes: notes.map(String) } : {}),
+    });
+    res.json({ userId, business });
   } catch (error) { next(error); }
 });
 

@@ -182,6 +182,7 @@
   <div class="tabs">
     <div class="tab sel" data-tab="approvals">APPROVALS</div>
     <div class="tab" data-tab="chat">CHAT</div>
+    <div class="tab" data-tab="business">BUSINESS</div>
     <div class="tab" data-tab="briefing">BRIEFING</div>
     <div class="tab" data-tab="notes">NOTES</div>
     <div class="tab" data-tab="news">NEWS</div>
@@ -1242,6 +1243,7 @@ async function refreshPanel(){
   try{
     if(tab==='approvals') await renderApprovals();
     else if(tab==='chat') await renderChat();
+    else if(tab==='business') await renderBusiness();
     else if(tab==='briefing') await renderBriefing();
     else if(tab==='notes') await renderNotes();
     else if(tab==='news') await renderNews();
@@ -1384,6 +1386,25 @@ async function renderKeys(){
   });
 }
 let noteTimer=null;
+async function renderBusiness(){
+  const uid=ORB_USER||'demo-user';
+  const d=await (await fetch(API+'/api/orb/business?userId='+encodeURIComponent(uid))).json();
+  const b=(d&&d.business)||{description:'',priorities:[],metrics:[],notes:[]};
+  const fld=(label,id,val,ph)=>`<div style="margin-bottom:10px"><div class="m" style="margin-bottom:3px">${label}</div>
+    <input id="${id}" value="${esc(val||'')}" placeholder="${ph}" style="width:100%;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);border-radius:9px;color:#cfeefb;font:inherit;font-size:13px;padding:9px 11px;outline:0"/></div>`;
+  pbody.innerHTML=`<div class="m" style="margin-bottom:8px">I'm your eyes and ears here — tell me about the business and I'll fold it into everything. You decide; I watch, advise, and ask before I act.</div>
+    ${fld('What the business is','bz-desc',b.description,'e.g. a coffee roastery in Austin')}
+    ${fld('Priorities (comma-separated)','bz-pri',(b.priorities||[]).join(', '),'cut churn, launch wholesale')}
+    ${fld('Metrics that matter (comma-separated)','bz-met',(b.metrics||[]).join(', '),'MRR, retention')}
+    <button id="bz-save" style="font:inherit;font-size:12px;border-radius:8px;padding:8px 14px;cursor:pointer;background:rgba(127,230,161,.16);border:1px solid #7fe6a166;color:#cfeefb">Save</button>
+    <span id="bz-state" style="color:#7fe6a1;font-size:11px;margin-left:8px"></span>
+    ${(b.notes&&b.notes.length)?'<div class="m" style="margin-top:14px">What I\'ve learned:</div>'+b.notes.map(n=>`<div class="card"><div class="m">${esc(n)}</div></div>`).join(''):''}`;
+  const list=v=>v.split(',').map(s=>s.trim()).filter(Boolean);
+  document.getElementById('bz-save').onclick=async()=>{document.getElementById('bz-state').textContent='…';
+    try{ await fetch(API+'/api/orb/business',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:uid,
+      description:document.getElementById('bz-desc').value, priorities:list(document.getElementById('bz-pri').value), metrics:list(document.getElementById('bz-met').value)})});
+      document.getElementById('bz-state').textContent='✓ saved'; }catch(e){ document.getElementById('bz-state').textContent='failed'; } };
+}
 async function renderChat(){
   const uid=ORB_USER||'demo-user';
   const r=await fetch(API+'/api/orb/conversation?userId='+encodeURIComponent(uid));

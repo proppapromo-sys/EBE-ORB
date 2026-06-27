@@ -105,6 +105,19 @@ create table if not exists orb_conversation (
 );
 create index if not exists orb_conversation_user_at on orb_conversation (user_id, at desc);
 
+-- Business Brain — what ORB knows about the user's business (its eyes-and-ears profile): description,
+-- priorities, the metrics that matter, and notes it learns over time. Woven into every chat turn so
+-- ORB answers with standing awareness, and used by the "what do you see / what needs fixing" scan.
+create table if not exists orb_business (
+  user_id     text primary key,
+  name        text default '',
+  description text default '',
+  priorities  jsonb not null default '[]'::jsonb,
+  metrics     jsonb not null default '[]'::jsonb,
+  notes       jsonb not null default '[]'::jsonb,
+  updated     timestamptz default now()
+);
+
 -- OAuth tokens for live connectors (Google → Gmail + Calendar)
 create table if not exists orb_oauth_tokens (
   user_key     text not null,
