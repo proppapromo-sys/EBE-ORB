@@ -1,7 +1,15 @@
 # Deploy EBE (live in ~20 minutes)
 
-EBE is one Node service that serves both the API and the web face. It reads `PORT` from the host
-and the web auto-targets its own origin — so any Node host works. Recommended: **Render** (free tier).
+> **Goal: connect ORB to your real business?** See [`CONNECT_BUSINESS.md`](./CONNECT_BUSINESS.md) —
+> it's the focused path (deploy + Supabase schema + connect Google/Stripe + the proactive worker).
+
+EBE is one Node service that serves both the API and the web face, plus a scheduled **worker**
+(`render.yaml` → `ebe-orb-worker` cron) that runs ORB's proactive eyes-and-ears scan every 30 min.
+It reads `PORT` from the host and the web auto-targets its own origin — so any Node host works.
+Recommended: **Render** (free tier).
+
+> **Database first:** run all of [`../supabase/schema.sql`](../supabase/schema.sql) in your Supabase
+> project so goals, conversation, the business profile, and surfaced insights persist across restarts.
 
 ## Prereqs
 - The code on **GitHub** (merge `claude/charming-franklin-yzb1cg` → `main`, or deploy that branch).

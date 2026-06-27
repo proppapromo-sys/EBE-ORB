@@ -13,7 +13,9 @@ import { runTick } from '../services/proactive.js';
 async function main() {
   const fromArgs = process.argv.slice(2);
   const fromEnv = (process.env.PROACTIVE_USERS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  const userIds = (fromArgs.length ? fromArgs : fromEnv.length ? fromEnv : ['demo-user']);
+  // Default to the owner(s) so the owner's business is watched without extra config.
+  const owners = (process.env.ORB_OWNER_EMAILS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const userIds = (fromArgs.length ? fromArgs : fromEnv.length ? fromEnv : owners.length ? owners : ['demo-user']);
   const results = await runTick(userIds);
   if (!results.length) { console.log('[proactive] nothing to surface this tick'); return; }
   for (const { userId, insights } of results) {

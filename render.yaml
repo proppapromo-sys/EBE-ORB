@@ -1,4 +1,4 @@
-# Render Blueprint — one service that serves the EBE API + web face.
+# Render Blueprint — the EBE API + web face, plus the proactive worker that makes ORB watch on its own.
 # Deploy: push to GitHub → Render → New → Blueprint → pick this repo → set the secret env vars.
 services:
   - type: web
@@ -69,4 +69,32 @@ services:
       - key: STRIPE_PRICE_EXECUTIVE
         sync: false
       - key: STRIPE_PRICE_ENTERPRISE
+        sync: false
+      # ── Proactive worker: who it scans (comma-separated). Defaults to ORB_OWNER_EMAILS. ──
+      - key: PROACTIVE_USERS
+        sync: false
+
+  # The proactive worker — runs ORB's eyes-and-ears scan on a schedule (every 30 min) so it surfaces
+  # problems on its own. One pass then exits; the schedule lives here. Reads the same stores/connectors.
+  - type: cron
+    name: ebe-orb-worker
+    runtime: node
+    schedule: "*/30 * * * *"
+    branch: main
+    buildCommand: npm install && npm run build
+    startCommand: npm run worker
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: ORB_OWNER_EMAILS
+        sync: false
+      - key: PROACTIVE_USERS
         sync: false
