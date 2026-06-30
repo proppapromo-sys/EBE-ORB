@@ -243,6 +243,14 @@ let sttMode=false,sttRec=null,sttStream=null,sttTimer=null;
 const setState=s=>{const e=document.getElementById('st-state');if(e)e.textContent=s;};
 function setPhase(p){phase=p;setState(p.toUpperCase());}
 
+// ── orb life: hover reaction + smooth spin accumulator + satellite trail ──
+let hover=0,hoverT=0,spinA=0,ORB_ROT=0;const satTrail=[];
+addEventListener('pointermove',e=>{const dx=e.clientX-CX,dy=e.clientY-CY;
+  // wake when the pointer is over the orb OR its wordmark just below it
+  hoverT=(Math.hypot(dx,dy)<R*1.55 || (Math.abs(dx)<R*1.4 && e.clientY>CY+R*1.0 && e.clientY<CY+R*1.7))?1:0;});
+addEventListener('pointerleave',()=>hoverT=0);
+addEventListener('blur',()=>hoverT=0);
+
 // ── NeuralCluster core (EBE Live design) — Fibonacci sphere of neurons, 3-nearest-neighbor
 // synapses, particles firing along them, bright thought-core. Phase-tinted, pulses with the voice.
 const NC_N=54, nc_nodes=[], nc_edges=[], nc_fire=new Float32Array(NC_N);
@@ -357,7 +365,7 @@ function drawLucidOrb(pulse){
 
   // 3) texture + subtle rotation (clipped to the sphere)
   ctx.save();ctx.beginPath();ctx.arc(CX,CY,r,0,7);ctx.clip();
-  const rot=t*0.4;
+  const rot=ORB_ROT;
   // cloud bands (soft light) sweeping around — additive
   ctx.globalCompositeOperation='lighter';
   for(let i=0;i<5;i++){
@@ -391,6 +399,50 @@ function drawLucidOrb(pulse){
   ctx.restore();
 }
 
+// breathing aura — a soft halo that slowly scales/glows behind the core (alive, flares on hover)
+function drawAura(breath,flare){
+  ctx.save();ctx.globalCompositeOperation='lighter';
+  const rr=R*(1.5+0.16*breath)*(1+0.14*flare);
+  const g=ctx.createRadialGradient(CX,CY,R*0.45,CX,CY,rr);
+  g.addColorStop(0,`rgba(95,185,255,${0.05+0.10*breath+0.20*flare})`);
+  g.addColorStop(0.55,`rgba(60,130,240,${0.03+0.07*flare})`);
+  g.addColorStop(1,'rgba(40,90,220,0)');
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(CX,CY,rr,0,7);ctx.fill();ctx.restore();
+}
+// one orbital ring — tilted ellipse, drawn wide+faint then thin+bright for a glow
+function drawRing(rad,ry,ang,rgb,w,flare){
+  ctx.save();ctx.globalCompositeOperation='lighter';ctx.translate(CX,CY);ctx.rotate(ang);ctx.scale(1,ry);
+  ctx.lineWidth=w*4*(1+flare);ctx.strokeStyle=`rgba(${rgb},${0.03+0.13*flare})`;ctx.beginPath();ctx.arc(0,0,rad,0,7);ctx.stroke();
+  ctx.lineWidth=w*(1+0.6*flare);ctx.strokeStyle=`rgba(${rgb},${0.16+0.5*flare})`;ctx.beginPath();ctx.arc(0,0,rad,0,7);ctx.stroke();
+  ctx.restore();
+}
+// satellite particle — a bright dot orbiting the core, leaving a fading glow trail
+function drawSatellite(ang,flare){
+  const rad=R*1.22, ry=0.34, tilt=-0.5, c=Math.cos(tilt), s=Math.sin(tilt);
+  const ex=Math.cos(ang)*rad, ey=Math.sin(ang)*rad*ry;
+  const sx=CX+ex*c-ey*s, sy=CY+ex*s+ey*c;
+  satTrail.push({x:sx,y:sy});if(satTrail.length>18)satTrail.shift();
+  ctx.save();ctx.globalCompositeOperation='lighter';
+  satTrail.forEach((p,i)=>{const k=(i+1)/satTrail.length,rr=R*0.02+R*0.045*k;
+    const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,rr);
+    g.addColorStop(0,`rgba(190,235,255,${(0.08+0.45*flare)*k*k})`);g.addColorStop(1,'rgba(190,235,255,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,rr,0,7);ctx.fill();});
+  const hr=R*0.05*(1+0.5*flare);
+  const hg=ctx.createRadialGradient(sx,sy,0,sx,sy,hr*2.6);
+  hg.addColorStop(0,'rgba(240,252,255,0.95)');hg.addColorStop(0.4,`rgba(150,220,255,${0.5+0.4*flare})`);hg.addColorStop(1,'rgba(150,220,255,0)');
+  ctx.fillStyle=hg;ctx.beginPath();ctx.arc(sx,sy,hr*2.6,0,7);ctx.fill();ctx.restore();
+}
+// brighter core — a pulsing inner light highlight inside the sphere (3D/glassy)
+function drawCoreLight(flare){
+  ctx.save();ctx.beginPath();ctx.arc(CX,CY,R*0.99,0,7);ctx.clip();ctx.globalCompositeOperation='lighter';
+  const cp=0.5+0.5*Math.sin(t*1.4);
+  const g=ctx.createRadialGradient(CX-R*0.26,CY-R*0.30,0,CX,CY,R*0.95);
+  g.addColorStop(0,`rgba(255,255,255,${0.08+0.16*cp+0.22*flare})`);
+  g.addColorStop(0.5,`rgba(185,228,255,${0.03+0.10*flare})`);
+  g.addColorStop(1,'rgba(185,228,255,0)');
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(CX,CY,R*0.95,0,7);ctx.fill();ctx.restore();
+}
+
 function frame(){
   t+=0.016;
   voiceKick*=0.80;                                              // per-word kick decays fast
@@ -415,11 +467,22 @@ function frame(){
   target=(speaking||listening)?(0.45+0.3*amp):(0.12+0.04*Math.sin(t*0.5));
   energy+=(target-energy)*0.10;                                 // overall glow level (smooth)
   document.getElementById('st-pulse').textContent=energy>0.55?'PEAK':energy>0.32?'ELEVATED':'NOMINAL';
+  // hover wakes the orb: smooth spin-up + brighter flare. flare/breath drive the new aura/rings/core.
+  hover+=(hoverT-hover)*0.08;
+  const spinBoost=1+1.8*hover+0.3*energy;
+  spinA+=0.016*spinBoost; ORB_ROT=spinA*0.4;                    // smooth (accumulated) rotation
+  const flare=Math.min(1,0.12+0.45*energy+0.55*amp+0.7*hover);  // overall brightness/energy
+  const breath=0.5+0.5*Math.sin(t*0.6);                          // slow independent "breathing"
 
   ctx.setTransform(DPR,0,0,DPR,0,0);
   let bg=ctx.createRadialGradient(CX,CY,R*0.2,CX,CY,Math.max(W,H)*0.85);
   bg.addColorStop(0,'#0b1a2e');bg.addColorStop(.5,'#07111f');bg.addColorStop(1,'#03060c');
   ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+
+  // breathing aura behind everything + the BACK half of the dual-ring system (drawn before the core,
+  // so the sphere occludes its far arc → reads as orbiting around the orb)
+  drawAura(breath,flare);
+  drawRing(R*1.30, 0.30, -spinA*0.95, '120,210,255', 1.4, flare);   // ring 2 (faster, counter-rotating)
 
   // advance voice-wave ripples (the rings that emanate as it speaks/listens)
   for(const rp of ripples){rp.r+=R*0.013;rp.life-=0.018;}
@@ -446,7 +509,12 @@ function frame(){
     ctx.strokeStyle='rgba(200,240,255,'+(0.35+0.4*energy)+')';ctx.lineWidth=2;ctx.beginPath();ctx.arc(CX,CY,R,0,7);ctx.stroke();
   } else {
     drawLucidOrb(pulse);                                   // translucent, lucid sphere of light
+    drawCoreLight(flare);                                  // pulsing inner light → brighter, glassy core
   }
+
+  // FRONT half of the dual-ring system + the orbiting satellite particle (drawn over the core)
+  drawRing(R*1.18, 0.34, spinA*0.6, '150,225,255', 1.6, flare);    // ring 1 (slower, opposite spin)
+  drawSatellite(spinA*1.4, flare);                                  // bright dot orbiting + glow trail
 
   // ORB wordmark under the orb (hidden in immersive live mode)
   if(!document.body.classList.contains('live')){
