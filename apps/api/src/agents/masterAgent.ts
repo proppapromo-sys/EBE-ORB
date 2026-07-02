@@ -43,6 +43,7 @@ import { FORESIGHT_QUERY, FORESIGHT_DIRECTIVE } from '../services/foresight.js';
 import { chiefOfStaffBrief, describeArchitecture } from '../services/architecture.js';
 import { parseBusiness, setBusiness, businessContext, EYES_AND_EARS, EYES_DIRECTIVE, PROBLEMS_QUERY } from '../services/business.js';
 import { scanUser as scanBusiness, formatProblems } from '../services/proactive.js';
+import { assembleHealth, brokenSystems, formatHealth, HEALTH_QUERY } from '../services/health.js';
 import { PLAN_QUERY, ORCHESTRATION_DIRECTIVE } from '../services/orchestration.js';
 import { EVOLUTION_QUERY, EVOLUTION_DIRECTIVE, STEWARDSHIP_QUERY, STEWARDSHIP_DIRECTIVE, LEGACY_QUERY, LEGACY_DIRECTIVE } from '../services/stewardship.js';
 import { COSMIC_QUERY, COSMIC_DIRECTIVE, UNIFIED_QUERY, UNIFIED_DIRECTIVE, REALITY_QUERY, REALITY_DIRECTIVE, IMPROVEMENT_QUERY, INFINITE_PRINCIPLE } from '../services/unified.js';
@@ -661,10 +662,18 @@ export async function askOrb(
     return { mode: 'fast' as const, answer: INFINITE_PRINCIPLE, route: 'fast' as const, model: 'architecture' };
   }
 
-  // Eyes & ears: "what do you see / what's wrong / what needs fixing" → live scan of the business,
-  // framed as problems to act on (confirm-first). This is ORB watching, not just answering.
+  // System health: retrieve → assemble → assess every connected system for broken/damaged ones.
+  if (HEALTH_QUERY.test(message)) {
+    return { mode: 'fast' as const, answer: formatHealth(await assembleHealth(userId).catch(() => [])), route: 'fast' as const, model: 'health' };
+  }
+
+  // Eyes & ears: "what do you see / what's wrong / what needs fixing" → live scan of the business +
+  // a health check of the connected systems, framed as problems to act on (confirm-first).
   if (PROBLEMS_QUERY.test(message)) {
-    return { mode: 'fast' as const, answer: formatProblems(await scanBusiness(userId).catch(() => [])), route: 'fast' as const, model: 'eyes' };
+    const [insights, health] = await Promise.all([scanBusiness(userId).catch(() => []), assembleHealth(userId).catch(() => [])]);
+    const broken = brokenSystems(health);
+    const sysLine = broken.length ? `Systems needing attention: ${broken.map((b) => `${b.system} (${b.state})`).join(', ')}.\n` : '';
+    return { mode: 'fast' as const, answer: sysLine + formatProblems(insights), route: 'fast' as const, model: 'eyes' };
   }
 
   // Self-Identity: ORB's model of itself (mission, boundaries, continuity) and its living model of you.

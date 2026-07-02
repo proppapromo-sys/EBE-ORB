@@ -4,6 +4,7 @@ import { askOrb, gatherContext, createAction, dailyBriefing, proactive } from '.
 import { scanUser, formatDigest, pendingInsights, markSeen } from '../services/proactive.js';
 import { appendTurn, getConversation, formatTranscript, clearConversation, SAVE_CONVO_RE } from '../services/conversation.js';
 import { getBusiness, setBusiness } from '../services/business.js';
+import { assembleHealth, formatHealth } from '../services/health.js';
 import { connectors, getConnector } from '../connectors/index.js';
 import { runOrbCycle } from '../genome/orbBranch.js';
 import { createJournal, journalIsDurable } from '../services/journalStore.js';
@@ -456,6 +457,15 @@ orbRouter.post('/conversation/clear', async (req, res, next) => {
     const userId = String(req.body?.userId ?? 'demo-user');
     await clearConversation(userId);
     res.json({ userId, ok: true });
+  } catch (error) { next(error); }
+});
+
+// System health — retrieve/assemble/assess every connected system for broken/damaged ones.
+orbRouter.get('/systems', async (req, res, next) => {
+  try {
+    const userId = String(req.query.userId ?? 'demo-user');
+    const systems = await assembleHealth(userId);
+    res.json({ userId, systems, summary: formatHealth(systems) });
   } catch (error) { next(error); }
 });
 
