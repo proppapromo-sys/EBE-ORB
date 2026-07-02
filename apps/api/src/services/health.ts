@@ -49,8 +49,10 @@ export async function assembleHealth(userId: string): Promise<SystemHealth[]> {
   const integ = await Promise.all(INTEGRATIONS.map(async (i) => {
     const fields = await getCredential(userId, i.provider).catch(() => null);
     if (!fields) return { system: i.label, domain: String(i.domain), state: 'not_connected' as SystemState, detail: 'not connected yet', checkedAt: now };
+    // A self-built "custom" program carries its own name; use it so reports read naturally.
+    const system = (typeof fields.name === 'string' && fields.name.trim()) || i.label;
     const test = await testConnection(i.provider, fields).catch(() => ({ ok: false, note: 'live check failed to run' }));
-    return { system: i.label, domain: String(i.domain), state: (test.ok ? 'healthy' : 'down') as SystemState, detail: test.note, checkedAt: now };
+    return { system, domain: String(i.domain), state: (test.ok ? 'healthy' : 'down') as SystemState, detail: test.note, checkedAt: now };
   }));
 
   return [...conn, ...integ].sort((a, b) => ORDER[a.state] - ORDER[b.state]);

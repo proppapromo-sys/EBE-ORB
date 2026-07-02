@@ -257,7 +257,10 @@ orbRouter.post('/integrations/:provider', async (req, res, next) => {
     const clean: Record<string, string> = {};
     for (const f of meta.fields) {
       const v = (fields[f.key] ?? '').trim();
-      if (!v) return res.status(400).json({ error: `Missing "${f.label}".` });
+      if (!v) {
+        if (f.optional) continue; // leave blank optional fields out of the stored credential
+        return res.status(400).json({ error: `Missing "${f.label}".` });
+      }
       clean[f.key] = v;
     }
     const test = await testConnection(provider, clean);

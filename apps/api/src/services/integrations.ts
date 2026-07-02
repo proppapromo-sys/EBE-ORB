@@ -14,6 +14,7 @@ export type IntegrationField = {
   label: string;
   placeholder?: string;
   help?: string;
+  optional?: boolean; // if true, the field can be left blank (e.g. a public health endpoint needs no token)
 };
 
 export type Integration = {
@@ -45,6 +46,18 @@ export const INTEGRATIONS: Integration[] = [
     blurb: 'Watch payments — disputes that need a response.',
     docs: 'Stripe Dashboard → Developers → API keys → Secret key (use a restricted key with read access).',
     fields: [{ key: 'secretKey', label: 'Secret key', placeholder: 'sk_live_… or rk_live_…' }]
+  },
+  {
+    provider: 'custom',
+    label: 'My App',
+    domain: 'business',
+    blurb: 'Connect a program you built — ORB pings its health endpoint and tells you when it goes down.',
+    docs: 'Point ORB at any URL that returns 2xx when your app is healthy (a /health or /status endpoint is ideal). If it needs auth, add a bearer token.',
+    fields: [
+      { key: 'name', label: 'What to call it', placeholder: 'Booking service', optional: true, help: 'How ORB refers to this program in health reports.' },
+      { key: 'url', label: 'Health-check URL', placeholder: 'https://myapp.example.com/health', help: 'ORB sends a GET here. 2xx = healthy, anything else = down.' },
+      { key: 'apiKey', label: 'Bearer token (optional)', placeholder: 'leave blank if the endpoint is public', optional: true, help: 'Sent as Authorization: Bearer …' }
+    ]
   }
 ];
 
@@ -74,6 +87,17 @@ export async function testConnection(provider: string, fields: Credential): Prom
       if (r.status === 401) return { ok: false, note: 'Stripe rejected that key.' };
       return { ok: false, note: `Stripe error ${r.status}.` };
     }
+    if (provider === 'custom') {
+      const url = normUrl(fields.url);
+      if (!url) return { ok: false, note: 'Need the health-check URL (https://…).' };
+      const who = fields.name?.trim() || 'Your app';
+      const headers: Record<string, string> = { accept: '*/*' };
+      if (fields.apiKey?.trim()) headers.authorization = `Bearer ${fields.apiKey.trim()}`;
+      const r = await fetch(url, { method: 'GET', headers, redirect: 'follow' });
+      if (r.ok) return { ok: true, note: `${who} responded ${r.status} — healthy.` };
+      if (r.status === 401 || r.status === 403) return { ok: false, note: `${who} rejected the request (${r.status}) — check the token.` };
+      return { ok: false, note: `${who} returned ${r.status} — not healthy.` };
+    }
     return { ok: false, note: `No test wired for "${provider}".` };
   } catch (e) {
     return { ok: false, note: e instanceof Error ? e.message : 'connection test failed' };
@@ -97,6 +121,20 @@ export async function liveSignals(provider: string, userId: string): Promise<Orb
 function normShop(shop?: string): string {
   if (!shop) return '';
   return shop.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase();
+}
+
+/** Accept only a real http(s) URL; return '' for anything else so we never fetch junk. */
+function normUrl(raw?: string): string {
+  if (!raw) return '';
+  let s = raw.trim();
+  if (!/^https?:\/\//i.test(s)) s = `https://${s}`;
+  try {
+    const u = new URL(s);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+    return u.toString();
+  } catch {
+    return '';
+  }
 }
 
 async function shopifySignals(f: Credential): Promise<OrbSignalInput[]> {

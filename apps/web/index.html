@@ -1540,7 +1540,7 @@ async function renderSettings(){
         const ph=it.connected&&it.preview&&it.preview[f.key]?it.preview[f.key]:(f.placeholder||'');
         return `<input class="set-in" data-k="${esc(f.key)}" placeholder="${esc(ph)}" autocomplete="off" spellcheck="false"
           style="width:100%;margin:4px 0;background:rgba(10,24,40,.6);border:1px solid rgba(90,220,255,.2);border-radius:8px;color:#cfeefb;font:inherit;font-size:13px;padding:9px;outline:0" />
-          <div class="m" style="margin:-2px 0 6px">${esc(f.label)}</div>`;
+          <div class="m" style="margin:-2px 0 6px">${esc(f.label)}${f.help?` <span style="opacity:.6">— ${esc(f.help)}</span>`:''}</div>`;
       }).join('');
       return `<div class="card" data-prov="${esc(it.provider)}">
         <div class="t">${esc(it.label)} ${it.connected?'<span class="pill ok">CONNECTED</span>':''}</div>
